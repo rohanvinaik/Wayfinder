@@ -19,7 +19,9 @@ Scope caveat (from Axle docs):
 
 from __future__ import annotations
 
+import copy
 import hashlib
+import json
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
@@ -87,19 +89,10 @@ class ProofAuditor:
     NOT a replacement for step-wise tactic search — a complementary service.
 
     Usage:
-        auditor = ProofAuditor(config)
-        await auditor.connect()
-
-        # Verify a completed proof
-        result = await auditor.verify(statement, proof)
-
-        # Repair a near-complete proof
-        result = await auditor.repair(content)
-
-        # Decompose remaining sorries into subgoals
-        result = await auditor.decompose(content)
-
-        await auditor.close()
+        async with ProofAuditor(config) as auditor:
+            result = await auditor.verify(statement, proof)
+            result = await auditor.repair(content)
+            result = await auditor.decompose(content)
     """
 
     def __init__(self, config: AuditorConfig | None = None) -> None:
@@ -133,6 +126,15 @@ class ProofAuditor:
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         await self.close()
 
+    def _require_client(self) -> Any:
+        """Guard: raise clear error if connect() was not called."""
+        if self._client is None:
+            raise RuntimeError(
+                "ProofAuditor.connect() was not called. "
+                "Use 'async with ProofAuditor(config) as auditor:' or call connect() first."
+            )
+        return self._client
+
     # ------------------------------------------------------------------
     # Core operations
     # ------------------------------------------------------------------
@@ -142,18 +144,25 @@ class ProofAuditor:
         formal_statement: str,
         proof_content: str,
         permitted_sorries: list[str] | None = None,
+        category: SuccessCategory = SuccessCategory.RAW,
     ) -> AuditResult:
         """Verify a completed proof against its formal statement.
 
-        This is the primary Lane B operation. Use after Lane A search produces
-        a candidate proof.
+        Args:
+            formal_statement: Lean code with sorry placeholders.
+            proof_content: Candidate proof to verify.
+            permitted_sorries: Theorem names allowed to contain sorry.
+            category: Caller-provided metric category. Use RAW when verifying
+                Lane A results, AXLE_ASSISTED when verifying post-repair proofs.
         """
-        cache_key = self._cache_key("verify", formal_statement, proof_content)
+        sorries_key = json.dumps(sorted(permitted_sorries)) if permitted_sorries else ""
+        cache_key = self._cache_key("verify", formal_statement, proof_content, sorries_key)
         if cached := self._cache_get(cache_key):
             return cached
 
+        client = self._require_client()
         try:
-            result = await self._client.verify_proof(
+            result = await client.verify_proof(
                 formal_statement=formal_statement,
                 content=proof_content,
                 environment=self.config.environment,
@@ -164,7 +173,7 @@ class ProofAuditor:
 
             audit = AuditResult(
                 success=result.okay,
-                category=SuccessCategory.RAW if result.okay else SuccessCategory.RAW,
+                category=category,
                 verified=result.okay,
                 lean_errors=result.lean_messages.errors,
                 tool_errors=result.tool_messages.errors,
@@ -186,8 +195,9 @@ class ProofAuditor:
         if cached := self._cache_get(cache_key):
             return cached
 
+        client = self._require_client()
         try:
-            result = await self._client.repair_proofs(
+            result = await client.repair_proofs(
                 content=content,
                 environment=self.config.environment,
                 terminal_tactics=self.config.repair_terminal_tactics,
@@ -220,8 +230,9 @@ class ProofAuditor:
         if cached := self._cache_get(cache_key):
             return cached
 
+        client = self._require_client()
         try:
-            result = await self._client.sorry2lemma(
+            result = await client.sorry2lemma(
                 content=content,
                 environment=self.config.environment,
                 extract_sorries=True,
@@ -251,8 +262,9 @@ class ProofAuditor:
         if cached := self._cache_get(cache_key):
             return cached
 
+        client = self._require_client()
         try:
-            result = await self._client.check(
+            result = await client.check(
                 content=content,
                 environment=self.config.environment,
                 ignore_imports=self.config.ignore_imports,
@@ -281,8 +293,9 @@ class ProofAuditor:
 
         This is a data pipeline operation — no metric categorization.
         """
+        client = self._require_client()
         try:
-            result = await self._client.extract_theorems(
+            result = await client.extract_theorems(
                 content=content,
                 environment=self.config.environment,
                 ignore_imports=self.config.ignore_imports,
@@ -332,7 +345,8 @@ class ProofAuditor:
     def _cache_get(self, key: str) -> AuditResult | None:
         if not self.config.cache_enabled:
             return None
-        if result := self._cache.get(key):
+        if stored := self._cache.get(key):
+            result = copy.copy(stored)
             result.cached = True
             return result
         return None

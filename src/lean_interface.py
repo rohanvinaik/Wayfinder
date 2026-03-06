@@ -85,9 +85,7 @@ class LeanKernel:
             error_message="stub backend: no Lean kernel connected",
         )
 
-    def _stub_try_hammer(
-        self, goal_state: str, premises: list[str], timeout: int
-    ) -> TacticResult:
+    def _stub_try_hammer(self, goal_state: str, premises: list[str], timeout: int) -> TacticResult:
         """Stub: always fails."""
         return TacticResult(
             success=False,
@@ -103,10 +101,18 @@ class LeanKernel:
 
     def _pantograph_try_tactic(self, goal_state: str, tactic: str) -> TacticResult:
         """Pantograph: send tactic via Pantograph protocol."""
-        raise NotImplementedError("Pantograph backend not yet implemented")
+        raise NotImplementedError(
+            "Pantograph backend is not yet implemented (Phase 2+). "
+            "Use backend='stub' for offline testing or backend='axle' for Lane B verification. "
+            "See docs/WAYFINDER_PLAN.md §3.1 for Pantograph integration plan."
+        )
 
     def _pantograph_try_hammer(
         self, goal_state: str, premises: list[str], timeout: int
     ) -> TacticResult:
         """Pantograph: delegate to hammer via Pantograph."""
-        raise NotImplementedError("Pantograph backend not yet implemented")
+        raise NotImplementedError(
+            "Pantograph backend is not yet implemented (Phase 2+). "
+            "Use backend='stub' for offline testing or backend='axle' for Lane B verification. "
+            "See docs/WAYFINDER_PLAN.md §3.1 for Pantograph integration plan."
+        )
