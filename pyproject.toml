@@ -1,0 +1,35 @@
+[project]
+name = "wayfinder"
+version = "0.1.0"
+description = "Navigational proof search through structured semantic networks"
+requires-python = ">=3.11"
+dependencies = [
+    "torch>=2.1",
+    "numpy>=1.24",
+    "pyyaml>=6.0",
+    "sentence-transformers>=2.2",
+    "transformers>=4.36",
+]
+
+[project.optional-dependencies]
+axle = [
+    "axiom-axle>=1.0.0",
+]
+dev = [
+    "pytest>=7.0",
+    "ruff>=0.1",
+]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,96 @@
+# Balanced Sashimi base config — proof synthesis domain
+# Experiment-specific configs derive from this by overriding sections.
+
+# --- Data paths ---
+data:
+  proof_train: data/proof_train.jsonl
+  proof_eval: data/proof_eval.jsonl
+  negative_bank: data/hard_negative_bank.jsonl
+  ood_prompts: data/ood_prompt_set.jsonl
+  tier1_vocab: data/tier1_vocab.json
+  tier2_vocab: data/tier2_vocab.json
+
+# --- Model components ---
+model:
+  encoder:
+    enabled: true
+    model_name: all-MiniLM-L6-v2
+    output_dim: 384
+    frozen: true
+
+  domain_gate:
+    enabled: true
+    hidden_dim: 128
+
+  goal_analyzer:
+    enabled: true
+    feature_dim: 256
+
+  bridge:
+    enabled: true
+    bridge_dim: 128
+
+  decoder:
+    enabled: true
+    hidden_dim: 256
+    num_layers: 2
+    tier1_vocab_size: 0  # set at runtime from vocab
+    tier2_vocab_size: 0  # set at runtime from vocab
+    ternary_enabled: true
+    partial_ternary: false
+
+  term_filler:
+    enabled: false  # Phase 3+
+    hidden_dim: 256
+
+# --- Training defaults ---
+training:
+  batch_size: 16
+  learning_rate: 1.0e-4
+  weight_decay: 0.01
+  max_iterations: 1000
+  warmup_steps: 100
+  seed: 42
+  device: mps
+
+  loss:
+    initial_log_sigma: 0.0
+    margin: 0.5
+
+  optimizer: adamw
+  scheduler: cosine
+
+# --- Safety checks ---
+safety:
+  gradient_check_every_n_steps: 50
+  nan_abort: true
+  nan_checkpoint_before_abort: true
+  ternary_distribution_log_every_n_steps: 100
+  max_grad_norm: 1.0
+
+# --- Logging and artifact paths ---
+logging:
+  run_dir: runs/
+  training_log_suffix: _training_log.jsonl
+  eval_results_suffix: _eval_results.json
+  checkpoint_dir: models/
+
+# --- Ablation parameter placeholders ---
+ablation:
+  bridge_dim_options: [64, 128, 256]
+  decoder_layers_options: [1, 2, 3]
+  loss_variant_options: [composite, ce_only, margin_only]
+  ternary_threshold_options: [0.01, 0.05, 0.1]
+
+# --- PAB (Process-Aware Benchmarking) ---
+pab:
+  enabled: true
+  checkpoint_interval: 50
+  early_exit_enabled: true
+  save_profiles: true
+  validation_subset_size: 16
+
+# --- Evaluation ---
+evaluation:
+  fingerprint_enabled: true
+  fingerprint_save: true

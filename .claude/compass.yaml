@@ -1,0 +1,560 @@
+version: 1
+axes:
+  problem:
+    name: problem
+    claims:
+    - text: 'Project purpose: Navigational proof search through structured semantic
+        networks'
+      source: pyproject.toml
+      heading: ''
+      confidence: 0.5
+      provenance: inferred
+      origin_facet: core_theory
+    - text: '__init__.py: Balanced Sashimi: hybrid continuous-ternary architecture
+        for proof synthesis.'
+      source: docstring:__init__.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'behavioral_fingerprint.py: Behavioral fingerprinting for deployment-side
+        model evaluation.'
+      source: docstring:behavioral_fingerprint.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'bridge.py: Information bridge — bottleneck between continuous encoder
+        and ternary decoder.'
+      source: docstring:bridge.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'contracts.py: Balanced Sashimi data contracts for proof synthesis.'
+      source: docstring:contracts.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'data.py: Data loading and dataset classes for proof synthesis training.'
+      source: docstring:data.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'domain_gate.py: Domain gate — binary classifier for mathematical vs.
+        non-mathematical goals.'
+      source: docstring:domain_gate.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'encoder.py: Goal-state encoder — frozen sentence-transformer producing
+        semantic embeddings.'
+      source: docstring:encoder.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'evaluate.py: Evaluation harness for Balanced Sashimi proof synthesis
+        checkpoints.'
+      source: docstring:evaluate.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'goal_analyzer.py: Goal analyzer — maps encoder embeddings to latent proof-intent
+        features.'
+      source: docstring:goal_analyzer.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'losses.py: Composite loss with adaptive UW-SO weighting.'
+      source: docstring:losses.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'lowering.py: Deterministic lowering — converts ProofExample tier tokens
+        to Lean tactic proof text.'
+      source: docstring:lowering.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'pab_metrics.py: Pure metric computation functions for PAB trajectory
+        analysis.'
+      source: docstring:pab_metrics.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'pab_profile.py: Process-Aware Benchmarking (PAB) profile data model.'
+      source: docstring:pab_profile.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'pab_tracker.py: PAB training tracker with checkpoint accumulation.'
+      source: docstring:pab_tracker.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'ternary_decoder.py: Ternary structural decoder — {-1, 0, +1} weight layers
+        for discrete decisions.'
+      source: docstring:ternary_decoder.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'trainer.py: Training loop for Balanced Sashimi proof synthesis models.'
+      source: docstring:trainer.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'trainer_checks.py: Per-step safety checks and logging helpers for the
+        trainer.'
+      source: docstring:trainer_checks.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'trainer_constants.py: Domain inference constants and helpers for the
+        proof training pipeline.'
+      source: docstring:trainer_constants.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'trainer_setup.py: Setup and construction logic for the proof synthesis
+        training pipeline.'
+      source: docstring:trainer_setup.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'trainer_steps.py: Training step logic and batch-building helpers for
+        proof synthesis.'
+      source: docstring:trainer_steps.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'trainer_validation.py: Proof validation helpers for the training pipeline.'
+      source: docstring:trainer_validation.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'verification.py: Lean proof verification interface.'
+      source: docstring:verification.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'test_contracts.py: Tests for data contracts — roundtrip serialization.'
+      source: docstring:test_contracts.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'test_data_io.py: Tests for data loading -- JSONL roundtrip.'
+      source: docstring:test_data_io.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'test_losses.py: Tests for composite loss and OOD loss.'
+      source: docstring:test_losses.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'test_lowering.py: Tests for proof lowering -- ProofExample to Lean tactic
+        syntax.'
+      source: docstring:test_lowering.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'test_pab_tracker.py: Tests for PAB tracker -- accumulation and profile
+        generation.'
+      source: docstring:test_pab_tracker.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'test_smoke_e2e.py: Smoke test -- verify the full pipeline forward pass
+        works end-to-end.'
+      source: docstring:test_smoke_e2e.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'test_ternary.py: Tests for ternary quantization -- values in {-1, 0,
+        +1} and STE backward finite.'
+      source: docstring:test_ternary.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'test_verification.py: Tests for the proof verification module.'
+      source: docstring:test_verification.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    summary: 'Project purpose: Navigational proof search through structured semantic
+      networks'
+    depth: 3
+  solution:
+    name: solution
+    claims:
+    - text: Uses NumPy for numerical computation
+      source: imports
+      heading: ''
+      confidence: 0.55
+      provenance: inferred
+      origin_facet: architecture
+    - text: Uses PyTorch for ML
+      source: imports
+      heading: ''
+      confidence: 0.55
+      provenance: inferred
+      origin_facet: architecture
+    - text: Data models layer
+      source: directory_structure
+      heading: ''
+      confidence: 0.45
+      provenance: inferred
+      origin_facet: architecture
+    summary: Uses NumPy for numerical computation
+    depth: 1
+  implementation:
+    name: implementation
+    claims:
+    - text: Ruff linter configured
+      source: pyproject.toml
+      heading: ''
+      confidence: 0.5
+      provenance: inferred
+      origin_facet: enforceable_rules
+    - text: pytest configured in pyproject.toml
+      source: pyproject.toml
+      heading: ''
+      confidence: 0.5
+      provenance: inferred
+      origin_facet: enforceable_rules
+    - text: Uses src/ layout
+      source: directory_structure
+      heading: ''
+      confidence: 0.5
+      provenance: inferred
+      origin_facet: abstractions
+    - text: Tests in tests/
+      source: directory_structure
+      heading: ''
+      confidence: 0.5
+      provenance: inferred
+      origin_facet: enforceable_rules
+    - text: Uses unittest
+      source: test_patterns
+      heading: ''
+      confidence: 0.55
+      provenance: inferred
+      origin_facet: enforceable_rules
+    - text: 'behavioral_fingerprint.py:BehavioralFingerprint: Behavioral signature
+        of a model at a training checkpoint.'
+      source: docstring:behavioral_fingerprint.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'bridge.py:InformationBridge: Bottleneck bridge from continuous to discrete
+        space.'
+      source: docstring:bridge.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'contracts.py:Tier2Block: A single tactic''s premise/argument block (Tier
+        2 decoding output).'
+      source: docstring:contracts.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'contracts.py:Tier3Slot: A free-form term slot filled by the TermFiller
+        (Tier 3 output).'
+      source: docstring:contracts.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'contracts.py:ProofExample: A single training/eval example with three-tier
+        decomposition.'
+      source: docstring:contracts.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'contracts.py:NegativeBankEntry: A contrastive pair for margin loss training.'
+      source: docstring:contracts.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'contracts.py:OODPrompt: An out-of-domain prompt for domain gate training/evaluation.'
+      source: docstring:contracts.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'contracts.py:VerificationResult: Result of verifying a generated proof
+        against the Lean kernel.'
+      source: docstring:contracts.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'contracts.py:CoverageReport: Vocab coverage metric for acceptance tests.'
+      source: docstring:contracts.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'data.py:ProofDataset: PyTorch Dataset wrapping ProofExample records.'
+      source: docstring:data.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'data.py:NegativeBankDataset: PyTorch Dataset wrapping NegativeBankEntry
+        records.'
+      source: docstring:data.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'data.py:OODPromptDataset: PyTorch Dataset wrapping OODPrompt records.'
+      source: docstring:data.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'domain_gate.py:GateDecision: Domain gate classification result.'
+      source: docstring:domain_gate.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'domain_gate.py:DomainGate: Binary math-domain classifier on top of encoder
+        embeddings.'
+      source: docstring:domain_gate.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'encoder.py:GoalEncoder: Frozen sentence-transformer encoder for goal
+        state embeddings.'
+      source: docstring:encoder.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'goal_analyzer.py:GoalAnalysis: Structured analysis of a proof goal (non-differentiable,
+        for logging).'
+      source: docstring:goal_analyzer.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'goal_analyzer.py:GoalAnalyzer: Extracts structured proof intent from
+        encoder embeddings.'
+      source: docstring:goal_analyzer.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'losses.py:CompositeLoss: Adaptive multi-task loss for Balanced Sashimi
+        training.'
+      source: docstring:losses.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'losses.py:OODLoss: Binary cross-entropy loss for domain gate training.'
+      source: docstring:losses.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'pab_profile.py:PABCoreSeries: Core PAB time series: stability, predictability,
+        gen gap, repr evolution.'
+      source: docstring:pab_profile.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'pab_profile.py:PABTierSeries: Tier-wise accuracy and ternary crystallization
+        time series.'
+      source: docstring:pab_profile.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'pab_profile.py:PABDomainData: Per-domain and per-tactic progression data.'
+      source: docstring:pab_profile.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'pab_profile.py:PABLossSeries: Loss component trajectories.'
+      source: docstring:pab_profile.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'pab_profile.py:PABSummary: Derived summary statistics, computed by finalize().'
+      source: docstring:pab_profile.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'pab_profile.py:PABProfile: Process-Aware Benchmark profile for a training
+        run.'
+      source: docstring:pab_profile.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'pab_tracker.py:CheckpointData: Metrics collected at a single training
+        checkpoint.'
+      source: docstring:pab_tracker.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'pab_tracker.py:_CoreAccum: Accumulators for core PAB metrics.'
+      source: docstring:pab_tracker.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'pab_tracker.py:_TierAccum: Accumulators for tier data.'
+      source: docstring:pab_tracker.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'pab_tracker.py:_AuxAccum: Accumulators for domain/tactic/loss data.'
+      source: docstring:pab_tracker.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'pab_tracker.py:PABTracker: Accumulates PAB metrics during training and
+        produces a PABProfile.'
+      source: docstring:pab_tracker.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'ternary_decoder.py:TernaryLinear: Linear layer with ternary weights via
+        STE.'
+      source: docstring:ternary_decoder.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'ternary_decoder.py:TernaryDecoder: Multi-layer ternary decoder for Tier
+        1 and Tier 2 token prediction.'
+      source: docstring:ternary_decoder.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'trainer.py:BalancedSashimiTrainer: Training orchestrator for the Balanced
+        Sashimi proof synthesis pipeline.'
+      source: docstring:trainer.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'trainer_steps.py:TrainerStepsMixin: Mixin providing train_step, domain
+        gate step, and batch-building helpers.'
+      source: docstring:trainer_steps.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'verification.py:VerificationConfig: Configuration for the verification
+        backend.'
+      source: docstring:verification.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'verification.py:ProofVerifier: Verifies generated proofs against the
+        Lean kernel.'
+      source: docstring:verification.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    summary: Uses unittest
+    depth: 3
+  world:
+    name: world
+    claims:
+    - text: 'Python version: >=3.11'
+      source: pyproject.toml
+      heading: ''
+      confidence: 0.5
+      provenance: inferred
+      origin_facet: ''
+    - text: Has docs/ directory
+      source: directory_structure
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: ''
+    - text: 'Test suite: 8 test file(s)'
+      source: test_patterns
+      heading: ''
+      confidence: 0.5
+      provenance: inferred
+      origin_facet: ''
+    summary: 'Test suite: 8 test file(s)'
+    depth: 1
+directives:
+- kind: forbidden
+  text: proposed_rules
+  source: enforceable_rules
+- kind: forbidden
+  text: existing_rule_count
+  source: enforceable_rules
+- kind: forbidden
+  text: directives_analyzed
+  source: enforceable_rules
+- kind: forbidden
+  text: already_covered
+  source: enforceable_rules
+gap_report:
+  axis_depths:
+    problem: 3
+    solution: 1
+    implementation: 3
+    world: 1
+  spikiness: 0.3333
+  sparse_axes:
+  - solution
+  - world
+  interview_recommended: true
+forged_at: 1772812143.887886
+frozen: false
+frozen_hash: ''

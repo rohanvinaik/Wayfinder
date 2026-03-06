@@ -1,0 +1,177 @@
+# Wayfinder primary configuration — navigational proof search
+# Derives from base.yaml patterns but covers the full Wayfinder pipeline.
+
+# --- Data paths ---
+data:
+  nav_train: data/nav_training.jsonl
+  nav_eval: data/nav_eval.jsonl
+  proof_network_db: data/proof_network.db
+  anchor_labels: data/anchor_labels.json
+
+# --- Model components ---
+model:
+  encoder:
+    type: all-MiniLM-L6-v2   # Phase 0.6 selects final encoder; ByT5: google/byt5-small
+    output_dim: 384           # MiniLM native=384; ByT5 native=1472 (auto-projected to output_dim)
+    frozen: false
+
+  goal_analyzer:
+    feature_dim: 256
+    num_anchors: 300
+    navigable_banks:
+      - structure
+      - domain
+      - depth
+      - automation
+      - context
+      - decomposition
+
+  bridge:
+    bridge_dim: 128
+    history_dim: 64
+
+  navigator:
+    input_dim: 128
+    hidden_dim: 256
+    num_anchors: 300
+    num_layers: 2
+    ternary_enabled: true
+    navigable_banks:
+      - structure
+      - domain
+      - depth
+      - automation
+      - context
+      - decomposition
+
+# --- Navigation ---
+navigation:
+  scoring_mechanism: confidence_weighted
+  num_anchors: 300
+  spread_depth: 2
+  tactic_limit: 8
+  premise_limit: 16
+  anchor_threshold: 0.3
+
+# --- Training ---
+training:
+  batch_size: 16
+  learning_rate: 1.0e-4
+  weight_decay: 0.01
+  max_iterations: 5000
+  warmup_steps: 200
+  seed: 42
+  device: mps
+
+  loss:
+    initial_log_sigma: 0.0
+
+  optimizer: adamw
+  scheduler: cosine
+
+  curriculum:
+    phase_a:
+      max_steps: 2
+      iterations: 500
+    phase_b:
+      max_steps: 5
+      iterations: 1500
+    phase_c:
+      max_steps: null  # all proofs
+      iterations: null  # remaining budget
+
+  proof_history: true
+  soft_critic_targets: true
+
+# --- Search ---
+search:
+  budget: 600
+  hammer_delegation: true
+  accessible_premises: true
+  max_candidates_per_step: 8
+  hammer_timeout: 60
+
+# --- Lean kernel (Lane A: step-wise tactic search) ---
+lean:
+  backend: stub  # "stub" (Phase 0-1), "pantograph" (Phase 2+)
+
+# --- Proof auditor (Lane B: Axle verification/repair/decomposition) ---
+axle:
+  enabled: false  # Enable when axiom-axle is installed: pip install wayfinder[axle]
+  environment: lean-4.28.0  # Pin aggressively; update only with Mathlib version bump
+  timeout_seconds: 120
+  ignore_imports: false  # Strict by default; only true when intentional
+  cache_enabled: true
+  max_concurrency: 10
+  repair_terminal_tactics:
+    - grind
+    - aesop
+    - simp
+    - omega
+    - decide
+
+# --- High-assurance verification (Lane C: optional, leaderboard results only) ---
+# lane_c:
+#   backend: lean4checker  # lean4checker, comparator, safeverify
+#   enabled: false
+
+# --- Safety checks ---
+safety:
+  gradient_check_every_n_steps: 50
+  nan_abort: true
+  nan_checkpoint_before_abort: true
+  ternary_distribution_log_every_n_steps: 100
+  max_grad_norm: 1.0
+
+# --- Logging ---
+logging:
+  run_dir: runs/
+  training_log_suffix: _nav_training_log.jsonl
+  eval_results_suffix: _nav_eval_results.json
+  checkpoint_dir: models/
+
+# --- PAB ---
+pab:
+  enabled: true
+  checkpoint_interval: 50
+  early_exit_enabled: true
+  save_profiles: true
+  validation_subset_size: 16
+
+# --- Evaluation ---
+evaluation:
+  benchmark_theorems: data/minif2f_test.jsonl
+  mathlib_test_split: data/mathlib_test.jsonl
+  retrieval_eval_samples: 500
+  spreading_eval_samples: 200
+
+# --- Ablation parameter placeholders ---
+ablation:
+  variants:
+    - name: full_wayfinder        # primary (this config)
+    - name: dense_retrieval       # no proof network
+    - name: tactic_classification # no navigation
+    - name: no_spreading          # no spread activation
+    - name: no_progress_head
+    - name: continuous_decoder    # ternary_enabled: false
+    - name: no_idf_weighting
+    - name: no_bank_alignment     # anchors only
+    - name: binary_critic         # BCE instead of MSE
+    - name: no_proof_history
+    - name: no_hammer_delegation
+    - name: no_accessible_premises
+    - name: three_bank_navigation # structure + domain + automation only
+
+# --- Invariants (enforced at startup) ---
+invariants:
+  eval_data_frozen: true
+  gap_analysis_before_training: true
+  single_inference_per_state: true
+  scoring_auditable: true
+  pab_from_step_zero: true
+  scoring_configurable: true
+  encoder_explicitly_chosen: true
+  six_bank_default: true
+  soft_critic_targets: true
+  accessible_premises_on: true
+  hammer_delegation_on: true
