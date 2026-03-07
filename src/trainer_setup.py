@@ -66,7 +66,9 @@ def build_pipeline_modules(
             input_dim=model_cfg["bridge"]["bridge_dim"],
             hidden_dim=decoder_cfg["hidden_dim"],
             tier1_vocab_size=len(tier1_vocab),
-            tier2_vocab_size=len(tier2_vocab) if tier2_vocab else decoder_cfg.get("tier2_vocab_size", 256),
+            tier2_vocab_size=len(tier2_vocab)
+            if tier2_vocab
+            else decoder_cfg.get("tier2_vocab_size", 256),
             num_layers=decoder_cfg["num_layers"],
             ternary_enabled=decoder_cfg.get("ternary_enabled", True),
             partial_ternary=decoder_cfg.get("partial_ternary", False),

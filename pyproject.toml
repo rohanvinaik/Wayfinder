@@ -31,5 +31,11 @@ line-length = 100
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]
 
+[tool.ty]
+# Third-party deps not installed in lint environment
+[tool.ty.overrides]
+[[tool.ty.overrides.options]]
+ignore = ["unresolved-import"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

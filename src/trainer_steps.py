@@ -212,7 +212,9 @@ class TrainerStepsMixin:
         import torch.nn.functional as F
 
         goal_states = [ex.goal_state for ex in batch]
-        embeddings = self.pipeline.encoder.encode(goal_states).clone().detach().requires_grad_(False)
+        embeddings = (
+            self.pipeline.encoder.encode(goal_states).clone().detach().requires_grad_(False)
+        )
 
         analyzer_features = self.pipeline.goal_analyzer(embeddings)
         bridge_features = self.pipeline.bridge(analyzer_features)

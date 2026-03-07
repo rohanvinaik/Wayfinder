@@ -117,6 +117,7 @@ def _target_tier1_token(example: Any) -> str:
 
 def _infer_domain(example: Any) -> str:
     from src.trainer_constants import infer_domain
+
     return infer_domain(example)
 
 

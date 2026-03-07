@@ -11,25 +11,59 @@ from __future__ import annotations
 
 from src.contracts import ProofExample, Tier2Block
 
-
 # Tactics that take a premise argument directly
-_PREMISE_TACTICS = frozenset({
-    "apply", "exact", "rw", "rewrite", "simp", "have", "use",
-    "specialize", "refine", "calc", "conv", "unfold",
-})
+_PREMISE_TACTICS = frozenset(
+    {
+        "apply",
+        "exact",
+        "rw",
+        "rewrite",
+        "simp",
+        "have",
+        "use",
+        "specialize",
+        "refine",
+        "calc",
+        "conv",
+        "unfold",
+    }
+)
 
 # Tactics that are self-contained (no arguments needed)
-_NULLARY_TACTICS = frozenset({
-    "ring", "omega", "linarith", "norm_num", "decide", "trivial",
-    "assumption", "contradiction", "exfalso", "done", "rfl",
-    "positivity", "norm_cast", "push_neg", "field_simp", "aesop",
-    "tauto", "simp_all",
-})
+_NULLARY_TACTICS = frozenset(
+    {
+        "ring",
+        "omega",
+        "linarith",
+        "norm_num",
+        "decide",
+        "trivial",
+        "assumption",
+        "contradiction",
+        "exfalso",
+        "done",
+        "rfl",
+        "positivity",
+        "norm_cast",
+        "push_neg",
+        "field_simp",
+        "aesop",
+        "tauto",
+        "simp_all",
+    }
+)
 
 # Structural tokens
-_STRUCTURAL = frozenset({
-    "BOS", "EOS", "PAD", "SEP", "by", "sorry",
-})
+_STRUCTURAL = frozenset(
+    {
+        "BOS",
+        "EOS",
+        "PAD",
+        "SEP",
+        "by",
+        "sorry",
+    }
+)
 
 
 def _build_premise_map(example: ProofExample) -> dict[int, Tier2Block]:
@@ -42,6 +76,59 @@ def _build_term_map(example: ProofExample) -> dict[str, str | int | float]:
     return {slot.slot_id: slot.value for slot in example.tier3_slots}
 
 
+def _lower_intro(block: Tier2Block | None, _term_map: dict, _index: int) -> str:
+    if block and block.tokens:
+        return f"intro {' '.join(block.tokens)}"
+    return "intro"
+
+
+def _lower_cases(block: Tier2Block | None, _term_map: dict, _index: int) -> str:
+    if block and block.tokens:
+        return f"cases {block.tokens[0]}"
+    return "cases _"
+
+
+def _lower_induction(block: Tier2Block | None, _term_map: dict, _index: int) -> str:
+    if block and block.tokens:
+        target = block.tokens[0]
+        rest = f" with {' '.join(block.tokens[1:])}" if len(block.tokens) > 1 else ""
+        return f"induction {target}{rest}"
+    return "induction _"
+
+
+def _lower_rw(block: Tier2Block | None, _term_map: dict, _index: int) -> str:
+    if block and block.tokens:
+        return f"rw [{', '.join(block.tokens)}]"
+    return "rw []"
+
+
+def _lower_simp(block: Tier2Block | None, _term_map: dict, _index: int) -> str:
+    if block and block.tokens:
+        return f"simp [{', '.join(block.tokens)}]"
+    return "simp"
+
+
+def _lower_have(block: Tier2Block | None, term_map: dict, index: int) -> str:
+    if block and block.tokens:
+        name = block.tokens[0]
+        type_slot = term_map.get(f"have_{index}_type", "")
+        if type_slot:
+            return f"have {name} : {type_slot} := by"
+        return f"have {name} := by"
+    return "have h := by"
+
+
+_TACTIC_HANDLERS: dict[str, callable] = {
+    "intro": _lower_intro,
+    "cases": _lower_cases,
+    "induction": _lower_induction,
+    "rw": _lower_rw,
+    "rewrite": _lower_rw,
+    "simp": _lower_simp,
+    "have": _lower_have,
+}
+
+
 def _lower_tactic(
     tactic: str,
     index: int,
@@ -51,57 +138,19 @@ def _lower_tactic(
     """Lower a single tactic token to Lean tactic syntax."""
     if tactic in _STRUCTURAL:
         return None
-
     if tactic in _NULLARY_TACTICS:
         return tactic
 
     block = premise_map.get(index)
-
-    if tactic == "intro":
-        if block and block.tokens:
-            return f"intro {' '.join(block.tokens)}"
-        return "intro"
-
-    if tactic == "cases":
-        if block and block.tokens:
-            return f"cases {block.tokens[0]}"
-        return "cases _"
-
-    if tactic == "induction":
-        if block and block.tokens:
-            target = block.tokens[0]
-            rest = f" with {' '.join(block.tokens[1:])}" if len(block.tokens) > 1 else ""
-            return f"induction {target}{rest}"
-        return "induction _"
-
-    if tactic == "rw" or tactic == "rewrite":
-        if block and block.tokens:
-            lemmas = ", ".join(block.tokens)
-            return f"rw [{lemmas}]"
-        return "rw []"
-
-    if tactic == "simp":
-        if block and block.tokens:
-            lemmas = ", ".join(block.tokens)
-            return f"simp [{lemmas}]"
-        return "simp"
-
-    if tactic == "have":
-        if block and block.tokens:
-            name = block.tokens[0]
-            # Check for a type annotation in tier3
-            type_slot = term_map.get(f"have_{index}_type", "")
-            if type_slot:
-                return f"have {name} : {type_slot} := by"
-            return f"have {name} := by"
-        return "have h := by"
+    handler = _TACTIC_HANDLERS.get(tactic)
+    if handler:
+        return handler(block, term_map, index)
 
     if tactic in _PREMISE_TACTICS:
         if block and block.tokens:
             return f"{tactic} {' '.join(block.tokens)}"
         return f"{tactic} _"
 
-    # Unknown tactic — emit as-is
     return tactic
 
 

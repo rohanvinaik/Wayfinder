@@ -66,9 +66,12 @@ class TestPipelineSmoke(unittest.TestCase):
         analyzer = GoalAnalyzer(input_dim=384, feature_dim=256)
         bridge = InformationBridge(input_dim=256, bridge_dim=128)
         decoder = TernaryDecoder(
-            input_dim=128, hidden_dim=256,
-            tier1_vocab_size=30, tier2_vocab_size=50,
-            num_layers=1, ternary_enabled=True,
+            input_dim=128,
+            hidden_dim=256,
+            tier1_vocab_size=30,
+            tier2_vocab_size=50,
+            num_layers=1,
+            ternary_enabled=True,
         )
         loss_fn = CompositeLoss()
 
@@ -80,10 +83,7 @@ class TestPipelineSmoke(unittest.TestCase):
         loss_dict["L_total"].backward()
 
         # Check gradients exist on decoder
-        has_grad = any(
-            p.grad is not None and p.grad.abs().sum() > 0
-            for p in decoder.parameters()
-        )
+        has_grad = any(p.grad is not None and p.grad.abs().sum() > 0 for p in decoder.parameters())
         self.assertTrue(has_grad, "No gradients flowed to decoder")
 
 

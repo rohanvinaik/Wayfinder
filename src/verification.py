@@ -131,8 +131,6 @@ def check_proof_structural(proof_text: str) -> dict[str, Any]:
     return {
         "tactic_count": len(tactics),
         "has_sorry": any(t == "sorry" for t in tactics),
-        "uses_automation": any(
-            t.split()[0] in automation_tactics for t in tactics if t
-        ),
+        "uses_automation": any(t.split()[0] in automation_tactics for t in tactics if t),
         "tactics": tactics,
     }

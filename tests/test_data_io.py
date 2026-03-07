@@ -7,7 +7,6 @@ from pathlib import Path
 from src.contracts import ProofExample
 from src.data import ProofDataset, load_proofs_jsonl, save_proofs_jsonl
 
-
 FIXTURE_PATH = Path(__file__).parent / "fixtures" / "tiny_proofs.jsonl"
 
 

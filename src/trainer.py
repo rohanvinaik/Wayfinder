@@ -237,7 +237,6 @@ class BalancedSashimiTrainer(TrainerStepsMixin):
             tactic_acc[expected].append(float(predicted == expected))
             domain_acc[domains[i]].append(float(predicted == expected))
 
-        n = max(1, len(subset))
         return {
             "val_loss": val_loss,
             "tier1_accuracy": float(np.mean(pred_idx == target_idx)) if len(target_idx) else 0.0,

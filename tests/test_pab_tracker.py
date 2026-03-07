@@ -2,7 +2,6 @@
 
 import tempfile
 import unittest
-from pathlib import Path
 
 import numpy as np
 
@@ -45,6 +44,7 @@ class TestPABTracker(unittest.TestCase):
         with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
             profile.save(f.name)
             from src.pab_profile import PABProfile
+
             loaded = PABProfile.load(f.name)
             self.assertEqual(loaded.experiment_id, "TEST-1")
             self.assertEqual(len(loaded.checkpoints), 3)
@@ -53,7 +53,7 @@ class TestPABTracker(unittest.TestCase):
         tracker = self._make_tracker()
         signs1 = np.array([1.0, -1.0, 0.0, 1.0])
         signs2 = np.array([1.0, -1.0, 0.0, 1.0])  # same
-        signs3 = np.array([1.0, 1.0, 0.0, -1.0])   # changed
+        signs3 = np.array([1.0, 1.0, 0.0, -1.0])  # changed
 
         tracker.record(CheckpointData(step=50, train_loss=2.0, decoder_weight_signs=signs1))
         tracker.record(CheckpointData(step=100, train_loss=1.5, decoder_weight_signs=signs2))

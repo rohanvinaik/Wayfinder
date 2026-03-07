@@ -36,9 +36,7 @@ class TestProofExample(unittest.TestCase):
 
     def test_with_tier2_blocks(self):
         ex = self._make_example()
-        ex.tier2_blocks = [
-            Tier2Block(tactic_index=1, tactic_name="apply", tokens=["Nat.add_comm"])
-        ]
+        ex.tier2_blocks = [Tier2Block(tactic_index=1, tactic_name="apply", tokens=["Nat.add_comm"])]
         d = ex.to_dict()
         ex2 = ProofExample.from_dict(d)
         self.assertEqual(len(ex2.tier2_blocks), 1)
@@ -46,9 +44,7 @@ class TestProofExample(unittest.TestCase):
 
     def test_with_tier3_slots(self):
         ex = self._make_example()
-        ex.tier3_slots = [
-            Tier3Slot(slot_id="have_1_type", value_kind="type", value="Nat")
-        ]
+        ex.tier3_slots = [Tier3Slot(slot_id="have_1_type", value_kind="type", value="Nat")]
         d = ex.to_dict()
         ex2 = ProofExample.from_dict(d)
         self.assertEqual(len(ex2.tier3_slots), 1)
@@ -72,14 +68,21 @@ class TestVerificationResult(unittest.TestCase):
 class TestNegativeBankEntry(unittest.TestCase):
     def test_roundtrip(self):
         pos = ProofExample(
-            theorem_id="t1", goal_state="g", theorem_statement="s",
-            proof_text="p", tier1_tokens=["BOS", "simp", "EOS"],
-            tier2_blocks=[], tier3_slots=[],
+            theorem_id="t1",
+            goal_state="g",
+            theorem_statement="s",
+            proof_text="p",
+            tier1_tokens=["BOS", "simp", "EOS"],
+            tier2_blocks=[],
+            tier3_slots=[],
         )
         entry = NegativeBankEntry(
-            goal_state="g", theorem_id="t1",
-            positive=pos, negative=None,
-            error_tags=["wrong_tactic"], source="synthetic_mutation",
+            goal_state="g",
+            theorem_id="t1",
+            positive=pos,
+            negative=None,
+            error_tags=["wrong_tactic"],
+            source="synthetic_mutation",
         )
         d = entry.to_dict()
         entry2 = NegativeBankEntry.from_dict(d)
@@ -89,7 +92,9 @@ class TestNegativeBankEntry(unittest.TestCase):
 
 class TestOODPrompt(unittest.TestCase):
     def test_roundtrip(self):
-        p = OODPrompt(prompt="Write a poem", label="ood", category="general_chat", source="synthetic")
+        p = OODPrompt(
+            prompt="Write a poem", label="ood", category="general_chat", source="synthetic"
+        )
         d = p.to_dict()
         p2 = OODPrompt.from_dict(d)
         self.assertEqual(p2.label, "ood")
@@ -98,9 +103,12 @@ class TestOODPrompt(unittest.TestCase):
 class TestCoverageReport(unittest.TestCase):
     def test_roundtrip(self):
         cr = CoverageReport(
-            scope="tier1", dataset="eval",
-            total_tokens_in_eval=50, covered=48,
-            uncovered=["tactic_a", "tactic_b"], coverage_pct=96.0,
+            scope="tier1",
+            dataset="eval",
+            total_tokens_in_eval=50,
+            covered=48,
+            uncovered=["tactic_a", "tactic_b"],
+            coverage_pct=96.0,
         )
         d = cr.to_dict()
         cr2 = CoverageReport.from_dict(d)
