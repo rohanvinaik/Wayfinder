@@ -23,28 +23,32 @@
       <div class="sidebar-group">
   <h3>Documentation</h3>
   <ul>
-    <li data-page="Home"><a href="../home/">Wayfinder — Navigational Proof Search</a></li>
-    <li data-page="Research"><a href="../research/">Research Paper</a></li>
-    <li data-page="Design"><a href="../design/">Engineering Design</a></li>
-    <li data-page="Experiment-Plan"><a href="../experiment-plan/">Experiment Plan</a></li>
-    <li data-page="Experiment-Results"><a href="../experiment-results/">Experiment Results</a></li>
+    <li data-page="Home"><a href="./home/">Wayfinder — Navigational Proof Search</a></li>
+    <li data-page="Research"><a href="./research/">Research Paper</a></li>
+    <li data-page="Design"><a href="./design/">Engineering Design</a></li>
+    <li data-page="Experiment-Plan"><a href="./experiment-plan/">Experiment Plan</a></li>
+    <li data-page="Experiment-Results"><a href="./experiment-results/">Experiment Results</a></li>
   </ul>
 </div>
 <div class="sidebar-group">
   <h3>Theory</h3>
   <ul>
-    <li data-page="Theory-Profile"><a href="../theory-profile/">Theory Profile</a></li>
-    <li data-page="Theory-Compass"><a href="../theory-compass/">Project Compass</a></li>
+    <li data-page="Theory-Profile"><a href="./theory-profile/">Theory Profile</a></li>
+    <li data-page="Theory-Compass"><a href="./theory-compass/">Project Compass</a></li>
   </ul>
 </div>
     </nav>
     <main class="content" role="main">
       <article>
-        <p><strong>Documentation</strong> | 56 min read | <a href="./home/">Home</a></p>
-<p><strong>Documentation</strong> | <a href="./home/">Home</a></p>
-<h1 id="wayfinder-navigational-proof-search">Wayfinder — Navigational Proof Search</h1>
+        <p><strong>Documentation</strong> | 56 min read</p>
 <h2 id="abstract">Abstract</h2>
-<p><em>Missing section: <code>Abstract</code> in <code>docs/WAYFINDER_RESEARCH.md</code></em></p>
+<p>We propose a novel approach to neural theorem proving that treats proof search as <em>navigation through structured semantic space</em> rather than token prediction. The system, <strong>Wayfinder</strong>, combines three architectural ideas that have not previously been integrated:</p>
+<p><strong>Navigational claim.</strong> A structured semantic network — where mathematical entities (lemmas, tactics, proof states) are positioned along orthogonal signed dimensions and connected through a shared anchor dictionary — enables premise selection and proof search via deterministic symbolic operations (IDF-weighted set intersection, Bellman-Ford spreading activation, multiplicative bank alignment) that are faster, more auditable, and more precise than dense embedding retrieval.</p>
+<p><strong>Architectural claim.</strong> A hybrid continuous-ternary architecture — with a continuous goal encoder, a learned information bottleneck, and a ternary {-1, 0, +1} navigational decoder — produces <em>directional coordinates in proof space</em> rather than vocabulary indices. These coordinates resolve to concrete tactics and premises through the semantic network. The neural network runs once per proof state; all subsequent search operations are pure arithmetic on structured data.</p>
+<p><strong>Epistemological claim.</strong> The architecture produces measurable learning trajectories, enabling Process-Aware Benchmarking (PAB) to evaluate <em>how</em> it learns to navigate, not just whether proofs close. Progress prediction — estimating remaining proof steps — connects PAB's trajectory analysis to actionable training signals and search heuristics.</p>
+<p>The system draws on three distinct intellectual traditions: (1) the navigational semantic network architecture of ModelAtlas (Vinaik, 2025), which positions ML models in a structured coordinate system for deterministic similarity queries; (2) the hybrid continuous-ternary decoder of Balanced Sashimi (Vinaik & Claude, 2026), which uses {-1, 0, +1} weights for categorical decisions; and (3) the formal convergence guarantees of Mutation Theory (formalized in Lean 4), which proves trajectory monotonicity, phase transitions, and fixed-point partitions applicable to structured search processes.</p>
+<p>The experimental target is Lean 4 proof generation over Mathlib, evaluated against ReProver (Lean-Dojo), LeanProgress, and DeepSeek-Prover-V2 baselines.</p>
+<hr>
 <hr>
 <p><em>Sources: <code>docs/WAYFINDER_RESEARCH.md</code></em></p>
 <h2 id="see-also">See Also</h2>
