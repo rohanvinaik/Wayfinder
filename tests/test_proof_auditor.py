@@ -2,6 +2,8 @@
 
 import asyncio
 import unittest
+from dataclasses import dataclass, field
+from unittest.mock import AsyncMock, MagicMock
 
 from src.proof_auditor import AuditorConfig, AuditResult, ProofAuditor, SuccessCategory
 
@@ -146,6 +148,192 @@ class TestApiErrorResult(unittest.TestCase):
         self.assertEqual(result.category, SuccessCategory.RAW)
         self.assertIn("ValueError", result.api_error)
         self.assertIn("test error", result.api_error)
+
+
+@dataclass
+class _FakeMessages:
+    errors: list[str] = field(default_factory=list)
+
+
+@dataclass
+class _FakeVerifyResult:
+    okay: bool = True
+    lean_messages: _FakeMessages = field(default_factory=_FakeMessages)
+    tool_messages: _FakeMessages = field(default_factory=_FakeMessages)
+    timings: dict = field(default_factory=dict)
+
+
+@dataclass
+class _FakeRepairResult:
+    lean_messages: _FakeMessages = field(default_factory=_FakeMessages)
+    tool_messages: _FakeMessages = field(default_factory=_FakeMessages)
+    timings: dict = field(default_factory=dict)
+
+
+@dataclass
+class _FakeSorry2LemmaResult:
+    lemma_names: list[str] = field(default_factory=lambda: ["sub1"])
+    lean_messages: _FakeMessages = field(default_factory=_FakeMessages)
+    tool_messages: _FakeMessages = field(default_factory=_FakeMessages)
+    timings: dict = field(default_factory=dict)
+
+
+@dataclass
+class _FakeDoc:
+    name: str = "test_thm"
+    signature: str = "theorem test_thm : True"
+    type: str = "theorem"
+    type_hash: str = "abc123"
+    proof_length: int = 1
+    tactic_counts: dict = field(default_factory=dict)
+    is_sorry: bool = False
+    local_type_dependencies: list = field(default_factory=list)
+    local_value_dependencies: list = field(default_factory=list)
+    external_type_dependencies: list = field(default_factory=list)
+    external_value_dependencies: list = field(default_factory=list)
+    local_syntactic_dependencies: list = field(default_factory=list)
+    external_syntactic_dependencies: list = field(default_factory=list)
+
+
+@dataclass
+class _FakeExtractResult:
+    documents: dict = field(default_factory=lambda: {"test_thm": _FakeDoc()})
+    lean_messages: _FakeMessages = field(default_factory=_FakeMessages)
+    timings: dict = field(default_factory=dict)
+
+
+def _make_auditor_with_mock_client():
+    """Create a ProofAuditor with a mock Axle client injected."""
+    auditor = ProofAuditor()
+    client = MagicMock()
+    client.verify_proof = AsyncMock(return_value=_FakeVerifyResult())
+    client.repair_proofs = AsyncMock(return_value=_FakeRepairResult())
+    client.sorry2lemma = AsyncMock(return_value=_FakeSorry2LemmaResult())
+    client.check = AsyncMock(return_value=_FakeVerifyResult())
+    client.extract_theorems = AsyncMock(return_value=_FakeExtractResult())
+    client.close = AsyncMock()
+    auditor._client = client
+    return auditor, client
+
+
+class TestVerify(unittest.TestCase):
+    def test_verify_success(self):
+        auditor, client = _make_auditor_with_mock_client()
+        result = asyncio.run(auditor.verify("stmt", "proof"))
+        self.assertTrue(result.success)
+        self.assertTrue(result.verified)
+        self.assertEqual(result.category, SuccessCategory.RAW)
+        client.verify_proof.assert_called_once()
+
+    def test_verify_with_permitted_sorries(self):
+        auditor, _ = _make_auditor_with_mock_client()
+        result = asyncio.run(
+            auditor.verify("stmt", "proof", permitted_sorries=["helper"])
+        )
+        self.assertTrue(result.success)
+
+    def test_verify_uses_cache(self):
+        auditor, client = _make_auditor_with_mock_client()
+        asyncio.run(auditor.verify("stmt", "proof"))
+        r2 = asyncio.run(auditor.verify("stmt", "proof"))
+        self.assertTrue(r2.cached)
+        self.assertEqual(client.verify_proof.call_count, 1)
+
+    def test_verify_api_error(self):
+        auditor, client = _make_auditor_with_mock_client()
+        client.verify_proof = AsyncMock(side_effect=TimeoutError("timeout"))
+        result = asyncio.run(auditor.verify("stmt", "proof"))
+        self.assertFalse(result.success)
+        self.assertIn("TimeoutError", result.api_error)
+
+
+class TestRepair(unittest.TestCase):
+    def test_repair_success(self):
+        auditor, client = _make_auditor_with_mock_client()
+        result = asyncio.run(auditor.repair("content"))
+        self.assertTrue(result.success)
+        self.assertTrue(result.repaired)
+        self.assertEqual(result.category, SuccessCategory.AXLE_REPAIR_ONLY)
+        client.repair_proofs.assert_called_once()
+
+    def test_repair_with_errors(self):
+        auditor, client = _make_auditor_with_mock_client()
+        client.repair_proofs = AsyncMock(
+            return_value=_FakeRepairResult(
+                lean_messages=_FakeMessages(errors=["error 1"])
+            )
+        )
+        result = asyncio.run(auditor.repair("bad content"))
+        self.assertFalse(result.success)
+
+    def test_repair_api_error(self):
+        auditor, client = _make_auditor_with_mock_client()
+        client.repair_proofs = AsyncMock(side_effect=ConnectionError("refused"))
+        result = asyncio.run(auditor.repair("content"))
+        self.assertFalse(result.success)
+        self.assertIn("ConnectionError", result.api_error)
+
+
+class TestDecompose(unittest.TestCase):
+    def test_decompose_success(self):
+        auditor, client = _make_auditor_with_mock_client()
+        result = asyncio.run(auditor.decompose("content"))
+        self.assertTrue(result.success)
+        self.assertEqual(result.category, SuccessCategory.AXLE_ASSISTED)
+        self.assertEqual(result.subgoals, ["sub1"])
+        client.sorry2lemma.assert_called_once()
+
+    def test_decompose_api_error(self):
+        auditor, client = _make_auditor_with_mock_client()
+        client.sorry2lemma = AsyncMock(side_effect=RuntimeError("boom"))
+        result = asyncio.run(auditor.decompose("content"))
+        self.assertFalse(result.success)
+        self.assertIn("RuntimeError", result.api_error)
+
+
+class TestCheck(unittest.TestCase):
+    def test_check_success(self):
+        auditor, client = _make_auditor_with_mock_client()
+        result = asyncio.run(auditor.check("content"))
+        self.assertTrue(result.success)
+        self.assertTrue(result.verified)
+        self.assertEqual(result.category, SuccessCategory.RAW)
+
+    def test_check_api_error(self):
+        auditor, client = _make_auditor_with_mock_client()
+        client.check = AsyncMock(side_effect=OSError("network"))
+        result = asyncio.run(auditor.check("content"))
+        self.assertFalse(result.success)
+        self.assertIn("OSError", result.api_error)
+
+
+class TestExtractTheorems(unittest.TestCase):
+    def test_extract_success(self):
+        auditor, _ = _make_auditor_with_mock_client()
+        result = asyncio.run(auditor.extract_theorems("content"))
+        self.assertIn("test_thm", result["documents"])
+        doc = result["documents"]["test_thm"]
+        self.assertEqual(doc["name"], "test_thm")
+        self.assertEqual(doc["type"], "theorem")
+
+    def test_extract_api_error(self):
+        auditor, client = _make_auditor_with_mock_client()
+        client.extract_theorems = AsyncMock(side_effect=ValueError("bad"))
+        result = asyncio.run(auditor.extract_theorems("content"))
+        self.assertEqual(result["documents"], {})
+        self.assertIn("bad", result["errors"][0])
+
+
+class TestClose(unittest.TestCase):
+    def test_close_clears_client(self):
+        auditor, client = _make_auditor_with_mock_client()
+        asyncio.run(auditor.close())
+        self.assertIsNone(auditor._client)
+        client.close.assert_called_once()
+
+    def test_close_noop_without_client(self):
+        auditor = ProofAuditor()
+        asyncio.run(auditor.close())  # should not raise
 
 
 if __name__ == "__main__":
