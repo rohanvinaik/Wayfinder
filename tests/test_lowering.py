@@ -1,6 +1,7 @@
 """Tests for proof lowering -- ProofExample to Lean tactic syntax."""
 
 import unittest
+from unittest.mock import patch
 
 from src.contracts import ProofExample, Tier2Block, Tier3Slot
 from src.lowering import lower_proof_to_lean, lower_to_theorem, roundtrip_validate
@@ -88,6 +89,67 @@ class TestLowerProofToLean(unittest.TestCase):
         self.assertNotIn("BOS", result)
         self.assertNotIn("EOS", result)
 
+    def test_intro_bare(self):
+        ex = self._make_example(["BOS", "intro", "EOS"])
+        result = lower_proof_to_lean(ex)
+        self.assertEqual(result.strip(), "intro")
+
+    def test_cases_bare(self):
+        ex = self._make_example(["BOS", "cases", "EOS"])
+        result = lower_proof_to_lean(ex)
+        self.assertIn("cases _", result)
+
+    def test_induction_with_target(self):
+        ex = self._make_example(
+            ["BOS", "induction", "EOS"],
+            blocks=[Tier2Block(tactic_index=1, tactic_name="induction", tokens=["n"])],
+        )
+        result = lower_proof_to_lean(ex)
+        self.assertIn("induction n", result)
+
+    def test_induction_with_names(self):
+        ex = self._make_example(
+            ["BOS", "induction", "EOS"],
+            blocks=[
+                Tier2Block(tactic_index=1, tactic_name="induction", tokens=["n", "ih"])
+            ],
+        )
+        result = lower_proof_to_lean(ex)
+        self.assertIn("induction n with ih", result)
+
+    def test_induction_bare(self):
+        ex = self._make_example(["BOS", "induction", "EOS"])
+        result = lower_proof_to_lean(ex)
+        self.assertIn("induction _", result)
+
+    def test_rw_bare(self):
+        ex = self._make_example(["BOS", "rw", "EOS"])
+        result = lower_proof_to_lean(ex)
+        self.assertIn("rw []", result)
+
+    def test_have_without_type(self):
+        ex = self._make_example(
+            ["BOS", "have", "EOS"],
+            blocks=[Tier2Block(tactic_index=1, tactic_name="have", tokens=["h"])],
+        )
+        result = lower_proof_to_lean(ex)
+        self.assertIn("have h := by", result)
+
+    def test_have_bare(self):
+        ex = self._make_example(["BOS", "have", "EOS"])
+        result = lower_proof_to_lean(ex)
+        self.assertIn("have h := by", result)
+
+    def test_premise_tactic_bare(self):
+        ex = self._make_example(["BOS", "apply", "EOS"])
+        result = lower_proof_to_lean(ex)
+        self.assertIn("apply _", result)
+
+    def test_unknown_tactic_passthrough(self):
+        ex = self._make_example(["BOS", "custom_tactic", "EOS"])
+        result = lower_proof_to_lean(ex)
+        self.assertIn("custom_tactic", result)
+
     def test_multi_tactic_proof(self):
         ex = self._make_example(
             ["BOS", "intro", "exact", "EOS"],
@@ -132,6 +194,37 @@ class TestRoundtripValidate(unittest.TestCase):
         ok, err = roundtrip_validate(ex)
         self.assertTrue(ok)
         self.assertEqual(err, "")
+
+    def test_empty_proof_text_returns_false(self):
+        ex = ProofExample(
+            theorem_id="test",
+            goal_state="",
+            theorem_statement="theorem test : True",
+            proof_text="",
+            tier1_tokens=["BOS", "trivial", "EOS"],
+            tier2_blocks=[],
+            tier3_slots=[],
+        )
+        with patch("src.lowering.lower_proof_to_lean", return_value="   "):
+            ok, err = roundtrip_validate(ex)
+        self.assertFalse(ok)
+        self.assertIn("Empty proof text", err)
+
+    def test_lowering_error_returns_false(self):
+        ex = ProofExample(
+            theorem_id="test",
+            goal_state="",
+            theorem_statement="theorem test : True",
+            proof_text="",
+            tier1_tokens=["BOS", "trivial", "EOS"],
+            tier2_blocks=[],
+            tier3_slots=[],
+        )
+        # Corrupt tier1_tokens to be non-iterable to trigger exception
+        ex.tier1_tokens = None
+        ok, err = roundtrip_validate(ex)
+        self.assertFalse(ok)
+        self.assertIn("Lowering failed", err)
 
 
 if __name__ == "__main__":
