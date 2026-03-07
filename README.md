@@ -1,5 +1,11 @@
 # Wayfinder
 
+[![CI](https://github.com/rohanvinaik/Wayfinder/actions/workflows/ci.yml/badge.svg)](https://github.com/rohanvinaik/Wayfinder/actions/workflows/ci.yml)
+[![Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=rohanvinaik_Wayfinder&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=rohanvinaik_Wayfinder)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=rohanvinaik_Wayfinder&metric=coverage)](https://sonarcloud.io/summary/new_code?id=rohanvinaik_Wayfinder)
+[![Maintainability](https://sonarcloud.io/api/project_badges/measure?project=rohanvinaik_Wayfinder&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=rohanvinaik_Wayfinder)
+[![Reliability](https://sonarcloud.io/api/project_badges/measure?project=rohanvinaik_Wayfinder&metric=reliability_rating)](https://sonarcloud.io/summary/new_code?id=rohanvinaik_Wayfinder)
+
 **Proof search as navigation, not prediction.**
 
 Wayfinder is a neural theorem prover for Lean 4 / Mathlib that runs the neural network *once* per proof state. All subsequent search — premise retrieval, tactic resolution, proof tree expansion — is deterministic arithmetic on a precomputed semantic network.
