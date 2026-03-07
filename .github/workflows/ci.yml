@@ -29,7 +29,7 @@ jobs:
         run: ruff check src/ scripts/ tests/
 
       - name: Test with coverage
-        run: pytest tests/ --cov=src --cov-report=xml:coverage.xml -q
+        run: pytest tests/ --cov --cov-report=xml:coverage.xml -q
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v4

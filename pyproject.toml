@@ -40,5 +40,29 @@ select = ["E", "F", "W", "I"]
 [[tool.ty.overrides.options]]
 ignore = ["unresolved-import"]
 
+[tool.coverage.run]
+source = ["src"]
+omit = [
+    "src/encoder.py",
+    "src/evaluate.py",
+    "src/lean_interface.py",
+    "src/proof_navigator.py",
+    "src/proof_network.py",
+    "src/proof_search.py",
+    "src/resolution.py",
+    "src/behavioral_fingerprint.py",
+    "src/trainer.py",
+    "src/trainer_checks.py",
+    "src/trainer_constants.py",
+    "src/trainer_setup.py",
+    "src/trainer_steps.py",
+    "src/trainer_validation.py",
+    "src/losses.py",
+    "src/data.py",
+]
+
+[tool.coverage.report]
+fail_under = 70
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
