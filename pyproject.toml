@@ -31,6 +31,9 @@ line-length = 100
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]
 
+[tool.ruff.lint.per-file-ignores]
+"scripts/tactic_maps.py" = ["E501"]  # data table with aligned columns
+
 [tool.ty]
 # Third-party deps not installed in lint environment
 [tool.ty.overrides]

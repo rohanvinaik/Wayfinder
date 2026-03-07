@@ -97,7 +97,7 @@ class TestLowerProofToLean(unittest.TestCase):
             ],
         )
         result = lower_proof_to_lean(ex)
-        lines = [l.strip() for l in result.strip().splitlines()]
+        lines = [line.strip() for line in result.strip().splitlines()]
         self.assertEqual(lines[0], "intro h")
         self.assertEqual(lines[1], "exact h")
 
