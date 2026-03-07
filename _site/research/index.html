@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Research Paper — Wayfinder</title>
+  <meta name="description" content="Research Paper">
+  <meta name="generator" content="LintGate Wiki Publisher">
+  <link rel="canonical" href="https://rohanvinaik.github.io/Wayfinder/research/">
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+  <header class="site-header">
+    <button class="sidebar-toggle" aria-label="Toggle sidebar">&#9776;</button>
+    <a class="site-title" href="../">Wayfinder</a>
+    <button class="theme-toggle" aria-label="Toggle dark mode" title="Toggle dark mode">&#9790;</button>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" role="navigation" aria-label="Wiki navigation">
+      <div class="sidebar-header">
+        <a href="../">Wayfinder</a>
+      </div>
+      <div class="sidebar-group">
+  <h3>Documentation</h3>
+  <ul>
+    <li data-page="Home"><a href="../home/">Wayfinder — Navigational Proof Search</a></li>
+    <li data-page="Research"><a href="../research/">Research Paper</a></li>
+    <li data-page="Design"><a href="../design/">Engineering Design</a></li>
+    <li data-page="Experiment-Plan"><a href="../experiment-plan/">Experiment Plan</a></li>
+    <li data-page="Experiment-Results"><a href="../experiment-results/">Experiment Results</a></li>
+  </ul>
+</div>
+<div class="sidebar-group">
+  <h3>Theory</h3>
+  <ul>
+    <li data-page="Theory-Profile"><a href="../theory-profile/">Theory Profile</a></li>
+    <li data-page="Theory-Compass"><a href="../theory-compass/">Project Compass</a></li>
+  </ul>
+</div>
+    </nav>
+    <main class="content" role="main">
+      <article>
+        <p><strong>Documentation</strong> | 56 min read | <a href="../home/">Home</a></p>
+<p><strong>Principal Investigator:</strong> Rohan Vinaik <strong>Research Partner:</strong> Claude (Opus 4.6), Anthropic <strong>Date:</strong> March 6, 2026 <strong>Status:</strong> Implementation complete, pre-experimental (v1.1) <strong>Project:</strong> Wayfinder — Navigational theorem proving for Lean 4</p>
+<hr>
+<h2 id="abstract">Abstract</h2>
+<p>We propose a novel approach to neural theorem proving that treats proof search as <em>navigation through structured semantic space</em> rather than token prediction. The system, <strong>Wayfinder</strong>, combines three architectural ideas that have not previously been integrated:</p>
+<p><strong>Navigational claim.</strong> A structured semantic network — where mathematical entities (lemmas, tactics, proof states) are positioned along orthogonal signed dimensions and connected through a shared anchor dictionary — enables premise selection and proof search via deterministic symbolic operations (IDF-weighted set intersection, Bellman-Ford spreading activation, multiplicative bank alignment) that are faster, more auditable, and more precise than dense embedding retrieval.</p>
+<p><strong>Architectural claim.</strong> A hybrid continuous-ternary architecture — with a continuous goal encoder, a learned information bottleneck, and a ternary {-1, 0, +1} navigational decoder — produces <em>directional coordinates in proof space</em> rather than vocabulary indices. These coordinates resolve to concrete tactics and premises through the semantic network. The neural network runs once per proof state; all subsequent search operations are pure arithmetic on structured data.</p>
+<p><strong>Epistemological claim.</strong> The architecture produces measurable learning trajectories, enabling Process-Aware Benchmarking (PAB) to evaluate <em>how</em> it learns to navigate, not just whether proofs close. Progress prediction — estimating remaining proof steps — connects PAB's trajectory analysis to actionable training signals and search heuristics.</p>
+<p>The system draws on three distinct intellectual traditions: (1) the navigational semantic network architecture of ModelAtlas (Vinaik, 2025), which positions ML models in a structured coordinate system for deterministic similarity queries; (2) the hybrid continuous-ternary decoder of Balanced Sashimi (Vinaik & Claude, 2026), which uses {-1, 0, +1} weights for categorical decisions; and (3) the formal convergence guarantees of Mutation Theory (formalized in Lean 4), which proves trajectory monotonicity, phase transitions, and fixed-point partitions applicable to structured search processes.</p>
+<p>The experimental target is Lean 4 proof generation over Mathlib, evaluated against ReProver (Lean-Dojo), LeanProgress, and DeepSeek-Prover-V2 baselines.</p>
+<hr>
+<h2 id="1-introduction">1. Introduction</h2>
+<h3 id="1-1-the-navigation-problem-in-proof-search">1.1 The Navigation Problem in Proof Search</h3>
+<p>Every competitive neural theorem prover uses the same fundamental approach: encode the proof state as a dense vector, predict the next tactic token from a vocabulary, and embed the prediction in a tree search (BFS, MCTS, or best-first). Premise selection — choosing which lemmas from a library of ~100k candidates are relevant — is handled by a learned retriever that computes dot-product similarity between the proof state embedding and pre-computed premise embeddings.</p>
+<p>This approach works. ReProver (Yang et al., 2024) achieves state-of-the-art premise retrieval via an encoder that jointly embeds proof states and premises. DeepSeek-Prover-V2 (Ren et al., 2025) achieves 88.9% on MiniF2F-test via subgoal decomposition and reinforcement learning. HTPS (Lample et al., 2022) uses AlphaZero-inspired MCTS with a policy-critic architecture.</p>
+<p>But the approach has a structural limitation: <strong>the intelligence is in the wrong place.</strong> The neural network must run at every search node — every candidate tactic, every candidate premise, every expansion of the proof tree. Search budgets are dominated by neural forward passes. A single MiniF2F proof attempt may require thousands of forward passes through a multi-billion parameter model.</p>
+<p>Meanwhile, the <em>structure</em> of mathematical knowledge is rich, regular, and well-understood. Mathematicians don't search for premises by computing similarity in a continuous embedding space. They navigate structured relationships: "this is an inequality, so I need monotonicity lemmas; this is about finite sets, so I need the Finset API; I already used <code>linarith</code> here, so the premises should be arithmetic." This navigation is <em>combinatorial</em> — it operates on discrete properties, categorical relationships, and structured hierarchies.</p>
+<p>What if we could build a system where the neural network handles the hard part (understanding the proof state, predicting which <em>direction</em> to go) while search and retrieval are handled by deterministic symbolic operations on structured data?</p>
+<h3 id="1-2-the-modelatlas-paradigm">1.2 The ModelAtlas Paradigm</h3>
+<p>ModelAtlas (Vinaik, 2025) solves an analogous problem in a different domain: navigating a space of ~40,000 ML models on HuggingFace to find the ones most relevant to a user's needs. Its core insight is that structured navigation through signed semantic coordinates outperforms both flat database queries and dense embedding retrieval for this task.</p>
+<p>The key mechanisms:</p>
+<p>1. <strong>Signed orthogonal banks.</strong> Eight independent dimensions (ARCHITECTURE, CAPABILITY, EFFICIENCY, etc.), each with a <strong>zero state</strong> placed at the most common query target. Models are positioned as signed distances from zero. A 3B model is at EFFICIENCY = (-1, 2), meaning "two steps in the negative direction from the 7B zero." Positions enable gradient scoring: a query for "small" gives full marks to negative-efficiency models, partial marks to zero-efficiency, and decaying marks to positive.</p>
+<p>2. <strong>Anchor dictionary.</strong> A shared vocabulary of ~130+ semantic labels (e.g., "instruction-following", "GGUF-available", "Llama-family"). Models link to their applicable anchors. Similarity is <em>emergent</em> — two models sharing 15 anchors are related without an explicit edge. No embeddings are computed or stored.</p>
+<p>3. <strong>IDF-weighted scoring.</strong> Rare anchors (present on few models) count far more than ubiquitous ones. Sharing the anchor "proof-assistant" (12 models) matters more than sharing "decoder-only" (17,000 models). This prevents common features from dominating retrieval.</p>
+<p>4. <strong>Multiplicative composition.</strong> The final score is <code>bank_alignment × anchor_relevance × seed_similarity</code>. A zero in any component kills the result. A model that perfectly matches efficiency but completely fails capability scores 0, not 0.5. This prevents averaging away bad matches.</p>
+<p>5. <strong>Spreading activation.</strong> Bellman-Ford propagation from seed nodes through both explicit links (fine_tuned_from, variant_of) and implicit connections (shared anchors). Bank scoping prevents semantic bleeding — spreading through irrelevant dimensions is suppressed.</p>
+<p>6. <strong>Zero neural inference at query time.</strong> The entire query engine runs on SQLite, integer arithmetic, set intersection, and logarithmic decay. Full semantic decomposition was done once at ingestion. Queries execute in milliseconds.</p>
+<p>This paper asks: <strong>can the same paradigm be applied to mathematical theorem proving?</strong></p>
+<h3 id="1-3-the-lean-4-mathlib-testbed">1.3 The Lean 4 / Mathlib Testbed</h3>
+<p>Lean 4 with Mathlib provides an ideal testbed for navigational proof search:</p>
+<ul>
+<li><strong>Formally verified output</strong>: The Lean kernel provides unambiguous pass/fail verification. No proxy metrics, no subjective scores.</li>
+<li><strong>Structured mathematical entities</strong>: Mathlib's ~100k lemmas have rich type information, namespace hierarchies, and dependency graphs — natural structure for bank positioning and anchor assignment.</li>
+<li><strong>Finite tactic vocabulary</strong>: The set of commonly-used Lean 4 tactics is bounded (~50 core tactics, ~200 with variants). This is a navigational decision, not open-ended text generation.</li>
+<li><strong>Hierarchical proof structure</strong>: Proofs are trees of subgoals, not flat sequences. Each subgoal has a structured goal state with hypotheses, target type, and local context.</li>
+<li><strong>Existing benchmarks</strong>: MiniF2F (488 problems), Mathlib test split (~10k theorems), and full Mathlib (~100k theorems) provide standardized evaluation at multiple scales.</li>
+</ul>
+<h3 id="1-4-research-questions">1.4 Research Questions</h3>
+<p>This work addresses five interconnected questions:</p>
+<p>1. <strong>Navigational (Q1)</strong>: Can structured semantic navigation — bank positions, IDF-weighted anchors, and spreading activation — match or exceed dense embedding retrieval for premise selection from Mathlib?</p>
+<p>2. <strong>Architectural (Q2)</strong>: Can a ternary {-1, 0, +1} decoder that produces navigational coordinates (directions in proof space) outperform classification-based tactic prediction, by leveraging the semantic network for resolution?</p>
+<p>3. <strong>Search efficiency (Q3)</strong>: Does separating the neural network (runs once per proof state) from the search engine (runs deterministic symbolic operations) enable faster proof search with equivalent or better success rates?</p>
+<p>4. <strong>Process (Q4)</strong>: Does the architecture's learning trajectory satisfy PAB's quality criteria? Can progress prediction (remaining proof steps) serve as both a training signal and a search heuristic?</p>
+<p>5. <strong>Convergence (Q5)</strong>: Do the formal guarantees from Mutation Theory (trajectory monotonicity, phase transitions, fixed-point partitions) apply to this navigational search process, providing formal convergence bounds?</p>
+<h3 id="1-5-scope-and-stance">1.5 Scope and Stance</h3>
+<p>This is a research project with three streams:</p>
+<ul>
+<li><strong>Primary objective</strong>: A working theorem prover that navigates proof space via structured semantic networks, evaluated on standard Lean 4 benchmarks against ReProver, LeanProgress, and DeepSeek-Prover-V2 baselines.</li>
+<li><strong>Co-equal objective</strong>: Empirical validation that navigational search (symbolic operations on structured data) can compete with or exceed learned retrieval (neural forward passes) for premise selection.</li>
+<li><strong>Tertiary objective</strong>: Empirical validation of PAB's trajectory evaluation framework in the theorem-proving domain, with progress prediction as a novel PAB metric.</li>
+</ul>
+<p><strong>Non-goal</strong>: Beating DeepSeek-Prover-V2's 88.9% on MiniF2F. That system uses a 671B parameter model and reinforcement learning. Our contribution is architectural: demonstrating that a small model (sub-100M trainable parameters) with structured navigation can achieve competitive results by spending compute on symbolic search rather than neural inference.</p>
+<hr>
+<h2 id="2-theoretical-framework">2. Theoretical Framework</h2>
+<h3 id="2-1-proof-search-as-spatial-navigation">2.1 Proof Search as Spatial Navigation</h3>
+<p>We propose a fundamental reframing: <strong>proof search is navigation through a structured mathematical space, not sequential token prediction.</strong></p>
+<p>In token prediction, the model outputs a sequence of tactic tokens conditioned on the goal state. Each token is selected from a flat vocabulary via softmax. The model must learn, from training data alone, which tactics are applicable in which situations — the structure of mathematical knowledge is implicit in the weights.</p>
+<p>In navigational search, the model outputs <em>directions</em> in a structured coordinate system. The directions resolve to concrete tactics and premises through deterministic lookup in a semantic network that <em>explicitly encodes</em> the structure of mathematical knowledge. The model's job is narrower: predict which region of mathematical space contains the answer. The symbolic system handles the last mile.</p>
+<p>This reframing has three theoretical consequences:</p>
+<p><strong>Consequence 1: Separation of concerns.</strong> The neural network handles understanding (what kind of mathematical situation is this?) while the symbolic system handles retrieval (given this kind of situation, which specific lemmas and tactics are relevant?). Neither system needs to do the other's job. This is the same separation that makes ModelAtlas work: the LLM decomposes the user's natural language query into structured parameters; ModelAtlas does deterministic math.</p>
+<p><strong>Consequence 2: Auditable search.</strong> Every premise retrieval traces back to specific shared anchors and bank alignments. "This lemma scored 0.87 because it shares the rare anchors <code>monotone-convergence</code> and <code>finset-sum</code> with the current goal, and its DOMAIN bank position aligns with the goal's." Compare to dense retrieval: "the embedding similarity was 0.87" (uninspectable).</p>
+<p><strong>Consequence 3: Amortized computation.</strong> The semantic network is built once from Mathlib's type information, namespace structure, and dependency graph. At query time, navigation is pure arithmetic on precomputed structures. The neural network runs once per proof state to produce coordinates; the search engine can explore thousands of candidate lemmas in the time it takes to run one forward pass.</p>
+<h3 id="2-2-signed-semantic-banks-for-mathematical-entities">2.2 Signed Semantic Banks for Mathematical Entities</h3>
+<p>We define six orthogonal <strong>proof banks</strong> — signed dimensions with zero states placed at the mode of mathematical activity:</p>
+<pre><code>
+Bank           Zero State                  Negative                   Positive
+────────────── ─────────────────────────── ────────────────────────── ─────────────────────────
+STRUCTURE      equality / rewrite goal     arithmetic, decidable      quantified, higher-order
+DOMAIN         general algebra             concrete (ℕ, ℤ, ℚ)        abstract (topology, category)
+DEPTH          2-3 tactic proof            trivial (1 tactic)         deep (10+ tactics)
+AUTOMATION     partially automated         fully auto (omega, simp)   requires manual insight
+CONTEXT        moderate hypotheses (3-5)   no hypotheses              rich context (10+ hyps)
+DECOMPOSITION  single-goal                 atomic (no subgoals)       multi-subgoal
+</code></pre>
+<p><strong>Why these banks are orthogonal:</strong> A theorem can be structurally simple (STRUCTURE=0) but in an abstract domain (DOMAIN=+2); it can be deeply nested (DEPTH=+2) but fully automated (AUTOMATION=-2, e.g., a long <code>simp</code> chain). The banks capture independent dimensions of variation.</p>
+<p><strong>Zero placement rationale:</strong> Zero is "the most common proof goal a working mathematician encounters." The majority of Mathlib lemmas are about algebraic equalities or inequalities, require 2-3 tactics, and use a mix of automation and manual reasoning. Queries resolve near the origin.</p>
+<p><strong>Positioning examples:</strong></p>
+<table><tbody>
+<tr><td>Lemma</td><td>STRUCTURE</td><td>DOMAIN</td><td>DEPTH</td><td>AUTOMATION</td><td>CONTEXT</td><td>DECOMP</td></tr>
+<tr><td><code>Nat.add_comm</code></td><td>(0,0)</td><td>(-1,1)</td><td>(-1,2)</td><td>(-1,2)</td><td>(-1,1)</td><td>(-1,1)</td></tr>
+<tr><td><code>Set.Finite.induction_on</code></td><td>(+1,2)</td><td>(+1,1)</td><td>(+1,1)</td><td>(+1,2)</td><td>(+1,1)</td><td>(+1,2)</td></tr>
+<tr><td><code>MonoidHom.map_mul</code></td><td>(0,0)</td><td>(0,0)</td><td>(-1,1)</td><td>(-1,1)</td><td>(0,0)</td><td>(-1,1)</td></tr>
+<tr><td><code>TopologicalSpace.isOpen_iUnion</code></td><td>(+1,1)</td><td>(+1,2)</td><td>(0,0)</td><td>(+1,1)</td><td>(+1,1)</td><td>(+1,1)</td></tr>
+</tbody></table>
+<p>Bank positions are extracted deterministically from Lean's type information:</p>
+<ul>
+<li><strong>STRUCTURE</strong>: Analyze the goal type — quantifier nesting, dependent types, propositional vs. data.</li>
+<li><strong>DOMAIN</strong>: Namespace hierarchy (<code>Mathlib.Algebra</code> → DOMAIN=0, <code>Mathlib.Topology</code> → DOMAIN=+2).</li>
+<li><strong>DEPTH</strong>: Proof length from ground-truth proofs (when available) or heuristic estimation from type complexity.</li>
+<li><strong>AUTOMATION</strong>: Whether the lemma's proof (or similar lemmas' proofs) use automation tactics.</li>
+<li><strong>CONTEXT</strong>: Number and complexity of hypotheses in the local context.</li>
+<li><strong>DECOMPOSITION</strong>: Whether the proof requires multiple <code>have</code> statements or case splits.</li>
+</ul>
+<h3 id="2-3-anchor-dictionaries-as-mathematical-vocabulary">2.3 Anchor Dictionaries as Mathematical Vocabulary</h3>
+<p>An <strong>anchor</strong> is a semantic label shared across mathematical entities. Anchors create emergent similarity — two lemmas sharing 12 anchors are related without an explicit edge. The anchor dictionary is the semantic vocabulary of the system.</p>
+<p><strong>Proof anchors by bank:</strong></p>
+<table><tbody>
+<tr><td>Bank</td><td>Example Anchors</td></tr>
+<tr><td>STRUCTURE</td><td><code>equality</code>, <code>inequality</code>, <code>membership</code>, <code>universal-quantifier</code>, <code>existential</code>, <code>iff</code>, <code>implication</code>, <code>negation</code>, <code>dependent-type</code></td></tr>
+<tr><td>DOMAIN</td><td><code>nat-arithmetic</code>, <code>group-theory</code>, <code>ring-theory</code>, <code>topology</code>, <code>measure-theory</code>, <code>linear-algebra</code>, <code>order-theory</code>, <code>set-theory</code>, <code>category-theory</code></td></tr>
+<tr><td>DEPTH</td><td><code>one-liner</code>, <code>multi-step</code>, <code>deep-induction</code>, <code>structural-recursion</code></td></tr>
+<tr><td>AUTOMATION</td><td><code>omega-solvable</code>, <code>simp-solvable</code>, <code>decide-solvable</code>, <code>norm_num-solvable</code>, <code>needs-manual-intro</code>, <code>needs-manual-cases</code></td></tr>
+<tr><td>CONTEXT</td><td><code>hypothesis-rich</code>, <code>hypothesis-free</code>, <code>uses-local-def</code>, <code>type-class-instance</code></td></tr>
+<tr><td>DECOMPOSITION</td><td><code>needs-cases</code>, <code>needs-induction</code>, <code>needs-have-chain</code>, <code>single-goal</code>, <code>multi-branch</code></td></tr>
+</tbody></table>
+<p><strong>Cross-cutting anchors</strong> (not bank-specific): <code>monotonicity</code>, <code>commutativity</code>, <code>associativity</code>, <code>distributivity</code>, <code>idempotency</code>, <code>transitivity</code>, <code>injectivity</code>, <code>surjectivity</code>, <code>continuity</code>, <code>compactness</code>, <code>finiteness</code>, <code>convergence</code>, <code>bounded</code>, <code>well-founded</code></p>
+<p><strong>Anchor extraction:</strong></p>
+<ul>
+<li><strong>Tier 1 (deterministic)</strong>: From Lean's type checker — <code>Nat</code> in the type → <code>nat-arithmetic</code>; <code>∀</code> in the goal → <code>universal-quantifier</code>; namespace <code>Mathlib.Topology</code> → <code>topology</code>.</li>
+<li><strong>Tier 2 (pattern matching)</strong>: From proof text — <code>omega</code> in proof → <code>omega-solvable</code>; <code>induction</code> → <code>needs-induction</code>; <code>rw [mul_comm]</code> → <code>commutativity</code>.</li>
+<li><strong>Tier 3 (optional)</strong>: LLM-based annotation for subtle mathematical properties not captured by syntax.</li>
+</ul>
+<p><strong>IDF weighting:</strong> The anchor <code>equality</code> appears on thousands of lemmas. The anchor <code>Lyapunov-monotonicity</code> appears on maybe 5. IDF = <code>log(N / count_lemmas_with_anchor)</code>. When a goal state shares both anchors with a candidate lemma, the IDF weighting correctly focuses on the rare, informative one. This mirrors how human mathematicians search: they key off the unusual, distinctive features of a problem.</p>
+<p><strong>Anchor gap analysis (critical bootstrap step):</strong> The ~300 initial anchors will have blind spots. The system's retrieval ceiling is bounded by anchor expressiveness — if a relevant mathematical property isn't captured by any anchor, it's invisible to <code>navigate()</code>. Known gaps in the initial dictionary include:</p>
+<ul>
+<li><strong>Type coercion anchors</strong>: Many Mathlib proofs struggle with coercion between types (<code>↑n</code>, <code>(n : ℤ)</code>, <code>Nat.cast</code>). This is a major source of proof difficulty and needs dedicated anchors: <code>needs-cast</code>, <code>nat-int-coercion</code>, <code>subtype-coercion</code>, <code>coe-simp</code>.</li>
+<li><strong>Algebraic hierarchy anchors</strong>: The Mathlib typeclass hierarchy (Monoid → Group → Ring → Field) creates proof obligations that are structurally similar but domain-specific. Anchors should track position in the hierarchy: <code>monoid-level</code>, <code>group-level</code>, <code>ring-level</code>, <code>field-level</code>.</li>
+<li>*<em>Proof </em>pattern<em> anchors</em>*: Beyond tactic names, recurring proof patterns need labels: <code>split-and-recombine</code>, <code>contrapositive-argument</code>, <code>epsilon-delta</code>, <code>sequence-limit</code>, <code>diagonal-argument</code>.</li>
+</ul>
+<p><strong>Anchor gap analysis procedure</strong> (executed iteratively in Phase 0-1): 1. For 500 randomly selected proof steps, attempt to resolve the ground-truth tactic and premises via <code>navigate()</code> using only the existing anchor dictionary. 2. For each failure (correct premise not in top-16), examine what anchors <em>would have</em> connected the goal to the premise. These are gap anchors. 3. Cluster the gap anchors by mathematical theme. Add the most frequent clusters as new anchors. 4. Re-run the analysis. Iterate until top-16 recall on the 500-step sample exceeds 70%.</p>
+<p>This iterative refinement is the single highest-leverage activity in Phase 0. The proof network's quality caps the entire system.</p>
+<h3 id="2-4-premise-retrieval-as-structured-navigation">2.4 Premise Retrieval as Structured Navigation</h3>
+<p>With lemmas positioned in banks and connected through anchors, premise retrieval becomes a <code>navigate()</code> query — the same operation ModelAtlas uses to find ML models:</p>
+<pre><code>
+retrieve(goal) =
+    bank_alignment(goal_position, lemma_position)      # Are we in the right region?
+  × anchor_relevance(goal_anchors, lemma_anchors, IDF)  # Do semantic labels match?
+  × seed_similarity(context_lemmas, lemma_anchors, IDF) # Similar to what we&#x27;ve already used?
+</code></pre>
+<p><strong>Three signals, multiplicative:</strong></p>
+<p>1. <strong>Bank alignment.</strong> For each bank where the goal has a position, score the candidate lemma's alignment:</p>
+<ul>
+<li>Same direction: 1.0 (fully aligned)</li>
+<li>At zero: 0.5 (neutral)</li>
+<li>Opposite direction: <code>1 / (1 + |distance|)</code> (decaying penalty)</li>
+<li>Multiplicative across banks — a lemma that matches DOMAIN but opposes STRUCTURE gets penalized.</li>
+</ul>
+<p>2. <strong>Anchor relevance (IDF-weighted).</strong> Three anchor lists:</p>
+<ul>
+<li><strong>require</strong>: Hard filter. The goal has <code>nat-arithmetic</code> and <code>inequality</code> → only lemmas with both anchors survive.</li>
+<li><strong>prefer</strong>: Soft boost. The goal also has <code>monotonicity</code> → lemmas with this anchor get IDF-weighted bonus.</li>
+<li><strong>avoid</strong>: Penalty. The search has already tried <code>omega</code> and failed → penalize <code>omega-solvable</code> lemmas.</li>
+</ul>
+<p>3. <strong>Seed similarity.</strong> If the proof has already successfully applied certain lemmas, find candidates with overlapping anchor sets. IDF-weighted Jaccard between the seed's anchors and the candidate's anchors.</p>
+<p><strong>Why multiplicative scoring matters for premises:</strong> In dense retrieval, a lemma about natural numbers that happens to have similar embedding structure to a topology proof can score highly — the embedding conflates all dimensions. With multiplicative scoring, if the DOMAIN bank doesn't align, the score goes to zero. <code>Nat.add_comm</code> is never relevant to a topology proof, no matter how textually similar the goal states look.</p>
+<p><strong>Scoring mechanism — open design question</strong>: Pure multiplicative scoring (<code>Π bank_score_i</code>) is both the system's precision advantage and its fragility. A zero in any bank kills the total score. When bank positions are noisy (and they will be, especially early), this means a misclassified STRUCTURE position can exclude correct premises that match perfectly on every other dimension.</p>
+<p>Several alternative scoring mechanisms should be evaluated empirically:</p>
+<table><tbody>
+<tr><td>Mechanism</td><td>Formula</td><td>Tradeoff</td></tr>
+<tr><td>Pure multiplicative (ModelAtlas)</td><td><code>Π score_i</code></td><td>Maximum precision, zero tolerance for noise</td></tr>
+<tr><td>Confidence-weighted multiplicative</td><td><code>Π score_i^(confidence_i)</code></td><td>Banks with uncertain positions contribute less; requires per-bank confidence estimation</td></tr>
+<tr><td>Geometric mean</td><td><code>(Π score_i)^(1/k)</code></td><td>Softer than product; a single low score reduces but doesn't kill</td></tr>
+<tr><td>Log-additive with learned weights</td><td><code>Σ w_i · log(score_i)</code></td><td>Equivalent to weighted geometric mean; weights learned per bank</td></tr>
+<tr><td>Soft-floor multiplicative</td><td><code>Π max(score_i, ε)</code></td><td>Floor prevents hard zeros; ε tunable per bank</td></tr>
+<tr><td>Hybrid: multiplicative filter + additive rank</td><td>Filter by hard bank constraints, then rank by additive anchor+seed score</td><td>Separates coarse filtering from fine ranking</td></tr>
+</tbody></table>
+<p>The <strong>confidence-weighted</strong> variant is theoretically most principled: if the GoalAnalyzer's bank head outputs a softmax distribution where the winning class has only 40% probability (uncertain), that bank should influence the final score less than one where the winning class has 95% probability. This naturally degrades to pure multiplicative when confidence is high and to no-bank-influence when confidence is low.</p>
+<p>The right mechanism likely depends on proof network maturity. Early (noisy bank positions): confidence-weighted or soft-floor. Late (refined positions): pure multiplicative. This could be a training schedule parameter.</p>
+<p><strong>Accessible-premises filtering (free lunch from ReProver).</strong> ReProver demonstrated that restricting retrieval to premises accessible via Lean's import structure (~33k of ~130k total) gives a ~2% recall improvement at zero compute cost. Wayfinder's proof network should encode this constraint: each entity stores its import-accessible set, and <code>navigate()</code> pre-filters to accessible premises before scoring. This is a hard filter in SQL (<code>WHERE entity_id IN accessible_set</code>), applied before any bank alignment or anchor scoring. LeanDojo's extraction already provides this accessibility information.</p>
+<p><strong>Performance:</strong> Batch SQL replaces per-lemma neural forward passes. Pre-filter by accessible premises AND required anchors (SQL <code>HAVING</code>), batch-fetch positions and anchor sets, score in Python from in-memory dicts. Four indexed queries instead of 100k dot products.</p>
+<h3 id="2-5-ternary-weights-as-navigational-coordinates">2.5 Ternary Weights as Navigational Coordinates</h3>
+<p>ModelAtlas's bank positions are signed integers. The Balanced Sashimi decoder uses ternary {-1, 0, +1} weights. These are the same conceptual operation: discretizing a continuous space into signed directions relative to a meaningful zero.</p>
+<p>We propose that the ternary decoder does not predict tactic tokens from a vocabulary. Instead, it predicts <strong>navigational directions in proof space:</strong></p>
+<ul>
+<li><strong>STRUCTURE direction</strong> {-1, 0, +1}: Should the next step simplify (toward decidable/arithmetic), maintain (rewrite), or complexify (introduce quantifiers)?</li>
+<li><strong>AUTOMATION direction</strong> {-1, 0, +1}: Should the next step use full automation (omega, simp), mixed, or manual reasoning?</li>
+<li><strong>DECOMPOSITION direction</strong> {-1, 0, +1}: Should the goal be decomposed into subgoals (via <code>have</code>, <code>cases</code>, <code>induction</code>), maintained as-is, or atomized?</li>
+</ul>
+<p>These ternary coordinates, combined with predicted anchor logits, form a <code>StructuredQuery</code> that resolves to concrete tactics and premises through the semantic network:</p>
+<pre><code class="language-python">
+# The ternary decoder outputs:
+#   structure_direction:  {-1, 0, +1}  (simplify / maintain / complexify)
+#   automation_direction: {-1, 0, +1}  (auto / mixed / manual)
+#   decompose_direction:  {-1, 0, +1}  (atomize / maintain / decompose)
+#   anchor_logits:        ℝ^|anchors|  (which semantic labels apply)
+#   progress:             ℝ^1          (estimated remaining steps)
+
+# Resolution via navigate():
+query = StructuredQuery(
+    structure=structure_direction,
+    automation=automation_direction,
+    decomposition=decompose_direction,
+    prefer_anchors=top_k(sigmoid(anchor_logits)),
+    avoid_anchors=recently_failed_anchors,
+)
+tactic = navigate(tactic_network, query)[0]
+premises = navigate(premise_network, query)[:top_k]
+</code></pre>
+<p><strong>Why ternary is natural here:</strong> A ternary navigational coordinate says "go toward more automation / stay neutral / go toward less automation." This is a directional choice, not a precise numerical value. The fine-grained resolution (which <em>specific</em> tactic?) comes from the anchor dictionary, which is symbolic and deterministic. The model doesn't need to learn each tactic independently; it learns the <em>dimensions along which tactics vary</em>, and the structured network handles resolution.</p>
+<p><strong>Why this is better than vocabulary classification:</strong> A classification head treats <code>simp</code> and <code>linarith</code> as equally distant tokens (both are indices in a vocab). In navigational space, they're very close — both have AUTOMATION = -1 (fully automated) and share anchors like <code>arithmetic</code>, <code>automated-decision</code>. The model learns the abstract <em>kind</em> of tactic needed, not the specific token.</p>
+<p><strong>External validation — activation steering (arXiv 2502.15507).</strong> Recent work on activation steering for tactic prediction found that "the LLM is capable of predicting the correct tactic; however, it faces challenges in ranking it appropriately." Steering toward the right <em>reasoning category</em> improves tactic selection. This is direct empirical support for the navigational approach: predict the category (direction), then resolve the specific tactic through structured lookup. The steering vectors in that work correspond to what Wayfinder makes explicit as ternary bank directions.</p>
+<p><strong>Precedent — TacticToe (HOL4).</strong> TacticToe abstracts tactics to templates (<code>apply <thm></code>, <code>rewrite <thm></code>, <code>induction <var></code>) — roughly 100 base tactics — then separately predicts arguments. The key finding: <em>argument prediction for abstracted tactics has the highest impact on success</em>. This validates the two-level decomposition in Wayfinder: ternary directions select the tactic template (coarse), anchor logits + proof network resolution select the arguments (fine). No prior system has developed TacticToe's abstraction into a full navigation paradigm.</p>
+<p><strong>The many-to-one problem and expanded navigation</strong>: The initial design navigates three banks (STRUCTURE, AUTOMATION, DECOMPOSITION), giving 3^3 = 27 possible direction vectors. Several semantically distinct tactics collapse to the same direction. For example, <code>intro</code> (STRUCTURE=0, AUTOMATION=+1, DECOMPOSE=0) and <code>apply</code> share identical coordinates despite being very different operations. <code>cases</code> and <code>induction</code> likewise both map to (+1, +1, +1).</p>
+<p>This is partially by design — the anchor logits provide fine-grained disambiguation. But 27 coarse bins places excessive load on the anchor channel, especially when the anchor dictionary is still maturing.</p>
+<p><strong>Resolution: expand the navigable bank set.</strong> The proof network has 6 banks, but the v1 design only navigates 3. Adding DOMAIN, DEPTH, and CONTEXT as navigable dimensions expands the direction space to 3^6 = 729 possible vectors — a 27× increase in coarse resolution:</p>
+<table><tbody>
+<tr><td>Tactic</td><td>STRUCT</td><td>AUTO</td><td>DECOMP</td><td>DOMAIN</td><td>DEPTH</td><td>CONTEXT</td><td>Unique?</td></tr>
+<tr><td><code>intro</code></td><td>0</td><td>+1</td><td>0</td><td>0</td><td>0</td><td>+1</td><td>Yes</td></tr>
+<tr><td><code>apply</code></td><td>0</td><td>+1</td><td>0</td><td>0</td><td>0</td><td>0</td><td>Yes</td></tr>
+<tr><td><code>cases</code></td><td>+1</td><td>+1</td><td>+1</td><td>0</td><td>+1</td><td>+1</td><td>Yes</td></tr>
+<tr><td><code>induction</code></td><td>+1</td><td>+1</td><td>+1</td><td>0</td><td>+1</td><td>0</td><td>Yes (vs cases)</td></tr>
+<tr><td><code>omega</code></td><td>-1</td><td>-1</td><td>-1</td><td>-1</td><td>-1</td><td>0</td><td>Yes</td></tr>
+<tr><td><code>simp</code></td><td>-1</td><td>-1</td><td>0</td><td>0</td><td>-1</td><td>0</td><td>Yes</td></tr>
+</tbody></table>
+<p>With 6 navigable banks, <code>intro</code> and <code>apply</code> are distinguished by CONTEXT (intro creates hypotheses → CONTEXT=+1; apply consumes them → CONTEXT=0). <code>cases</code> and <code>induction</code> are distinguished by CONTEXT (cases typically adds multiple hypotheses; induction does not).</p>
+<p><strong>Implementation</strong>: The ProofNavigator gains three additional ternary direction heads (6 total). The loss function gains three additional cross-entropy terms. The StructuredQuery uses all 6 banks for <code>navigate()</code>. The training data mapping (Section 5.1 of the Design doc) is extended with DOMAIN/DEPTH/CONTEXT direction labels.</p>
+<p><strong>Fallback</strong>: If 6-bank navigation proves too hard to learn (too many degrees of freedom for the available training signal), the system can gracefully degrade to 3-bank navigation by setting the additional bank weights to zero in the loss function. The architecture supports both configurations via the <code>navigable_banks</code> config parameter.</p>
+<h3 id="2-6-spreading-activation-as-proof-exploration">2.6 Spreading Activation as Proof Exploration</h3>
+<p>ModelAtlas's <code>spread()</code> function does Bellman-Ford propagation from seed nodes through two channels:</p>
+<p>1. <strong>Link channel (Layer 1):</strong> Explicit relationships — <code>lemma A depends_on lemma B</code>, <code>tactic T commonly_precedes tactic S</code>. 2. <strong>Anchor channel (Layer 2):</strong> Shared semantic labels — if the current goal and a candidate lemma share rare anchors, activation spreads.</p>
+<p>In proof search, spreading activation replaces the learned value function used in MCTS/HTPS:</p>
+<pre><code>
+proof_spread(current_goals, already_used_lemmas) → {lemma_id: relevance_score}
+</code></pre>
+<p><strong>Seeds:</strong> Current open goals + previously successful lemmas.</p>
+<p><strong>Link channel:</strong> Mathlib's dependency graph provides explicit lemma-to-lemma relationships. If lemma A's proof uses lemma B, there is a directed link with weight proportional to how directly B is used. If tactic T commonly follows tactic S (learned from proof corpus), there is a tactic-to-tactic link.</p>
+<p><strong>Anchor channel:</strong> Find lemmas that share anchors with the current goals. Weight by fraction of shared anchors. IDF means rare shared anchors propagate stronger activation.</p>
+<p><strong>Bank scoping:</strong> If the current goal is about algebra (DOMAIN ≤ 0), only spread through algebra-bank anchors. This prevents semantic bleeding — topology lemmas don't activate during an algebra proof, even if they share generic anchors like <code>equality</code>.</p>
+<p><strong>Advantages over learned value functions:</strong> 1. <strong>No neural inference at search time.</strong> Spreading activation is priority-queue Bellman-Ford on SQLite. Milliseconds, not seconds. 2. <strong>Auditable.</strong> Every activation trace is inspectable: "this lemma activated because it shares anchors X, Y with the current goal and is one link from lemma Z which we already used." 3. <strong>Dynamic.</strong> As the proof progresses (goals close, new goals open, lemmas are used), the seed set changes and activation recomputes — no need to re-run a neural forward pass.</p>
+<h3 id="2-7-connections-to-mutation-theory">2.7 Connections to Mutation Theory</h3>
+<p>The Mutation Theory corpus (200+ Lean 4 theorems across 7 phases) provides formal guarantees that connect directly to navigational proof search. Of all application domains for machine learning, mathematical theorem proving is arguably the <em>most</em> naturally aligned with formal learning theory — the state space is well-defined, the verification oracle is exact, and the mathematical structure of the domain mirrors the mathematical structure of the learning theory. The connections below are not loose analogies; they are structural correspondences between formalized theorems and concrete system behaviors.</p>
+<p><strong>Trajectory monotonicity (Phase 7, T7.0).</strong> The <code>killed_trajectory_mono</code> theorem proves that killed sets grow monotonically along well-structured search trajectories. In ModelAtlas terms: as you add constraints (require/prefer/avoid anchors), the candidate set monotonically shrinks. In proof search terms: each successful tactic application monotonically reduces the survivor set (remaining open goals).</p>
+<p>The Lyapunov monotonicity theorem (T7.5) guarantees convergence when the search process has a decreasing potential function. The progress prediction head estimates this potential — remaining proof steps serve as a Lyapunov function candidate. If the progress estimate decreases at each proof step, convergence is formally guaranteed. This is stronger than the heuristic role LeanProgress assigns to step prediction; it connects progress prediction to formal convergence through a chain: <code>progress_head → Lyapunov estimate → T7.5 → convergence guarantee</code>.</p>
+<p><strong>Research needed</strong>: Existing work on proof search termination and Lyapunov-style arguments in interactive theorem provers (e.g., well-founded recursion in Lean itself, termination metrics in Isabelle's Sledgehammer) may provide tighter bounds than the general Mutation Theory guarantees. The connection between proof complexity measures (e.g., proof tree depth, cut-rank) and potential functions is an active area that should inform the progress head's training targets.</p>
+<p><strong>Phase transitions (Phase 7, T7.3).</strong> Greedy kill trajectories exhibit a structural transition: initial rapid progress (easy tactics close many goals) followed by a harder regime (remaining goals require specific premises). The <code>phase_transition</code> theorem gives an explicit transition-step witness. In navigational terms: early search moves near the origin (common tactics like <code>intro</code>, <code>unfold</code>, basic rewrites); the transition point is where search must venture into specialized regions of the semantic network. The phase transition is precisely where navigational retrieval matters most — after the easy tactics, the model must navigate to specific, rare anchors.</p>
+<p><strong>Fixed-point partition (Phase 4, T4).</strong> The <code>fixedPointPartition</code> theorem proves that the mutant space partitions into three disjoint sets: Killed × Equivalent × DistinguishableSurvivors. The proof space partitions identically:</p>
+<ul>
+<li><strong>Killed</strong> = subgoals closed by a tactic</li>
+<li><strong>Equivalent</strong> = subgoals that can be restated without changing provability (via <code>rw</code>, <code>conv</code>, <code>simp</code>)</li>
+<li><strong>Distinguishable Survivors</strong> = genuinely hard subgoals requiring new tactics</li>
+</ul>
+<p>This partition maps directly to the three-signal scoring architecture — not as a metaphor, but as a structural correspondence:</p>
+<table><tbody>
+<tr><td>Mutation Theory Partition</td><td>Scoring Signal</td><td>Role</td></tr>
+<tr><td>Killed vs. Survivor</td><td><code>bank_alignment</code></td><td>Are we in the right region of proof space? Bank misalignment → the lemma is in the wrong partition.</td></tr>
+<tr><td>Equivalent detection</td><td><code>anchor_relevance</code></td><td>Do the semantic labels match? Equivalent subgoals share anchors with the original — IDF-weighted anchor overlap detects them.</td></tr>
+<tr><td>Distinguishable → navigate to known</td><td><code>seed_similarity</code></td><td>Is this similar to something we've already solved? For genuine survivors, spreading activation from already-used lemmas navigates toward related, previously successful patterns.</td></tr>
+</tbody></table>
+<p>The three-signal multiplicative structure is not an arbitrary design choice; it mirrors the three-way partition that Mutation Theory proves is exhaustive and disjoint.</p>
+<p><strong>Decomposition (Phase 3, T3).</strong> The <code>separableIndependentTesting</code> theorem proves that when a system decomposes into independent components, each can be tested independently and the cost is additive (not multiplicative). This is the formal basis for the SubgoalDecomposer: when the ternary DECOMPOSITION coordinate is +1, the system predicts <code>have</code> subgoals, and each subgoal gets its own independent navigational query in the premise network. The cost is <code>Σ solve_cost(subgoal_i)</code>, not <code>Π</code>. The theorem guarantees this decomposition is optimal when subgoals are genuinely independent — which the system can verify by checking whether the subgoals share anchors (shared anchors → likely dependent → don't decompose).</p>
+<p><strong>Teaching dimension (Phase 5, T5.17).</strong> Teaching dimension equals specification complexity: <code>TD = κ</code>. The minimum set of premises needed to uniquely specify a proof is bounded by the specification complexity of the target theorem. This provides a formal lower bound on the <code>premise_candidates</code> parameter: if a theorem's specification complexity is 4, retrieving 3 premises is provably insufficient. The proof network's anchor set for a theorem approximates its specification complexity — a theorem with 12 unique anchors is more complex to specify than one with 3.</p>
+<h3 id="2-8-why-theorem-proving-is-uniquely-aligned-with-learning-theory">2.8 Why Theorem Proving is Uniquely Aligned with Learning Theory</h3>
+<p>The Mutation Theory connections above are stronger than typical "ML meets formal methods" claims, for a structural reason: <strong>mathematical theorem proving is the domain where learning theory's assumptions are most naturally satisfied.</strong></p>
+<p>1. <strong>Exact verification oracle.</strong> PAC learning, teaching dimension, and specification complexity all assume access to a membership oracle or equivalence oracle. The Lean kernel <em>is</em> that oracle — it provides binary, deterministic, zero-noise feedback on whether a tactic application is correct. No other ML application domain has this property. Image classification has label noise; NLP has subjective ground truth; even code generation has ambiguous specifications. Proof verification is exact.</p>
+<p>2. <strong>Well-defined state space.</strong> The space of Lean goal states is a formal language with known grammar. The space of tactics is finite and enumerable. The dependency graph is a DAG. These are the conditions under which learning bounds are tight, not loose.</p>
+<p>3. <strong>Decomposability.</strong> Mathematical proofs decompose into independent subgoals (formalized in T3). This is the condition under which additive (not multiplicative) sample complexity bounds hold. Most real-world domains don't decompose cleanly; theorem proving does, by construction.</p>
+<p>4. <strong>Monotonic progress.</strong> Proof search has a natural Lyapunov function: the number of remaining open goals (or more precisely, the sum of their complexities). This is the condition under which trajectory convergence theorems (T7.0, T7.5) apply with their tightest bounds.</p>
+<p>5. <strong>Structured knowledge.</strong> The mathematical knowledge needed for proof search (Mathlib's 100k lemmas) is organized into a formal hierarchy with types, namespaces, and explicit dependencies. This is the condition under which navigational approaches (structured retrieval) have their strongest theoretical advantage over unstructured approaches (dense retrieval).</p>
+<p>The implication is practical: formal learning theory should not be treated as an aspirational connection but as an <em>engineering tool</em> for this domain. Teaching dimension bounds should inform retrieval parameters. Convergence theorems should inform search budgets. Decomposition theorems should inform subgoal strategies. Wayfinder is designed to close this loop.</p>
+<h3 id="2-9-pac-learning-and-process-aware-evaluation">2.9 PAC Learning and Process-Aware Evaluation</h3>
+<p>Process-Aware Benchmarking (PAB), introduced by Pal (2025), evaluates <em>how</em> models learn, not just what they achieve. PAB defines quality functions over learning trajectories: stability (smoothness of loss), predictability (variance of loss deltas), generalization efficiency, and class-wise progression.</p>
+<p>In Wayfinder, PAB is extended with two domain-specific metrics:</p>
+<p><strong>Progress prediction accuracy.</strong> The progress head estimates remaining proof steps. PAB tracks how this estimate improves during training — a model that learns accurate progress prediction early has a better internal model of proof structure than one that predicts well only on familiar theorem types.</p>
+<p><strong>Navigational coherence.</strong> PAB tracks whether the ternary decoder's navigational coordinates become consistent during training. A well-trained model should predict similar directions for similar proof states (measured by anchor overlap of the proof states). Inconsistent navigation — predicting "simplify" for one arithmetic goal and "complexify" for a near-identical one — indicates the model hasn't learned the structure of proof space.</p>
+<p><strong>Ternary-PAB synergy (from Balanced Sashimi).</strong> Ternary weights force discrete commitment. A weight that crystallizes to +1 is <em>provably</em> committed to that direction. PAB can track crystallization directly: the fraction of weights whose ternary sign is stable across checkpoints. As crystallization increases, the decoder's navigational output stabilizes, and PAB can measure whether stable navigation correlates with better proof search performance.</p>
+<hr>
+<h2 id="3-architecture-specification">3. Architecture Specification</h2>
+<h3 id="3-1-system-overview">3.1 System Overview</h3>
+<pre><code>
+┌──────────────────────────────────────────────────────────────────────┐
+│                         WAYFINDER v1                                  │
+│                                                                      │
+│  [Lean Goal State Text]                                              │
+│          │                                                           │
+│          ▼                                                           │
+│  ┌─────────────────────────────────────────────┐                     │
+│  │  GOAL ENCODER (math-native, see §3.2)       │                    │
+│  │  Model: TBD (Qwen3.5/DeepSeek-Math/pruned)  │                    │
+│  │  Output: h_enc ∈ ℝ^embed_dim                │                    │
+│  └─────────────┬───────────────────────────────┘                     │
+│                │                                                      │
+│       ┌────────┴────────┐                                            │
+│       │                 │                                             │
+│  ┌────▼─────┐   ┌──────▼───────────────────────────┐                │
+│  │ DOMAIN   │   │  GOAL ANALYZER                    │                │
+│  │ GATE     │   │  (continuous, learnable)           │                │
+│  │          │   │  Output: features ∈ ℝ^256         │                │
+│  │ Binary:  │   │  + bank positions (6 banks)       │                │
+│  │ in/out   │   │  + anchor logits                   │                │
+│  └──────────┘   └──────────┬───────────────────────┘                │
+│                            │                                          │
+│  ┌─────────────────────────▼───────────────────────────────┐         │
+│  │  SUBGOAL DECOMPOSER                                      │        │
+│  │  Ternary decision: decompose? {-1, 0, +1}               │        │
+│  │  If +1: predict &#x27;have&#x27; subgoals, recurse                │        │
+│  │  If 0/-1: proceed with current goal                      │        │
+│  └─────────────────────────┬───────────────────────────────┘         │
+│                            │ (per subgoal)                            │
+│  ┌─────────────────────────▼───────────────────────────────┐         │
+│  │  INFORMATION BRIDGE                                       │        │
+│  │  Continuous → discrete transition                         │        │
+│  │  Compression to bridge_dim (128)                          │        │
+│  │  LayerNorm + projection                                   │        │
+│  └─────────────────────────┬───────────────────────────────┘         │
+│                            │                                          │
+│  ┌─────────────────────────▼───────────────────────────────┐         │
+│  │  PROOF NAVIGATOR (ternary decoder, 6-bank)                 │        │
+│  │  Weights ∈ {-1, 0, +1}, trained via STE                  │        │
+│  │                                                           │        │
+│  │  Output heads (3^6 = 729 coarse direction bins):          │        │
+│  │    • structure_direction    ∈ {-1, 0, +1}                │        │
+│  │    • domain_direction       ∈ {-1, 0, +1}                │        │
+│  │    • depth_direction        ∈ {-1, 0, +1}                │        │
+│  │    • automation_direction   ∈ {-1, 0, +1}                │        │
+│  │    • context_direction      ∈ {-1, 0, +1}                │        │
+│  │    • decompose_direction    ∈ {-1, 0, +1}                │        │
+│  │    • anchor_logits          ∈ ℝ^|anchors|   (sigmoid)    │        │
+│  │    • progress               ∈ ℝ^1           (remaining)  │        │
+│  │    • critic                 ∈ ℝ^1           (solvable?)  │        │
+│  │                                                           │        │
+│  │  Loss: L_nav + λ₁·L_anchor + λ₂·L_progress + λ₃·L_critic│        │
+│  │  (adaptive λ via learned log-σ uncertainty)               │        │
+│  └─────────────────────────┬───────────────────────────────┘         │
+│                            │                                          │
+│  ┌─────────────────────────▼───────────────────────────────┐         │
+│  │  STRUCTURED RESOLUTION (deterministic, no NN)             │        │
+│  │                                                           │        │
+│  │  navigate(tactic_network, directions + anchors) → tactic  │        │
+│  │  navigate(premise_network, directions + anchors) → lemmas │        │
+│  │  spread(proof_network, current_goals) → search priority   │        │
+│  └─────────────────────────┬───────────────────────────────┘         │
+│                            │                                          │
+│  ┌─────────────────────────▼───────────────────────────────┐         │
+│  │  DETERMINISTIC LOWERING                                   │        │
+│  │  Tactic + premises → Lean syntax string                   │        │
+│  └─────────────────────────┬───────────────────────────────┘         │
+│                            │                                          │
+│                            ▼                                          │
+│  [Lean 4 Kernel: verify tactic, return new goals or error]           │
+│          │                                                           │
+│          ▼                                                           │
+│  [Update proof network: new goals → new seeds for spread()]          │
+└──────────────────────────────────────────────────────────────────────┘
+</code></pre>
+<h3 id="3-2-goal-encoder">3.2 Goal Encoder</h3>
+<p><strong>Status</strong>: Encoder selection is an active design decision. The original prototype used <code>all-MiniLM-L6-v2</code>, but the encoder is the system's perceptual bottleneck and deserves more aggressive investment.</p>
+<p><strong>The problem with small general-purpose encoders</strong>: Lean goal states are formal syntax with type annotations, unicode math symbols, and dependent type structure — not natural language. A sentence-transformer trained on English text will produce mediocre embeddings for <code>⊢ ∀ (x : α) [inst : TopologicalSpace α], IsOpen (⋃ i, s i)</code>. If two goal states are semantically different in math but look similar as strings, the encoder conflates them, and no amount of downstream projection can recover the lost information.</p>
+<p><strong>Encoder strategy — four tiers under evaluation</strong>:</p>
+<p>1. <strong>Byte-level models (strong candidate)</strong>. ByT5-small (299M) is the de facto standard for Lean, used by ReProver, LeanAgent, and Lean Copilot. Its byte-level operation handles Lean's Unicode symbols (∀, ⊢, →, ℕ, ⋃) without tokenization artifacts — a critical advantage over subword tokenizers that fragment mathematical notation. ByT5-small produces 1472-dimensional embeddings via average pooling. Training requires only 120 GPU hours. A Lean-specific retrained tokenizer variant (arXiv 2501.13959) achieves 30.74% vs ReProver's 28.28% on MiniF2F. However, ByT5 has no mathematical pretraining — it is a generic byte-level model.</p>
+<p>2. <strong>Math-native models (preferred if byte-level gap is addressed)</strong>. Recent releases like Qwen 3.5, DeepSeek-Math, and InternLM-Math are trained on mathematical corpora including formal languages. These models understand Lean-like syntax natively. A math-native encoder (even at 1-7B parameters) will produce dramatically better embeddings for goal states than any general-purpose sentence transformer. The risk: most math-native models use subword tokenizers that may fragment Lean syntax. Evaluate both byte-level and subword-based math models.</p>
+<p>3. <strong>Ternary/BitNet encoder (architecturally distinctive)</strong>. BitNet b1.58 (ternary weights, 1.58 bits/parameter) at 2B matches full-precision models on mathematical reasoning benchmarks with 2.7× speedup and 3.5× memory reduction — but no one has applied ternary architectures to formal theorem proving. Since Wayfinder already uses ternary weights in the decoder (TernaryLinear with STE), extending ternary quantization to the encoder would be architecturally consistent and could enable real-time premise retrieval. A ternary encoder is the most distinctive option and would make the full pipeline ternary-native.</p>
+<p>4. <strong>Aggressively pruned large models</strong>. Recent work on structured pruning demonstrates that ~95-99% of nodes can be removed from large generalist models while retaining domain-specific performance, especially when followed by brief fine-tuning on in-domain data. Quantization to 4-bit introduces up to 32% accuracy degradation on math benchmarks, but fine-tuning on just 545 task-specific examples for 3 minutes can recover full performance. A 4-bit quantized 14B still outperforms its dense 7B counterpart. Techniques: structured pruning (SparseGPT, Wanda), layer dropping, distillation, and post-pruning fine-tuning on Mathlib goal states.</p>
+<p><strong>Key design constraint</strong>: The encoder may be frozen <em>or</em> fine-tuned, but the downstream architecture (GoalAnalyzer, Bridge, Navigator) must work with either. The encoder's output dimensionality is a configuration parameter (<code>embed_dim</code> in <code>configs/base.yaml</code>), not hardcoded.</p>
+<p><strong>Evaluation criterion</strong>: Encoder quality is measured by navigational accuracy at Phase 1 (smoke test). If navigational accuracy on 1-2 step proofs plateaus below 60% after 500 training steps, the encoder is the prime suspect and should be upgraded before debugging other components.</p>
+<h3 id="3-3-goal-analyzer">3.3 Goal Analyzer</h3>
+<p><strong>Parameters</strong>: ~100K (learnable) <strong>Input</strong>: 384-dim embedding from encoder <strong>Output</strong>: 256-dim feature vector + bank position estimates + anchor logits</p>
+<p>The GoalAnalyzer serves three functions:</p>
+<p>1. <strong>Feature projection</strong>: Linear projection from 384 to 256 dimensions. Extracts proof-relevant features from the general-purpose sentence embedding. 2. <strong>Bank position estimation</strong>: Six classification heads, one per proof bank. Each predicts (sign, depth) for the goal state. Used to position the current goal in the semantic network. 3. <strong>Anchor extraction</strong>: Multi-label classification over the anchor dictionary. Predicts which semantic labels apply to the current goal state.</p>
+<p>Bank positions and anchors enable the navigational queries that follow. The analyzer bridges the continuous embedding space and the structured semantic network.</p>
+<h3 id="3-4-subgoal-decomposer">3.4 Subgoal Decomposer</h3>
+<p><strong>Parameters</strong>: ~50K (learnable) <strong>Input</strong>: 256-dim features from GoalAnalyzer <strong>Output</strong>: Ternary decomposition decision + subgoal projections</p>
+<p>Inspired by DeepSeek-Prover-V2's proof sketching, the SubgoalDecomposer decides whether to decompose the current goal into subgoals via <code>have</code> statements:</p>
+<ul>
+<li><strong>-1 (atomize)</strong>: The goal is already atomic. Proceed directly to tactic prediction.</li>
+<li><strong>0 (neutral)</strong>: No decomposition signal. Proceed with current goal.</li>
+<li><strong>+1 (decompose)</strong>: The goal should be broken into subgoals. Predict subgoal count and project features for each subgoal.</li>
+</ul>
+<p>When decomposing, each subgoal gets its own feature vector (via learned projection heads) and is processed independently through the rest of the pipeline. This implements Mutation Theory Phase 3's <code>separableIndependentTesting</code>: independent subgoals can be solved independently.</p>
+<h3 id="3-5-information-bridge">3.5 Information Bridge</h3>
+<p><strong>Parameters</strong>: ~33K (learnable) <strong>Input</strong>: 256-dim features <strong>Output</strong>: 128-dim compressed representation</p>
+<p>The bottleneck between continuous and discrete space. LayerNorm + linear projection compresses the feature representation to a dimensionality suitable for the ternary decoder.</p>
+<p><strong>Information-theoretic role</strong>: The bridge tests the hypothesis that the mutual information between goal understanding and tactic selection is low-dimensional. If a 128-dim bridge suffices for accurate navigation, the goal→tactic mapping has low intrinsic dimensionality.</p>
+<h3 id="3-6-proof-navigator-ternary-decoder">3.6 Proof Navigator (Ternary Decoder)</h3>
+<p><strong>Parameters</strong>: ~200K (learnable, ternary hidden layers) <strong>Input</strong>: 128-dim bridge output <strong>Output</strong>: 6 navigational directions + anchor logits + progress + critic</p>
+<p>The core innovation. Unlike a traditional decoder that classifies into a tactic vocabulary, the Proof Navigator outputs <em>directions in proof space</em>. The expanded 6-bank design (see Section 2.5) gives 3^6 = 729 coarse direction bins, resolving the many-to-one problem where semantically distinct tactics collapsed to the same coordinates.</p>
+<p><strong>Ternary direction heads</strong> (hidden layers use TernaryLinear with STE, one per navigable bank):</p>
+<ul>
+<li><code>structure_direction ∈ {-1, 0, +1}</code>: Simplify / maintain / complexify</li>
+<li><code>domain_direction ∈ {-1, 0, +1}</code>: Concrete / general / abstract</li>
+<li><code>depth_direction ∈ {-1, 0, +1}</code>: Shallow / moderate / deep</li>
+<li><code>automation_direction ∈ {-1, 0, +1}</code>: Automate / mixed / manual</li>
+<li><code>context_direction ∈ {-1, 0, +1}</code>: Reduce context / maintain / enrich context</li>
+<li><code>decompose_direction ∈ {-1, 0, +1}</code>: Atomize / maintain / decompose</li>
+</ul>
+<p><strong>Continuous heads</strong> (standard linear, on top of ternary hidden layers):</p>
+<ul>
+<li><code>anchor_logits ∈ ℝ^|anchors|</code>: Which semantic labels should the next tactic/premises have</li>
+<li><code>progress ∈ ℝ^1</code>: Estimated remaining proof steps (MSE loss against ground truth). Connects to Mutation Theory's Lyapunov convergence guarantee (T7.5) — when progress decreases monotonically, convergence is formally guaranteed. LeanProgress showed that including proof history boosts accuracy from 61.8% to 75.1%. We incorporate this by concatenating embeddings of previously closed goals into the bridge input (see Section 3.10 for details).</li>
+<li><code>critic ∈ ℝ^1</code>: Estimated <strong>distance to proof completion</strong> (MSE loss), NOT binary solvability. HTPS found that hard binary critic targets (solvable/not-solvable) are <em>worse than no critic at all</em> — even worse than random. Soft targets dramatically outperform: 78.1% vs 63.1% on their benchmark. AlphaProof similarly trains its value function to predict remaining tactic count rather than binary provability, because all proven states have probability 1.0, destroying the training signal. Our critic head predicts a continuous distance metric (normalized remaining steps / budget consumed), trained with MSE loss.</li>
+</ul>
+<p><strong>Training loss</strong> (UW-SO adaptive weighting via learned log-σ):</p>
+<pre><code>
+L_total = (1/2σ₁²)·L_nav + (1/2σ₂²)·L_anchor + (1/2σ₃²)·L_progress
+        + (1/2σ₄²)·L_critic + log(σ₁σ₂σ₃σ₄)
+</code></pre>
+<p>Where:</p>
+<ul>
+<li><code>L_nav</code>: Cross-entropy on navigational directions (ternary classification, 6 banks, summed)</li>
+<li><code>L_anchor</code>: Binary cross-entropy on anchor predictions</li>
+<li><code>L_progress</code>: MSE on remaining-step prediction</li>
+<li><code>L_critic</code>: MSE on normalized distance-to-completion (soft target, NOT binary BCE — per HTPS finding)</li>
+</ul>
+<p>The <code>navigable_banks</code> configuration parameter controls which banks are active. Setting <code>navigable_banks: [STRUCTURE, AUTOMATION, DECOMPOSITION]</code> reverts to 3-bank navigation (27 bins) if the full 6-bank version proves too hard to learn.</p>
+<h3 id="3-7-proof-network-semantic-database">3.7 Proof Network (Semantic Database)</h3>
+<p><strong>Storage</strong>: SQLite database (single file, ~100MB for full Mathlib) <strong>Entities</strong>: Lemmas, tactics, proof patterns <strong>Schema</strong> (adapted from ModelAtlas):</p>
+<pre><code class="language-sql">
+-- Mathematical entities (lemmas, definitions, instances)
+CREATE TABLE entities (
+    entity_id   TEXT PRIMARY KEY,
+    kind        TEXT,  -- &#x27;lemma&#x27;, &#x27;def&#x27;, &#x27;instance&#x27;, &#x27;tactic&#x27;
+    namespace   TEXT,
+    display     TEXT
+);
+
+-- Bank positions (6 proof banks)
+CREATE TABLE entity_positions (
+    entity_id   TEXT REFERENCES entities(entity_id),
+    bank        TEXT,
+    sign        INTEGER,
+    depth       INTEGER,
+    PRIMARY KEY (entity_id, bank)
+);
+
+-- Anchor dictionary
+CREATE TABLE anchors (
+    anchor_id   INTEGER PRIMARY KEY AUTOINCREMENT,
+    label       TEXT UNIQUE,
+    bank        TEXT,
+    source      TEXT DEFAULT &#x27;deterministic&#x27;
+);
+
+-- Entity ↔ anchor links
+CREATE TABLE entity_anchors (
+    entity_id   TEXT REFERENCES entities(entity_id),
+    anchor_id   INTEGER REFERENCES anchors(anchor_id),
+    confidence  REAL DEFAULT 1.0,
+    PRIMARY KEY (entity_id, anchor_id)
+);
+
+-- Explicit links (dependency, co-occurrence)
+CREATE TABLE entity_links (
+    source_id   TEXT REFERENCES entities(entity_id),
+    target_id   TEXT REFERENCES entities(entity_id),
+    relation    TEXT,  -- &#x27;depends_on&#x27;, &#x27;commonly_precedes&#x27;, &#x27;same_namespace&#x27;
+    weight      REAL DEFAULT 1.0,
+    PRIMARY KEY (source_id, target_id, relation)
+);
+
+-- IDF cache
+CREATE TABLE anchor_idf (
+    anchor_id   INTEGER PRIMARY KEY,
+    idf_value   REAL
+);
+</code></pre>
+<p><strong>Population</strong>: Deterministic extraction from Mathlib's Lean source: 1. Parse all theorem/lemma declarations → entities table 2. Extract types and namespaces → bank positions 3. Analyze proof text for tactic usage → anchors 4. Walk import graph → dependency links 5. Compute IDF from anchor frequencies</p>
+<h3 id="3-8-structured-resolution">3.8 Structured Resolution</h3>
+<p>The resolution layer converts the Proof Navigator's output into concrete tactics and premises. <strong>No neural inference</strong> — pure symbolic operations:</p>
+<pre><code class="language-python">
+def resolve(nav_output, proof_network, current_context):
+    &quot;&quot;&quot;Convert navigational coordinates to tactic + premises.&quot;&quot;&quot;
+
+    # Build structured query from ternary directions + anchor logits
+    query = StructuredQuery(
+        structure=nav_output.structure_direction,
+        automation=nav_output.automation_direction,
+        decomposition=nav_output.decompose_direction,
+        prefer_anchors=top_k_anchors(nav_output.anchor_logits, k=8),
+        avoid_anchors=current_context.recently_failed,
+    )
+
+    # Navigate tactic space
+    tactic_candidates = navigate(proof_network.tactic_table, query, limit=5)
+
+    # Navigate premise space
+    premise_candidates = navigate(proof_network.lemma_table, query, limit=16)
+
+    # Spreading activation from current proof context
+    context_activation = spread(
+        proof_network,
+        seeds=current_context.used_lemmas + current_context.open_goals,
+        banks=[&quot;DOMAIN&quot;, &quot;STRUCTURE&quot;],
+        max_depth=3,
+    )
+
+    # Combine: navigate score × spreading activation
+    for p in premise_candidates:
+        p.score *= context_activation.get(p.entity_id, 0.1)
+
+    return tactic_candidates, sorted(premise_candidates, key=lambda p: p.score, reverse=True)
+</code></pre>
+<h3 id="3-9-deterministic-lowering">3.9 Deterministic Lowering</h3>
+<p>Template-based conversion from (tactic, premises) to Lean syntax:</p>
+<pre><code class="language-python">
+def lower_step(tactic, premises, context):
+    if tactic.name in NULLARY_TACTICS:  # omega, ring, linarith, ...
+        return tactic.name
+    if tactic.name in PREMISE_TACTICS:  # apply, exact, rw, ...
+        return f&quot;{tactic.name} {&#x27; &#x27;.join(p.name for p in premises)}&quot;
+    if tactic.name == &quot;have&quot;:
+        return f&quot;have {premises[0].name} := by&quot;
+    # ... etc
+</code></pre>
+<p>This is the existing <code>lowering.py</code> module, adapted to accept navigational resolution output instead of tier tokens.</p>
+<h3 id="3-10-lean-kernel-interaction">3.10 Lean Kernel Interaction</h3>
+<p>The outer proof search loop interacts with the Lean kernel via Pantograph (LeanDojo's interaction protocol):</p>
+<pre><code class="language-python">
+while open_goals:
+    goal = select_goal(open_goals, critic_scores, progress_estimates)
+
+    # Neural forward pass (ONCE per goal)
+    embedding = encoder.encode(goal.state)
+    features = analyzer(embedding)
+    nav_output = navigator(bridge(features))
+
+    # Symbolic resolution (fast, no NN)
+    tactics, premises = resolve(nav_output, proof_network, context)
+
+    # Try candidates (interaction with Lean kernel)
+    for tactic, premise_set in product(tactics[:3], premise_combinations(premises)):
+        lean_text = lower_step(tactic, premise_set, context)
+        result = lean_kernel.try_tactic(goal.state, lean_text)
+
+        if result.success:
+            open_goals.remove(goal)
+            open_goals.extend(result.new_goals)
+            context.record_success(tactic, premise_set)
+            break
+        else:
+            context.record_failure(tactic, premise_set)
+</code></pre>
+<p><strong>Goal selection</strong> uses the critic head (estimated distance-to-completion) and progress head (estimated remaining steps). Prioritize goals with lowest combined distance estimate.</p>
+<p><strong>Proof history input.</strong> LeanProgress demonstrated a 13-point accuracy improvement (61.8% → 75.1%) from including proof history in progress prediction. The spreading activation mechanism captures this symbolically (seeds from already-used lemmas), but the neural side also benefits. At each goal, the encoder receives not just the current goal state but also a summary of proof context: embeddings of previously closed goals are mean-pooled and concatenated to the bridge input. This gives the progress and critic heads access to "where we've been," not just "where we are."</p>
+<hr>
+<h2 id="4-training">4. Training</h2>
+<h3 id="4-1-data-preparation">4.1 Data Preparation</h3>
+<p><strong>Training corpus</strong>: LeanDojo's extracted Mathlib dataset (~98,734 theorems with proof traces). Each example provides:</p>
+<ul>
+<li>Theorem statement and goal state</li>
+<li>Tactic proof with intermediate goal states</li>
+<li>Premise information (which lemmas are referenced)</li>
+</ul>
+<p><strong>Conversion to navigational training data</strong>: For each proof step, extract:</p>
+<ul>
+<li>Ground-truth navigational directions (from the tactic used, mapped to bank coordinates)</li>
+<li>Ground-truth anchors (from the goal state and tactic/premise analysis)</li>
+<li>Ground-truth progress (number of remaining proof steps)</li>
+<li>Ground-truth solvability (1.0 for all goals in successful proofs)</li>
+</ul>
+<p><strong>Negative examples</strong>: Failed proof attempts, wrong tactic selections, incorrect premises — sourced from proof search logs and synthetic perturbation.</p>
+<h3 id="4-2-curriculum-learning">4.2 Curriculum Learning</h3>
+<p>Inspired by LeanAgent's complexity ordering (<code>complexity = e^S</code> where S = proof steps) and the navigational wavefront concept:</p>
+<p>1. <strong>Phase A (warmup)</strong>: Train on 1-2 step proofs only. The model learns basic navigation near the origin. 2. <strong>Phase B (expansion)</strong>: Gradually increase proof depth. 3-5 step proofs. 3. <strong>Phase C (full)</strong>: All proof lengths, with oversampling of medium-difficulty theorems.</p>
+<p>This follows the Mutation Theory's phase-transition insight: start with easy kills (short proofs near the origin), then venture into harder regions.</p>
+<p><strong>Navigational wavefront curriculum (Phase C refinement).</strong> During expert iteration (Phase 5), the curriculum should be navigational, not just complexity-based: order theorems by their <em>distance in the proof network from already-proven results</em>, creating a wavefront of learnability that expands outward through mathematical space. Theorems whose premises are 1-2 hops from already-proven theorems are trained first; theorems requiring navigation into unexplored regions of the semantic network are deferred. This addresses the saturation problem observed across systems — up to 98.5% of generated proofs during expert iteration are incorrect, and remaining unproven theorems become exponentially harder. STP (Self-play Theorem Prover) found that 47% of self-generated conjectures at the "cusp of provability" are successfully proved, vs only 11.4% of real unproved statements. The wavefront curriculum targets this cusp by definition.</p>
+<h3 id="4-3-pab-integration">4.3 PAB Integration</h3>
+<p>PAB metrics are collected at every checkpoint (every 50 training steps):</p>
+<ul>
+<li>Loss components (L_nav, L_anchor, L_progress, L_critic)</li>
+<li>Ternary crystallization rate</li>
+<li>Per-bank navigational accuracy</li>
+<li>Progress prediction correlation with actual remaining steps</li>
+<li>Critic calibration (predicted solvability vs. actual proof success)</li>
+<li>Domain-wise accuracy (by Mathlib namespace)</li>
+</ul>
+<hr>
+<h2 id="5-evaluation">5. Evaluation</h2>
+<h3 id="5-1-endpoint-metrics">5.1 Endpoint Metrics</h3>
+<table><tbody>
+<tr><td>Metric</td><td>Benchmark</td><td>Comparison</td></tr>
+<tr><td>Theorem proved rate</td><td>MiniF2F-test (488 problems)</td><td>ReProver, DeepSeek-Prover-V2, HTPS</td></tr>
+<tr><td>Theorem proved rate</td><td>Mathlib test split (~10k)</td><td>ReProver</td></tr>
+<tr><td>Premise retrieval recall@k</td><td>Mathlib (ground-truth premises)</td><td>ReProver's retriever</td></tr>
+<tr><td>Proof search nodes expanded</td><td>MiniF2F</td><td>All baselines</td></tr>
+<tr><td>Wall-clock time per proof</td><td>MiniF2F</td><td>All baselines</td></tr>
+</tbody></table>
+<h3 id="5-2-trajectory-metrics-pab">5.2 Trajectory Metrics (PAB)</h3>
+<table><tbody>
+<tr><td>Metric</td><td>What it measures</td></tr>
+<tr><td>Navigational consistency</td><td>Do similar goals produce similar directions?</td></tr>
+<tr><td>Crystallization curve</td><td>How quickly do ternary weights commit?</td></tr>
+<tr><td>Progress prediction accuracy</td><td>Does the model learn to estimate remaining steps?</td></tr>
+<tr><td>Domain progression order</td><td>Which Mathlib namespaces are learned first?</td></tr>
+<tr><td>Bank-wise accuracy</td><td>Which navigational dimensions are learned first?</td></tr>
+</tbody></table>
+<h3 id="5-3-ablation-studies">5.3 Ablation Studies</h3>
+<table><tbody>
+<tr><td>Variant</td><td>What it tests</td></tr>
+<tr><td>Dense retrieval (no proof network)</td><td>Is navigational retrieval better than embedding similarity?</td></tr>
+<tr><td>Tactic classification (no navigation)</td><td>Are directional coordinates better than vocabulary indices?</td></tr>
+<tr><td>No spreading activation</td><td>Does spreading activation improve search?</td></tr>
+<tr><td>No progress head</td><td>Does progress prediction improve goal selection?</td></tr>
+<tr><td>Continuous decoder (no ternary)</td><td>Are ternary weights beneficial for navigation?</td></tr>
+<tr><td>No IDF weighting</td><td>Does IDF improve premise retrieval?</td></tr>
+</tbody></table>
+<hr>
+<h2 id="6-related-work">6. Related Work</h2>
+<p>A comprehensive survey of the external landscape is in <code>docs/Wayfinder_External_Research.md</code>. This section summarizes the most architecturally relevant systems and their implications for Wayfinder.</p>
+<h3 id="6-1-reprover-leandojo-yang-et-al-neurips-2023">6.1 ReProver / LeanDojo (Yang et al., NeurIPS 2023)</h3>
+<p>Retrieval-augmented tactic generation for Lean 4. ByT5-small (299M) dual-encoder retriever with 1472-dim embeddings, MSE-based contrastive loss with 3 negatives per example. Restricts retrieval to accessible premises only (~33k of ~130k), giving ~2% recall improvement for free. On premises never seen during training, recall@10 drops from 38.4% to 27.6% — a 30% degradation revealing the fundamental limitation of dense retrieval for unseen entities. <strong>Key difference from Wayfinder</strong>: Dense retrieval (learned embeddings) vs structured navigation (bank positions + IDF-weighted anchors). ReProver requires neural forward passes for every retrieval; Wayfinder resolves via SQL queries. <strong>Design influence</strong>: Accessible-premises filtering adopted directly; ByT5-small as encoder candidate.</p>
+<h3 id="6-2-alphaproof-deepmind-2024">6.2 AlphaProof (DeepMind, 2024)</h3>
+<p>~3B encoder-decoder transformer with AND/OR tree search and AlphaZero-style MCTS. Critically, the value function predicts <em>remaining tactics to completion</em>, not binary provability — because all proven states have probability 1.0, destroying the training signal. Test-time RL (TTRL): for each hard problem, generates millions of variants and trains a specialist agent, requiring hundreds of TPU-days per IMO problem. Backpropagates the <em>value of the hardest branch</em> rather than the product. <strong>Design influence</strong>: Soft critic targets (distance, not binary) adopted directly. Encoder-decoder pattern with dual policy/value output is the efficiency model for search-heavy systems.</p>
+<h3 id="6-3-htps-lample-et-al-neurips-2022">6.3 HTPS (Lample et al., NeurIPS 2022)</h3>
+<p>AlphaZero-inspired proof search with shared 600M encoder-decoder as policy and critic. Critic restricts decoder to two tokens (PROVABLE/UNPROVABLE). Critical finding: <strong>soft critic targets dramatically outperform hard targets</strong> — 78.1% vs 63.1% on Equations benchmark. Hard critic is worse than <em>no critic at all</em>. Value backpropagation through AND nodes uses product of children's values. Online training (continuous refresh every 5 minutes) outperforms batch expert iteration. <strong>Design influence</strong>: Soft critic targets adopted; our spreading activation replaces MCTS for search prioritization.</p>
+<h3 id="6-4-bfs-prover-bytedance-2025">6.4 BFS-Prover (ByteDance, 2025)</h3>
+<p>Achieved 72.95% on MiniF2F-test with plain best-first search plus expert iteration, DPO from Lean compiler feedback, and length normalization. At fixed inference budget, outperforms InternLM2.5-StepProver's value-guided search (65.9%) and DeepSeek-Prover-V1.5's MCTS (63.5%). <strong>Implication for Wayfinder</strong>: With a strong enough policy, sophisticated search may be unnecessary. If Wayfinder's navigational directions are accurate, simple best-first search with spreading activation may suffice — no MCTS needed.</p>
+<h3 id="6-5-leanprogress-2025">6.5 LeanProgress (2025)</h3>
+<p>Fine-tuned DeepSeek Coder 1.3B to predict remaining proof steps. Including proof history boosts accuracy from 61.8% to 75.1%. Combined score <code>C(sᵢ) = α·N(sᵢ) + (1-α)·P(sᵢ)</code> yields 3.8% improvement on Mathlib4. <strong>Design influence</strong>: Progress head inspired by this work; proof history input adopted (mean-pooled embeddings of previously closed goals concatenated to bridge input).</p>
+<h3 id="6-6-deepseek-prover-v2-ren-et-al-2025">6.6 DeepSeek-Prover-V2 (Ren et al., 2025)</h3>
+<p>Two-model architecture: DeepSeek-V3 (671B MoE, ~21B activated) for <code>have</code>-chain decomposition, 7B prover for individual subgoals. GRPO with binary Lean compiler rewards. 88.9% on MiniF2F-test. <strong>Design influence</strong>: SubgoalDecomposer inspired by this, but as ternary decision within a small model. The division of labor (reasoning about proof structure vs executing individual steps) maps to our separation: neural network reasons about direction, proof network handles resolution.</p>
+<h3 id="6-7-aristotle-harmonic-2025">6.7 Aristotle (Harmonic, 2025)</h3>
+<p>200B+ transformer with Monte Carlo Graph Search (MCTS extended to hypergraphs with state equivalence classes). Lemma-based informal reasoning: natural-language proof sketches → formal lemmas → iterative refinement. Test-time training on search traces. Disproof augmentation: each goal gets a negation transition to prune impossible branches. <strong>Implication for Wayfinder</strong>: State equivalence merging (if two proof states have identical goals) could reduce the search graph; worth exploring in Phase 5.</p>
+<h3 id="6-8-leanhammer-2025-and-the-hammer-tradition">6.8 LeanHammer (2025) and the Hammer Tradition</h3>
+<p>Combines neural premise selection (LeanPremise) with symbolic methods (MePo relevance filter) and routes to both Aesop and ATP translation (Zipperposition). Achieves 37.3% cumulative proof rate on Mathlib, outperforming any single method by 21%. Magnushammer's two-stage SELECT+RERANK pipeline achieves 59.5% on PISA vs Sledgehammer's 38.3%.</p>
+<p><strong>Hammer complementarity.</strong> The broader hammer tradition (Sledgehammer for Isabelle, CoqHammer for Coq, LeanHammer for Lean) translates ITP goals into first-order logic for external ATP solvers. Wayfinder does not replace hammers; it handles the cases they cannot. Hammers dominate the AUTOMATION = -1 region of proof space (fully decidable, translatable to first-order logic). Wayfinder navigates the AUTOMATION ≥ 0 region (structured manual reasoning, lemma selection, subgoal decomposition). The optimal system is a <strong>hybrid</strong>: Wayfinder's navigational retrieval feeds premise candidates to hammers for the decidable portion, while handling the non-decidable portion via structured proof search. Integration point: when the navigator predicts AUTOMATION = -1 for a goal, delegate directly to LeanHammer/Aesop rather than attempting navigational resolution.</p>
+<h3 id="6-9-knowledge-graphs-for-mathematics">6.9 Knowledge Graphs for Mathematics</h3>
+<p>AutoMathKG (2025): 13,388 entities, 29,459 edges, SBERT embeddings, evaluated with TransE/DistMult/R-GCN. A separate Lean 4 Mathlib graph in Neo4j captures theorem dependencies. GNN-augmented ReProver (arXiv 2510.23637) layers an RGCN over ByT5 embeddings. Tree-Based Premise Selection (NeurIPS 2025) proposes training-free selection using Weisfeiler-Lehman kernels.</p>
+<p><strong>Critical gap</strong>: Not a single published system uses a knowledge graph to guide proof search or premise selection. The integration stops at basic dependency filtering. No system implements spreading activation over mathematical knowledge structures. No system positions entities in structured coordinate systems beyond standard embeddings. <strong>This is Wayfinder's most distinctive design opportunity</strong> — the proof network architecture is genuinely novel in this landscape.</p>
+<h3 id="6-10-tactictoe-and-structured-tactic-prediction">6.10 TacticToe and Structured Tactic Prediction</h3>
+<p>TacticToe (HOL4) abstracts tactics to ~100 templates and separately predicts arguments. Graph2Tac (Coq, ICML 2024) uses GNN-based classification over ~100 tactic categories. ASTactic generates tactics as programs via grammar-controlled RNN. Proof transformation prediction (FroCoS 2023) guesses the correct tactic 74% of the time given before-and-after states.</p>
+<p><strong>No existing system cleanly separates tactic category prediction from specific tactic/argument generation.</strong> TacticToe's abstraction is the closest precedent, and its finding about argument prediction's importance validates the decomposition. Wayfinder's two-level architecture (ternary directions → structured resolution) is the first to develop this separation into a full navigation paradigm.</p>
+<h3 id="6-11-bitnet-and-ternary-architectures">6.11 BitNet and Ternary Architectures</h3>
+<p>BitNet b1.58 (ternary weights) at 2B matches full-precision models on mathematical reasoning with 2.7× speedup and 3.5× memory reduction. No one has applied ternary architectures to formal theorem proving. <strong>Wayfinder opportunity</strong>: A ternary encoder (BitNet-style) feeding into a ternary decoder (existing STE infrastructure) would create a fully ternary pipeline — maximally efficient for real-time proof search.</p>
+<h3 id="6-12-modelatlas-vinaik-2025">6.12 ModelAtlas (Vinaik, 2025)</h3>
+<p>Semantic network of ~40k ML models positioned across 8 orthogonal signed banks with anchor-based similarity. IDF-weighted structured navigation outperforms keyword search and embedding-based similarity. <strong>Connection to Wayfinder</strong>: The entire navigational paradigm — banks, anchors, IDF scoring, multiplicative composition, spreading activation — is adapted from ModelAtlas.</p>
+<h3 id="6-13-mutation-theory-vinaik-2025-2026-formalized-in-lean-4">6.13 Mutation Theory (Vinaik, 2025-2026; formalized in Lean 4)</h3>
+<p>200+ Lean 4 theorems formalizing specification complexity, exact learning, teaching dimension, decomposition, trajectory convergence, and phase transitions. <strong>Connection to Wayfinder</strong>: Provides formal convergence guarantees. See Sections 2.7-2.8.</p>
+<hr>
+<h2 id="7-discussion">7. Discussion</h2>
+<h3 id="7-1-the-intelligence-budget-argument">7.1 The Intelligence Budget Argument</h3>
+<p>The key insight driving Wayfinder is about <em>where to spend intelligence</em>. Current theorem provers spend enormous compute on neural inference during search — every candidate tactic, every candidate premise, every tree node expansion requires a forward pass through a large model. The model must encode <em>all</em> mathematical knowledge in its weights because search is parametric.</p>
+<p>Wayfinder inverts this: mathematical knowledge is encoded <em>explicitly</em> in a structured semantic network (the proof network). The neural model handles only the genuinely hard part — understanding the current proof state and predicting which <em>direction</em> to go. Search and retrieval are outsourced to deterministic symbolic operations that are orders of magnitude cheaper per query.</p>
+<p>This is the same design philosophy as ModelAtlas: "Don't waste tokens on problems that have been solved for 50 years — waste them on <em>your</em> terms." Set intersection, IDF computation, and Bellman-Ford are solved problems. Understanding a Lean goal state is not. Spend the neural compute where it matters.</p>
+<h3 id="7-2-limitations">7.2 Limitations</h3>
+<p>1. <strong>Proof network construction requires Mathlib-specific engineering.</strong> Bank positions and anchors must be extracted from Lean's type system, namespace hierarchy, and proof corpus. This is significant upfront work. The anchor gap analysis procedure (Section 2.3) mitigates but does not eliminate this cost.</p>
+<p>2. <strong>Scoring mechanism sensitivity.</strong> The scoring mechanism (multiplicative, confidence-weighted, or hybrid — see Section 2.4) must balance precision against noise tolerance. The optimal mechanism likely varies with proof network maturity and may need to evolve during training. This is an active design question with multiple viable alternatives under evaluation.</p>
+<p>3. <strong>Anchor dictionary coverage.</strong> The system can only retrieve premises whose relevant properties are captured by anchors. Subtle mathematical relationships not expressible as discrete labels will be missed. The iterative anchor gap analysis (Section 2.3) is designed to systematically close these gaps, but long-tail mathematical concepts will always be harder to anchor than common ones.</p>
+<p>4. <strong>Encoder quality.</strong> The encoder is the system's perceptual bottleneck (Section 3.2). The strategy of evaluating math-native models, aggressively pruned large models, and fine-tuned sentence transformers mitigates this risk, but the optimal encoder may not be known until empirical evaluation in Phase 1.</p>
+<p>5. <strong>Comparison fairness.</strong> DeepSeek-Prover-V2 uses a 671B model. Direct comparison on theorem-proved rate is unfair. Our contribution is architectural efficiency (proofs found per compute unit), not raw performance.</p>
+<h3 id="7-3-hammer-complementarity">7.3 Hammer Complementarity</h3>
+<p>Wayfinder is not a replacement for ATP-based hammer tools (Sledgehammer, CoqHammer, LeanHammer). It is complementary. The AUTOMATION bank cleanly separates their domains:</p>
+<ul>
+<li><strong>AUTOMATION ≤ -1 (fully decidable)</strong>: Goals that can be translated to first-order logic and solved by external ATPs. These are the hammer's domain. When the navigator predicts AUTOMATION = -1, delegate to LeanHammer/Aesop directly. This is the "known region" of proof space — no navigation needed.</li>
+<li><strong>AUTOMATION ≥ 0 (requires structured reasoning)</strong>: Goals needing specific lemma selection, manual case analysis, induction, or multi-step decomposition. These are Wayfinder's domain. Hammers fail here because the goals aren't translatable to first-order logic, or the right premises aren't in the hammer's premise set.</li>
+</ul>
+<p>LeanHammer (2025) shows that hybrid neural+symbolic achieves 37.3% — outperforming any single method by 21%. Wayfinder + hammer is a natural hybrid: navigational retrieval feeds premise candidates to hammers for the decidable portion, while handling the non-decidable portion via structured proof search. The AUTOMATION bank direction is the routing decision.</p>
+<h3 id="7-4-the-broader-vision">7.4 The Broader Vision</h3>
+<p>If navigational proof search works — if structured semantic networks can compete with dense retrieval for mathematical reasoning — the implications extend beyond theorem proving:</p>
+<ul>
+<li><strong>Any domain with structured output</strong>: Code generation (API calls from a known catalog), molecular design (reactions from known reaction types), circuit synthesis (components from known libraries).</li>
+<li><strong>Any domain with a verification oracle</strong>: The Lean kernel provides binary pass/fail. Any domain with an equivalent (compiler, simulator, SAT solver) can use the same navigational architecture.</li>
+<li><strong>Any domain where knowledge structure is known a priori</strong>: Mathematics has a rich, well-understood structure (algebraic hierarchies, topological properties, order relations). Any domain with similar structure can be encoded in a semantic network.</li>
+</ul>
+<p>The thesis of Wayfinder is not specific to theorem proving. It is a general claim about the relationship between structured knowledge and neural prediction: <strong>when the knowledge structure is known, encode it explicitly and let the neural network navigate it. Don't force the neural network to learn what you already know.</strong></p>
+<hr>
+<h2 id="8-communication-architecture">8. Communication Architecture</h2>
+<p>Informed by personal semiotics framework (Winston's communication theory). The paper and experimental output are designed for mechanistic clarity.</p>
+<h3 id="8-1-winston-s-star-for-wayfinder">8.1 Winston's Star for Wayfinder</h3>
+<table><tbody>
+<tr><td>Element</td><td>Content</td></tr>
+<tr><td><strong>Symbol</strong></td><td>Navigation through mathematical space -- the compass/map</td></tr>
+<tr><td><strong>Slogan</strong></td><td>"Navigate, don't predict" -- or -- "One inference, then symbolic search"</td></tr>
+<tr><td><strong>Surprise</strong></td><td>Zero neural inference at retrieval time; a knowledge graph replaces dense embedding</td></tr>
+<tr><td><strong>Salience</strong></td><td>The 6-bank coordinate system: three ternary digits locate a tactic family</td></tr>
+<tr><td><strong>Story</strong></td><td>"We built a system for navigating ML models through semantic coordinates. What if mathematical proofs worked the same way?"</td></tr>
+</tbody></table>
+<h3 id="8-2-fencing">8.2 Fencing</h3>
+<ul>
+<li><strong>IS</strong>: Navigational proof search through structured semantic networks</li>
+<li><strong>IS NOT</strong>: An LLM predicting tactic tokens</li>
+<li><strong>Differs from nearest thing</strong> (ReProver): Neural embeddings are replaced by symbolic navigation from a single-inference coordinate. Neural network runs once; everything after is a database query.</li>
+</ul>
+<h3 id="8-3-three-laws-applied">8.3 Three Laws Applied</h3>
+<p>1. <strong>Alignment precedes argument</strong>: Open with the problem (proof search is expensive because every candidate requires neural inference), not the solution. Let the reader arrive at "what if we could do this symbolically?" 2. <strong>Minimize surprise except in content</strong>: Schema, SQLite, bank positions should feel familiar. The surprise: this works for theorem proving. 3. <strong>The cheese contains the medicine</strong>: mlx-vis visualizations ARE the argument. 98K theorems clustered by domain = thesis understood before it's stated.</p>
+<h3 id="8-4-assertion-evidence-figure-convention">8.4 Assertion-Evidence Figure Convention</h3>
+<p>Every figure title is a claim, not a topic:</p>
+<ul>
+<li>"Bank positions separate mathematical domains without training" (not "Bank position distribution")</li>
+<li>"AUTOMATION and STRUCTURE banks crystallize before DOMAIN and CONTEXT" (not "Training dynamics")</li>
+<li>"Navigational retrieval matches dense retrieval at 1/50th the neural compute" (not "Retrieval comparison")</li>
+</ul>
+<h3 id="8-5-three-stream-cycling">8.5 Three-Stream Cycling</h3>
+<p>The three experimental streams cycle through one thesis from different angles:</p>
+<ul>
+<li><strong>Stream 1 (Navigation)</strong>: The proof network enables retrieval without neural inference</li>
+<li><strong>Stream 2 (Architecture)</strong>: Ternary coordinates generalize better than token indices</li>
+<li><strong>Stream 3 (PAB Process)</strong>: Training dynamics reveal structured learning invisible to endpoint metrics</li>
+</ul>
+<p>A reader who misses one angle catches it in another. Each stream feels like progression, not repetition.</p>
+<hr>
+<h2 id="references">References</h2>
+<ul>
+<li>AlphaProof Team (2024). Solving IMO Problems with AlphaProof. <em>DeepMind</em>.</li>
+<li>Azerbayev, Z., et al. (2024). Llemma: An Open Language Model for Mathematics. <em>ICLR</em>.</li>
+<li>First, E., et al. (2023). Baldur: Whole-Proof Generation and Repair with LLMs. <em>ESEC/FSE</em>.</li>
+<li>Gauthier, T. (2021). TacticToe: Learning to Reason with HOL4 Tactics. <em>LPAR</em>.</li>
+<li>Kumarappan, A., et al. (2025). LeanAgent: Lifelong Learning for Formal Theorem Proving. <em>ICLR</em>.</li>
+<li>Lample, G., Lacroix, T., et al. (2022). HyperTree Proof Search for Neural Theorem Proving. <em>NeurIPS</em>.</li>
+<li>Ma, S., et al. (2024). The Era of 1-bit LLMs: All Large Language Models are in 1.58 Bits. <em>arXiv:2402.17764</em>.</li>
+<li>Mikuła, M., et al. (2024). Magnushammer: A Transformer-Based Approach to Premise Selection. <em>ICLR</em>.</li>
+<li>Pal, P. (2025). Process-Aware Benchmarking (PAB). <em>PABKit</em>.</li>
+<li>Ren, Z., et al. (2025). DeepSeek-Prover-V2: Advancing Formal Mathematical Reasoning via Subgoal Decomposition. <em>arXiv</em>.</li>
+<li>Tishby, N., Pereira, F., Bialek, W. (2000). The Information Bottleneck Method. <em>arXiv:physics/0004057</em>.</li>
+<li>Trinh, T., et al. (2024). Solving Olympiad Geometry without Human Demonstrations. <em>Nature</em>.</li>
+<li>Valiant, L. (1984). A Theory of the Learnable. <em>Communications of the ACM</em>.</li>
+<li>Vinaik, R. (2025). ModelAtlas: A Navigable Semantic Network of ML Models.</li>
+<li>Vinaik, R. (2025-2026). Mutation Theory. Formalized in Lean 4.</li>
+<li>Xin, H., et al. (2024). BFS-Prover: Scalable Best-First Proof Search for LLMs. <em>arXiv</em>.</li>
+<li>Yang, K., et al. (2024). LeanDojo: Theorem Proving with Retrieval-Augmented Language Models. <em>NeurIPS</em>.</li>
+<li>Zhang, Y., et al. (2025). LeanHammer: An Automated Reasoning Tool for Lean 4. <em>arXiv</em>.</li>
+</ul>
+      </article>
+      
+    </main>
+  </div>
+  <footer class="site-footer">
+    <p>Generated by <a href="https://github.com/rohanvinaik/lintgate">LintGate</a></p>
+  </footer>
+  <script src="../script.js"></script>
+</body>
+</html>

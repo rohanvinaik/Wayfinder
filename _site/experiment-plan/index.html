@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Experiment Plan — Wayfinder</title>
+  <meta name="description" content="Experiment Plan">
+  <meta name="generator" content="LintGate Wiki Publisher">
+  <link rel="canonical" href="https://rohanvinaik.github.io/Wayfinder/experiment-plan/">
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+  <header class="site-header">
+    <button class="sidebar-toggle" aria-label="Toggle sidebar">&#9776;</button>
+    <a class="site-title" href="../">Wayfinder</a>
+    <button class="theme-toggle" aria-label="Toggle dark mode" title="Toggle dark mode">&#9790;</button>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" role="navigation" aria-label="Wiki navigation">
+      <div class="sidebar-header">
+        <a href="../">Wayfinder</a>
+      </div>
+      <div class="sidebar-group">
+  <h3>Documentation</h3>
+  <ul>
+    <li data-page="Home"><a href="../home/">Wayfinder — Navigational Proof Search</a></li>
+    <li data-page="Research"><a href="../research/">Research Paper</a></li>
+    <li data-page="Design"><a href="../design/">Engineering Design</a></li>
+    <li data-page="Experiment-Plan"><a href="../experiment-plan/">Experiment Plan</a></li>
+    <li data-page="Experiment-Results"><a href="../experiment-results/">Experiment Results</a></li>
+  </ul>
+</div>
+<div class="sidebar-group">
+  <h3>Theory</h3>
+  <ul>
+    <li data-page="Theory-Profile"><a href="../theory-profile/">Theory Profile</a></li>
+    <li data-page="Theory-Compass"><a href="../theory-compass/">Project Compass</a></li>
+  </ul>
+</div>
+    </nav>
+    <main class="content" role="main">
+      <article>
+        <p><strong>Documentation</strong> | 28 min read | <a href="../home/">Home</a></p>
+<p><strong>Version:</strong> 1.1 <strong>Date:</strong> March 6, 2026 <strong>Corresponding documents:</strong> <code>WAYFINDER_RESEARCH.md</code> (theory), <code>WAYFINDER_DESIGN.md</code> (engineering), <code>EXPERIMENT_RESULTS.md</code> (results ledger) <strong>Status:</strong> Implementation complete. Ready for data pipeline and experiments.</p>
+<hr>
+<h2 id="overview">Overview</h2>
+<p>This document specifies the sequence of work, tooling, compute decisions, and stop/go criteria for running the Wayfinder experiments. All source code and scripts are implemented (27 src files, 8 scripts, 1 config). This plan covers data pipeline execution and experimental evaluation.</p>
+<p>This plan produces three categories of results:</p>
+<ul>
+<li><strong>Stream 1 (Navigation)</strong>: Does structured semantic navigation — bank positions, IDF-weighted anchors, spreading activation — outperform dense embedding retrieval for premise selection and proof search?</li>
+</ul>
+<ul>
+<li><strong>Stream 2 (Architecture)</strong>: Does a ternary navigational decoder that produces directional coordinates, resolved through a semantic network, outperform tactic-token classification?</li>
+</ul>
+<ul>
+<li><strong>Stream 3 (Process Evaluation)</strong>: Does PAB's trajectory evaluation reveal information about the navigational learning process that endpoint metrics cannot?</li>
+</ul>
+<p>Every phase states what it validates in each stream. The experimental pipeline is designed so that a single set of experiments tests all three claims. Results are recorded in <code>docs/EXPERIMENT_RESULTS.md</code>.</p>
+<p><strong>Time horizon:</strong> 6-10 weeks for Phase 0-4. Phase 5+ contingent on results.</p>
+<p><strong>Compute budget:</strong> Apple Silicon (M-series Mac) as primary target. The architecture is designed for efficiency: small learnable navigational components (~400K trainable params) and symbolic search (SQLite). Encoder selection (Phase 0.6) will determine whether the encoder is frozen, fine-tuned, or aggressively pruned from a larger model — this is the main variable in compute requirements. A pruned math-native model (70-350M effective params) may require brief cloud GPU time for the pruning/fine-tuning step but runs locally thereafter.</p>
+<hr>
+<h2 id="hardware-distribution-strategy">Hardware & Distribution Strategy</h2>
+<p>Adapted from the proven ModelAtlas pipeline pattern: standalone workers, JSONL interchange, <code>scp</code>-deployable, <code>--resume</code> support.</p>
+<table><tbody>
+<tr><td>Machine</td><td>Role</td><td>Specs</td><td>Wayfinder Use</td></tr>
+<tr><td><strong>MLX laptop</strong></td><td>Primary dev + training</td><td>Apple Silicon M-series, MLX/Metal</td><td>Encoder eval, training, proof search, benchmarks</td></tr>
+<tr><td><strong>macpro</strong></td><td>Persistent CPU worker</td><td>Xeon 6C 3.5GHz, 12GB ECC, Ollama</td><td>LeanDojo extraction, proof network construction, anchor gap analysis, data conversion</td></tr>
+<tr><td><strong>homebridge</strong></td><td>Persistent CPU worker</td><td>i7 4C 2.6GHz, 16GB</td><td>Parallel extraction shards, accessible-premises crawl</td></tr>
+</tbody></table>
+<p><strong>Distribution pattern:</strong></p>
+<ul>
+<li>CPU-heavy extraction/analysis scripts are standalone workers with zero Wayfinder src/ imports</li>
+<li>All data exchange via JSONL (one JSON object per line, UTF-8)</li>
+<li>Workers support <code>--resume</code> (read output, build skip set, append)</li>
+<li>File sync via <strong>parsync</strong> (parallel SSH, resumable, chunked) instead of <code>scp</code></li>
+<li>Merge results back into the main DB on the laptop</li>
+</ul>
+<p><strong>Key parallelism</strong>: While the laptop runs encoder evaluation (Phase 0.6, GPU-bound), macpro and homebridge run proof network extraction and anchor gap analysis (Phase 0.1-0.5, CPU-only). Training never blocks on data preparation.</p>
+<hr>
+<h2 id="tools-extensions">Tools & Extensions</h2>
+<table><tbody>
+<tr><td>Tool</td><td>Verdict</td><td>Use</td></tr>
+<tr><td><strong>mlx-tune</strong></td><td>Adopted</td><td>Encoder LoRA fine-tuning on Apple Silicon. QLoRA, GGUF export.</td></tr>
+<tr><td><strong>mlx-vis</strong></td><td>Adopted</td><td>GPU-accelerated UMAP/t-SNE/PaCMAP on Metal. 70K points in ~3s. Visualization backbone.</td></tr>
+<tr><td><strong>parsync</strong></td><td>Adopted</td><td>Parallel SSH file sync for laptop-macpro-homebridge workflow.</td></tr>
+<tr><td><strong>LintGate</strong></td><td>Used throughout</td><td>Code quality, theory extraction, compass alignment during implementation.</td></tr>
+<tr><td><strong>Axle</strong> (axiom-axle)</td><td>Adopted (Lane B)</td><td>Cloud Lean 4 verification/repair/decomposition. <code>pip install wayfinder[axle]</code>. See DESIGN §8.0.</td></tr>
+</tbody></table>
+<hr>
+<h2 id="phase-0-proof-network-construction-week-1-2">Phase 0: Proof Network Construction (Week 1-2)</h2>
+<p><em>Goal: Build the semantic network of mathematical entities from Mathlib, and establish the data pipeline.</em> <em>Code status: All scripts implemented (<code>extract_proof_network.py</code>, <code>build_nav_training_data.py</code>, <code>anchor_gap_analysis.py</code>). Awaiting execution on data.</em></p>
+<h3 id="0-1-obtain-leandojo-benchmark-data">0.1 Obtain LeanDojo Benchmark Data</h3>
+<p><strong>What</strong>: Download LeanDojo's extracted Mathlib dataset — ~98,734 theorems with proof traces, intermediate goal states, and premise information.</p>
+<p><strong>How</strong>:</p>
+<pre><code class="language-bash">
+# LeanDojo provides extracted data via their Python package
+pip install lean-dojo
+python -c &quot;from lean_dojo import LeanGitRepo, trace; ...&quot;
+</code></pre>
+<p>Or use their pre-extracted dataset:</p>
+<pre><code class="language-bash">
+# ~98k theorems from Mathlib4, pre-traced
+# Each entry: theorem_statement, goal_states[], tactics[], premises[]
+</code></pre>
+<p><strong>Output</strong>: <code>data/leandojo_mathlib.jsonl</code> — one line per theorem with full proof trace.</p>
+<p><strong>Validation</strong>: Spot-check 100 random entries: goal states are valid Lean, tactics are real Lean tactics, premises reference real Mathlib lemmas.</p>
+<p><strong>Stop/go</strong>: If <90k theorems extract cleanly, investigate and fix. The benchmark dataset must be complete.</p>
+<h3 id="0-2-build-proof-network-schema">0.2 Build Proof Network Schema</h3>
+<p><strong>What</strong>: Create the SQLite semantic network schema (adapted from ModelAtlas) and populate with Mathlib entities.</p>
+<p><strong>How</strong>:</p>
+<pre><code class="language-python">
+# src/proof_network.py
+# Adapts ModelAtlas&#x27;s db.py schema for mathematical entities
+#
+# Tables: entities, entity_positions, anchors, entity_anchors, entity_links, anchor_idf
+# Banks: STRUCTURE, DOMAIN, DEPTH, AUTOMATION, CONTEXT, DECOMPOSITION
+# Bootstrap ~200 anchors from mathematical vocabulary
+</code></pre>
+<p><strong>Output</strong>: <code>data/proof_network.db</code> — SQLite database.</p>
+<p><strong>Validation</strong>:</p>
+<ul>
+<li>All ~100k Mathlib lemmas inserted as entities</li>
+<li>Bank positions assigned to ≥95% of entities (deterministic extraction from types/namespaces)</li>
+<li>≥3 anchors per entity on average</li>
+<li>IDF computed and cached</li>
+<li>Unit tests for navigate(), spread(), and scoring functions</li>
+</ul>
+<p><strong>Compute</strong>: Local, CPU-only, <2 hours.</p>
+<p><strong>Stop/go</strong>: If bank position coverage <90% or average anchors per entity <2, the extraction pipeline needs refinement.</p>
+<h3 id="0-3-implement-proof-network-extraction-pipeline">0.3 Implement Proof Network Extraction Pipeline</h3>
+<p><strong>What</strong>: Deterministic extraction of bank positions and anchors from Lean type information.</p>
+<p><strong>How</strong>:</p>
+<pre><code class="language-python">
+# scripts/extract_proof_network.py
+#
+# For each Mathlib lemma:
+#   1. Parse theorem type → STRUCTURE bank position
+#      - Count quantifiers, check for dependent types, identify prop vs data
+#   2. Namespace → DOMAIN bank position
+#      - Mathlib.Algebra → DOMAIN (0,0)
+#      - Mathlib.Topology → DOMAIN (+1,2)
+#      - Mathlib.Data.Nat → DOMAIN (-1,1)
+#   3. Proof length → DEPTH bank position
+#      - 1 tactic → DEPTH (-1,2)
+#      - 2-3 tactics → DEPTH (0,0)
+#      - 10+ tactics → DEPTH (+1,2)
+#   4. Tactic analysis → AUTOMATION bank position + anchors
+#      - Uses omega/simp/decide → AUTOMATION (-1,*)
+#      - Manual intro/cases/induction → AUTOMATION (+1,*)
+#   5. Context analysis → CONTEXT bank position
+#      - Count hypotheses in goal state
+#   6. Proof structure → DECOMPOSITION bank position
+#      - Count &#x27;have&#x27; statements, case splits
+#   7. Assign anchors based on type content, tactic usage, namespace
+</code></pre>
+<p><strong>Output</strong>: Populated <code>data/proof_network.db</code>.</p>
+<p><strong>Validation</strong>: Round-trip test — for 100 randomly selected lemmas, verify that:</p>
+<ul>
+<li>Bank positions are plausible (spot-check against manual judgment)</li>
+<li>Anchors are relevant (no false positives from pattern matching)</li>
+<li>IDF weights differentiate rare vs. common anchors</li>
+<li><code>navigate()</code> returns lemmas from the right namespace/domain when queried with domain-specific anchors</li>
+</ul>
+<h3 id="0-3b-extract-accessible-premises">0.3b Extract Accessible Premises</h3>
+<p><strong>What</strong>: For each theorem in Mathlib, extract the set of premises accessible via Lean's import structure. ReProver demonstrated a ~2% recall improvement from this filtering at zero compute cost.</p>
+<p><strong>How</strong>:</p>
+<pre><code class="language-python">
+# Part of scripts/extract_proof_network.py
+#
+# For each theorem T in Mathlib:
+#   1. Walk T&#x27;s transitive imports
+#   2. Collect all lemma/def entity_ids in imported files
+#   3. Store as accessible_premises set in proof_network.db
+#   4. navigate() pre-filters to accessible set before scoring
+</code></pre>
+<p><strong>Output</strong>: <code>accessible_premises</code> table in <code>data/proof_network.db</code> mapping (theorem_id → set of accessible entity_ids).</p>
+<p><strong>Validation</strong>: For 100 random theorems, verify that ground-truth premises are all in the accessible set. If any ground-truth premise is inaccessible, the extraction is wrong.</p>
+<p><strong>Compute</strong>: Local, CPU-only, <30 minutes. LeanDojo already provides this data.</p>
+<h3 id="0-4-build-navigational-training-data">0.4 Build Navigational Training Data</h3>
+<p><strong>What</strong>: Convert LeanDojo proof traces to navigational training examples.</p>
+<p><strong>How</strong>:</p>
+<pre><code class="language-python">
+# scripts/build_nav_training_data.py
+#
+# For each proof step in a proof trace:
+#   1. Goal state text → input
+#   2. Map tactic used → navigational directions:
+#      - omega → structure=-1, automation=-1, decompose=-1
+#      - intro → structure=0, automation=+1, decompose=0
+#      - cases → structure=+1, automation=+1, decompose=+1
+#      - simp [lemma1, lemma2] → structure=-1, automation=-1, decompose=0
+#      - have h : T := by → structure=0, automation=0, decompose=+1
+#   3. Extract ground-truth anchors from goal + tactic + premises
+#   4. Count remaining proof steps → progress label
+#   5. Solvability = 1.0 (all steps in successful proofs)
+#   6. Write to JSONL
+</code></pre>
+<p><strong>Output</strong>: <code>data/nav_training.jsonl</code>, <code>data/nav_eval.jsonl</code></p>
+<p><strong>Format</strong>:</p>
+<pre><code class="language-json">
+{
+  &quot;goal_state&quot;: &quot;⊢ ∀ x : ℕ, x + 0 = x&quot;,
+  &quot;theorem_id&quot;: &quot;Nat.add_zero&quot;,
+  &quot;nav_directions&quot;: {&quot;structure&quot;: -1, &quot;automation&quot;: -1, &quot;decompose&quot;: -1},
+  &quot;ground_truth_anchors&quot;: [&quot;nat-arithmetic&quot;, &quot;equality&quot;, &quot;omega-solvable&quot;],
+  &quot;ground_truth_tactic&quot;: &quot;omega&quot;,
+  &quot;ground_truth_premises&quot;: [],
+  &quot;remaining_steps&quot;: 0,
+  &quot;solvable&quot;: true
+}
+</code></pre>
+<p><strong>Validation</strong>: Verify that navigational direction labels are consistent — similar tactics should produce similar directions. Verify that anchor labels match the proof network's anchor dictionary.</p>
+<p><strong>Stop/go</strong>: If >10% of proof steps can't be mapped to navigational directions (unmapped tactics), extend the mapping table.</p>
+<h3 id="0-5-anchor-gap-analysis-iterative">0.5 Anchor Gap Analysis (Iterative)</h3>
+<p><strong>What</strong>: Validate that the proof network can actually retrieve correct premises before any training begins. This is the single highest-leverage Phase 0 activity.</p>
+<p><strong>How</strong>:</p>
+<pre><code class="language-python">
+# scripts/anchor_gap_analysis.py
+#
+# For 500 randomly selected proof steps:
+#   1. Build a &quot;perfect&quot; navigational query from ground-truth:
+#      - Bank positions from the ground-truth tactic mapping
+#      - Anchors from the ground-truth anchor labels
+#   2. Run navigate(proof_network, perfect_query, limit=16)
+#   3. Check: is the ground-truth premise in the top-16 results?
+#   4. For each miss: identify what anchors WOULD have connected
+#      the goal to the correct premise
+#   5. Cluster gap anchors by mathematical theme
+#   6. Add top clusters as new anchors, re-populate, re-run
+</code></pre>
+<p><strong>Output</strong>: Iteratively refined anchor dictionary. Gap analysis report per iteration.</p>
+<p><strong>Validation</strong>: Top-16 recall on the 500-step sample using perfect navigational queries.</p>
+<p><strong>Stop/go</strong>: Iterate until top-16 recall ≥ 70%. If recall plateaus below 50% after 3 iterations, the bank positioning scheme (not just anchors) needs rethinking.</p>
+<p><strong>Known gap areas to watch for</strong>:</p>
+<ul>
+<li>Type coercion patterns (↑n, Nat.cast, etc.)</li>
+<li>Algebraic hierarchy position (monoid → group → ring → field)</li>
+<li>Recurring proof patterns (epsilon-delta, contrapositive, diagonal arguments)</li>
+</ul>
+<h3 id="0-6-encoder-selection-research">0.6 Encoder Selection Research</h3>
+<p><strong>What</strong>: Evaluate encoder candidates before committing. The encoder is the system's perceptual bottleneck — a bad choice here caps everything downstream.</p>
+<p><strong>Candidates to evaluate</strong>:</p>
+<table><tbody>
+<tr><td>Candidate</td><td>Size</td><td>Math capability</td><td>Unicode handling</td><td>Cost</td></tr>
+<tr><td>ByT5-small (de facto Lean standard)</td><td>299M</td><td>Generic, proven for Lean</td><td>Byte-level, native</td><td>Low (120 GPU-hrs)</td></tr>
+<tr><td>ByT5-small + contrastive fine-tuning on Mathlib</td><td>299M</td><td>Learned from Lean data</td><td>Byte-level, native</td><td>Low-Medium</td></tr>
+<tr><td>Qwen 3.5 (embedding mode)</td><td>~1-7B</td><td>Strong math training</td><td>Subword tokenizer</td><td>Medium</td></tr>
+<tr><td>DeepSeek-Math (encoder layers)</td><td>~1-7B</td><td>Formal math specific</td><td>Subword tokenizer</td><td>Medium</td></tr>
+<tr><td>BitNet b1.58 ternary encoder</td><td>~2B effective, ternary</td><td>Matches FP on math reasoning</td><td>Depends on impl</td><td>Medium</td></tr>
+<tr><td>Aggressively pruned 7B (SparseGPT/Wanda)</td><td>~70-350M effective</td><td>Retains math capability</td><td>Inherited from base</td><td>High initial, low runtime</td></tr>
+<tr><td>Lean-retrained tokenizer variant (arXiv 2501.13959)</td><td>~299M</td><td>Lean-specific</td><td>Custom tokenizer</td><td>Low-Medium</td></tr>
+</tbody></table>
+<p><strong>Critical insight from external research</strong>: Byte-level encoding is important for Lean's Unicode-heavy syntax (∀, ⊢, →, ℕ, ⋃). Subword tokenizers fragment mathematical notation. ByT5-small is the proven standard used by ReProver, LeanAgent, and Lean Copilot. Math-native models (Qwen, DeepSeek-Math) may have better math understanding but worse Unicode handling. The BitNet ternary encoder is the most architecturally distinctive option — a fully ternary pipeline from encoder to decoder.</p>
+<p><strong>How</strong>: For each candidate: 1. Encode 1000 Mathlib goal states 2. Measure: do goal states with shared premises/tactics cluster together? (nearest-neighbor premise overlap) 3. Measure: are alpha-equivalent goals (same theorem, different variable names) close? 4. Measure: are goals from different domains (algebra vs topology) separable?</p>
+<p><strong>Output</strong>: Encoder comparison report with quantitative clustering metrics.</p>
+<p><strong>Stop/go</strong>: Select the encoder with best premise-clustering score that fits within compute budget. If no candidate achieves >50% nearest-neighbor premise overlap at k=10, consider fine-tuning the best candidate on Mathlib goal state pairs before proceeding.</p>
+<p><strong>Note on aggressive pruning</strong>: Recent work shows that structured pruning can remove 95-99% of a model's parameters while retaining domain-specific performance when followed by brief fine-tuning. A 7B model pruned to ~70-350M parameters and fine-tuned on Mathlib goal states could provide math-native embeddings at small-model compute cost. This is a high-reward research direction worth a dedicated 2-3 day spike.</p>
+<h3 id="0-7-implement-pab-profile-infrastructure">0.7 Implement PAB Profile Infrastructure</h3>
+<p><strong>What</strong>: Adapt the existing PABTracker from BalancedSashimi for navigational metrics.</p>
+<p><strong>How</strong>: Extend <code>src/pab_tracker.py</code> with:</p>
+<ul>
+<li>Per-bank navigational accuracy (6 separate accuracy curves)</li>
+<li>Anchor prediction F1 (multi-label classification quality)</li>
+<li>Progress prediction correlation (Spearman ρ with actual remaining steps)</li>
+<li>Navigational consistency (do similar goals produce similar directions?)</li>
+</ul>
+<p><strong>Validation</strong>: Unit tests with synthetic training data, metric hand-computation verification.</p>
+<p><strong>Compute</strong>: Local, CPU-only, <1 hour.</p>
+<hr>
+<h2 id="phase-1-core-pipeline-week-2-3">Phase 1: Core Pipeline (Week 2-3)</h2>
+<p><em>Goal: Full forward pass from goal state to navigational output, with proof network resolution.</em> <em>Code status: All modules implemented (<code>proof_navigator.py</code>, <code>proof_network.py</code>, <code>resolution.py</code>, <code>proof_search.py</code>, <code>lean_interface.py</code>, <code>nav_contracts.py</code>, <code>losses.py</code>). Awaiting integration testing with real data.</em></p>
+<h3 id="1-1-implement-goalanalyzer-with-bank-anchor-heads">1.1 Implement GoalAnalyzer with Bank/Anchor Heads</h3>
+<p><strong>What</strong>: Extend the existing GoalAnalyzer to predict bank positions and anchors alongside features.</p>
+<p><strong>How</strong>:</p>
+<pre><code class="language-python">
+# src/goal_analyzer.py — extend existing module
+#
+# Add:
+#   self.bank_heads: nn.ModuleDict — one 3-class classifier per bank
+#     (maps features to {-1, 0, +1} for each bank)
+#   self.anchor_head: nn.Linear(feature_dim, num_anchors)
+#     (multi-label sigmoid classification)
+#
+# forward() returns:
+#   features: Tensor [batch, 256]
+#   bank_positions: dict[str, Tensor]  # per-bank logits
+#   anchor_logits: Tensor [batch, num_anchors]
+</code></pre>
+<p><strong>Validation</strong>: Smoke test — synthetic embeddings produce plausible bank positions and anchor logits. Test that gradients flow through all heads.</p>
+<h3 id="1-2-implement-proofnavigator-ternary-navigational-decoder">1.2 Implement ProofNavigator (Ternary Navigational Decoder)</h3>
+<p><strong>What</strong>: Replace the existing TernaryDecoder's vocabulary heads with navigational heads. Uses expanded 6-bank navigation to resolve the many-to-one tactic mapping problem (see WAYFINDER_DESIGN.md Section 5.1).</p>
+<p><strong>How</strong>:</p>
+<pre><code class="language-python">
+# src/proof_navigator.py — new module
+#
+# class ProofNavigator(nn.Module):
+#   Hidden layers: TernaryLinear (STE)
+#   Output heads (6 direction heads, one per navigable bank):
+#     structure_head: TernaryLinear(hidden, 3)  — 3 classes for {-1, 0, +1}
+#     domain_head: TernaryLinear(hidden, 3)
+#     depth_head: TernaryLinear(hidden, 3)
+#     automation_head: TernaryLinear(hidden, 3)
+#     context_head: TernaryLinear(hidden, 3)
+#     decompose_head: TernaryLinear(hidden, 3)
+#     anchor_head: nn.Linear(hidden, num_anchors)  — continuous, sigmoid
+#     progress_head: nn.Linear(hidden, 1)  — continuous, regression
+#     critic_head: nn.Linear(hidden, 1)  — continuous, sigmoid
+#
+#   navigable_banks configured via config; graceful degradation to 3-bank
+</code></pre>
+<p><strong>Validation</strong>: Forward + backward pass smoke test. Verify ternary quantization on hidden layers. Verify that navigational heads produce valid {-1, 0, +1} outputs after argmax. Verify that 6-bank direction vectors disambiguate <code>intro</code> vs <code>apply</code> and <code>cases</code> vs <code>induction</code> (the key many-to-one collisions from the 3-bank design).</p>
+<h3 id="1-3-implement-structured-resolution">1.3 Implement Structured Resolution</h3>
+<p><strong>What</strong>: The deterministic resolution layer that converts navigational output to tactics and premises via the proof network.</p>
+<p><strong>How</strong>:</p>
+<pre><code class="language-python">
+# src/resolution.py — new module
+#
+# def resolve(nav_output, proof_network_conn, context):
+#   query = build_query(nav_output)
+#   tactics = navigate_tactics(proof_network_conn, query)
+#   premises = navigate_premises(proof_network_conn, query)
+#   spread_scores = spread(proof_network_conn, context.seeds)
+#   return combine(tactics, premises, spread_scores)
+#
+# Adapts ModelAtlas&#x27;s navigate() and spread() for the proof domain.
+</code></pre>
+<p><strong>Validation</strong>: Given a hand-crafted navigational output (e.g., structure=-1, automation=-1, anchors=["nat-arithmetic", "omega-solvable"]), verify that <code>resolve()</code> returns <code>omega</code> as the top tactic and appropriate arithmetic lemmas as premises.</p>
+<h3 id="1-4-full-pipeline-smoke-test">1.4 Full Pipeline Smoke Test</h3>
+<p><strong>What</strong>: End-to-end test: goal state text → encoder → analyzer → bridge → navigator → resolution → tactic + premises.</p>
+<p><strong>Validation</strong>:</p>
+<ul>
+<li>Forward pass completes without error for batch of 4 goal states</li>
+<li>Backward pass produces gradients on all learnable parameters</li>
+<li>Resolution produces real Mathlib tactic names (not garbage)</li>
+<li>Progress head outputs scalar in reasonable range</li>
+<li>Critic head outputs probability in [0, 1]</li>
+</ul>
+<p><strong>Stop/go</strong>: If the full pipeline doesn't produce gradients on all components, debug before proceeding.</p>
+<hr>
+<h2 id="phase-2-navigation-training-week-3-5">Phase 2: Navigation Training (Week 3-5)</h2>
+<p><em>Goal: Train the navigational components and validate that the proof network enables meaningful retrieval.</em> <em>Code status: Training script (<code>train_navigator.py</code>), eval scripts (<code>eval_retrieval.py</code>, <code>eval_spreading.py</code>), and config (<code>wayfinder.yaml</code>) all implemented. Awaiting Phase 0-1 data.</em></p>
+<h3 id="2-0-literature-review-lean4-proof-search-algorithms">2.0 Literature Review: Lean4 Proof Search Algorithms</h3>
+<p><strong>What</strong>: Survey existing work on proof search termination, progress estimation, and potential functions in interactive theorem provers. The Mutation Theory connections (trajectory monotonicity, Lyapunov convergence) may have tighter domain-specific analogs in the ITP literature.</p>
+<p><strong>Already completed</strong>: Initial survey in <code>docs/Wayfinder_External_Research.md</code> covers 8 major systems. Key findings already incorporated:</p>
+<ul>
+<li>AlphaProof uses remaining-tactic-count as value target (adopted for critic head)</li>
+<li>HTPS: soft critic targets >> hard binary (adopted)</li>
+<li>LeanProgress: proof history gives 13-point improvement (adopted)</li>
+<li>BFS-Prover: best-first search competitive with MCTS when policy is strong</li>
+<li>No system uses knowledge graph navigation for proof search (validates novelty)</li>
+<li>LeanHammer hybrid achieves 37.3% (hammer integration adopted)</li>
+</ul>
+<p><strong>Remaining areas to investigate</strong>:</p>
+<ul>
+<li>Well-founded recursion and termination metrics in Lean 4 itself</li>
+<li>Proof complexity measures (proof tree depth, cut-rank, quantifier depth) as alternative Lyapunov function candidates — raw step count may not be the best training target for the progress head</li>
+<li>QEDCartographer's reward-free RL for state values — compare to our Lyapunov approach</li>
+<li>Crouse et al.'s GNN-based proof length prediction in first-order logic</li>
+<li>Formal connection between proof complexity and teaching dimension (T5.17)</li>
+</ul>
+<p><strong>Output</strong>: Annotated bibliography in <code>docs/RELATED_PROOF_SEARCH.md</code>. Focus on: (1) better progress head training targets, (2) formal convergence criteria, (3) any existing structured retrieval approaches we may have missed.</p>
+<p><strong>Time</strong>: 2-3 days concurrent with Phase 1/2 implementation.</p>
+<h3 id="2-1-navigational-direction-training">2.1 Navigational Direction Training</h3>
+<p><strong>What</strong>: Train the ProofNavigator to predict correct navigational directions from goal state embeddings.</p>
+<p><strong>How</strong>:</p>
+<pre><code class="language-python">
+# scripts/train_navigator.py
+#
+# Training loop:
+#   1. Encode goal states (frozen encoder)
+#   2. GoalAnalyzer extracts features + bank positions + anchor logits
+#   3. Bridge compresses
+#   4. ProofNavigator predicts directions, anchors, progress, critic
+#   5. Loss = L_nav + L_anchor + L_progress + L_critic (UW-SO weighted)
+#      Note: L_critic uses SOFT targets (MSE on normalized distance-to-completion),
+#      NOT binary BCE. HTPS found hard binary targets worse than no critic.
+#      AlphaProof also trains value on remaining tactic count, not binary.
+#   5b. Progress and critic heads receive proof history (mean-pooled embeddings
+#       of previously closed goals, concatenated to bridge input). LeanProgress
+#       showed 61.8% → 75.1% accuracy from including history.
+#   6. Backprop through all learnable components
+#
+# Curriculum:
+#   Phase A (steps 0-500): 1-2 step proofs only
+#   Phase B (steps 500-1500): ≤5 step proofs
+#   Phase C (steps 1500+): all proofs, oversampling medium difficulty
+</code></pre>
+<p><strong>Metrics (per checkpoint)</strong>:</p>
+<ul>
+<li>Navigational accuracy: % correct {-1, 0, +1} per bank (6 banks, tracked independently)</li>
+<li>Per-bank learning order: which banks crystallize first? (hypothesis: AUTOMATION and STRUCTURE first, DOMAIN and CONTEXT last)</li>
+<li>Anchor F1: multi-label F1 on anchor predictions</li>
+<li>Progress MAE: mean absolute error on remaining steps</li>
+<li>Critic AUC: area under ROC for solvability prediction</li>
+<li>Ternary crystallization: % of stable weight signs</li>
+<li>Scoring mechanism comparison: run retrieval eval with each scoring variant (multiplicative, confidence-weighted, soft-floor) at each checkpoint</li>
+</ul>
+<p><strong>PAB tracking</strong>: All metrics recorded via PABTracker at every 50-step checkpoint.</p>
+<p><strong>Stop/go</strong>:</p>
+<ul>
+<li>After Phase A (step 500): navigational accuracy ≥ 60% on 1-2 step proofs. If not, the navigational labeling or the architecture has a fundamental issue.</li>
+<li>After Phase B (step 1500): navigational accuracy ≥ 50% on ≤5 step proofs. Progress MAE < 2.0 steps.</li>
+<li>After Phase C (step 3000): navigational accuracy ≥ 45% on all proofs. Anchor F1 ≥ 0.3.</li>
+</ul>
+<h3 id="2-2-proof-network-retrieval-validation">2.2 Proof Network Retrieval Validation</h3>
+<p><strong>What</strong>: Evaluate whether navigational premise retrieval matches or exceeds dense retrieval quality.</p>
+<p><strong>How</strong>:</p>
+<pre><code class="language-python">
+# scripts/eval_retrieval.py
+#
+# For each theorem in eval set:
+#   1. Get ground-truth premises from LeanDojo data
+#   2. Run navigational retrieval: navigate(proof_network, predicted_query)
+#   3. Run dense retrieval baseline: dot_product(goal_embedding, premise_embeddings)
+#   4. Compare recall@k for k in [1, 4, 8, 16, 32]
+</code></pre>
+<p><strong>Target</strong>: Navigational retrieval recall@16 ≥ 80% of dense retrieval recall@16. If navigational retrieval is within 80% of the learned baseline using <em>zero neural inference</em> at retrieval time, the paradigm is validated.</p>
+<p><strong>Ablations</strong>:</p>
+<ul>
+<li>Without IDF weighting → does IDF matter?</li>
+<li>Without bank alignment → are bank positions useful?</li>
+<li>Without spreading activation → does spreading help?</li>
+<li>Only anchors (no banks) → is the anchor dictionary sufficient alone?</li>
+</ul>
+<p><strong>Stop/go</strong>: If navigational retrieval recall@16 < 50% of dense retrieval, the proof network needs enrichment (more anchors, better bank positions, or hybrid retrieval).</p>
+<h3 id="2-3-spreading-activation-validation">2.3 Spreading Activation Validation</h3>
+<p><strong>What</strong>: Evaluate spreading activation as a proof search heuristic.</p>
+<p><strong>How</strong>:</p>
+<pre><code class="language-python">
+# scripts/eval_spreading.py
+#
+# For each multi-step proof in eval set:
+#   1. Initialize spread() from step 0&#x27;s goal state
+#   2. At each step, check whether the ground-truth premise was in the
+#      top-k activated entities
+#   3. Compare to: random baseline, dense retrieval, navigational retrieval alone
+</code></pre>
+<p><strong>Target</strong>: Spreading activation should improve premise recall for later proof steps (where context from earlier steps is informative). Specifically: for proof steps 3+, spreading activation should add ≥5% recall@16 over navigational retrieval alone.</p>
+<hr>
+<h2 id="phase-3-proof-search-integration-week-5-7">Phase 3: Proof Search Integration (Week 5-7)</h2>
+<p><em>Goal: Close the loop with the Lean kernel. Full proof search with navigational guidance.</em> <em>Code status: Search loop (<code>proof_search.py</code>), Lean interface (<code>lean_interface.py</code>), proof auditor (<code>proof_auditor.py</code>), and benchmark runner (<code>run_benchmark.py</code>) all implemented.</em> <em>Architecture: 3-lane verification — Lane A (Pantograph, local), Lane B (Axle, cloud), Lane C (lean4checker, high-assurance). See DESIGN §8.0.</em></p>
+<h3 id="3-1-lean-kernel-integration">3.1 Lean Kernel Integration</h3>
+<p><strong>What</strong>: Set up Pantograph-based interaction with the Lean 4 kernel for tactic verification.</p>
+<p><strong>How</strong>:</p>
+<pre><code class="language-python">
+# src/lean_interface.py
+#
+# class LeanKernel:
+#   def try_tactic(self, goal_state, tactic_text) -&gt; TacticResult:
+#       &quot;&quot;&quot;Send tactic to Lean kernel, get success/failure + new goals.&quot;&quot;&quot;
+#       ...
+#
+# Uses LeanDojo&#x27;s Pantograph server for goal state interaction.
+</code></pre>
+<p><strong>Validation</strong>: Send 100 known-good tactic applications, verify all succeed. Send 100 known-bad applications, verify all fail with appropriate error.</p>
+<p><strong>Stop/go</strong>: If Lean kernel interaction is unreliable (>5% false negatives on known-good tactics), fix before proceeding.</p>
+<h3 id="3-2-proof-search-loop">3.2 Proof Search Loop</h3>
+<p><strong>What</strong>: Implement the outer search loop: neural prediction → symbolic resolution → Lean verification → update context.</p>
+<p><strong>How</strong>:</p>
+<pre><code class="language-python">
+# src/proof_search.py
+#
+# def search(theorem, navigator, proof_network, lean_kernel, budget=600):
+#   open_goals = [initial_goal]
+#   context = SearchContext()
+#   attempts = 0
+#
+#   while open_goals and attempts &lt; budget:
+#       goal = select_goal(open_goals, navigator)  # critic + progress
+#       tactics, premises = predict_and_resolve(goal, navigator, proof_network, context)
+#
+#       for tactic, premise_set in candidates(tactics, premises):
+#           result = lean_kernel.try_tactic(goal, lower(tactic, premise_set))
+#           attempts += 1
+#           if result.success:
+#               open_goals.remove(goal)
+#               open_goals.extend(result.new_goals)
+#               context.record_success(...)
+#               break
+#           else:
+#               context.record_failure(...)
+#
+#   return len(open_goals) == 0  # proved?
+</code></pre>
+<p><strong>Validation</strong>: Run on 50 easy theorems (1-2 step proofs). Target: ≥80% proved within budget of 100 attempts.</p>
+<h3 id="3-2b-hammer-integration">3.2b Hammer Integration</h3>
+<p><strong>What</strong>: Integrate LeanHammer/Aesop as a complementary solver for goals the navigator identifies as fully decidable (AUTOMATION = -1).</p>
+<p><strong>How</strong>:</p>
+<pre><code class="language-python">
+# In src/proof_search.py, modify the search loop:
+#
+# if nav_output.automation_direction == -1:
+#     # Delegate to hammer — this goal is in the decidable region
+#     hammer_result = lean_kernel.try_hammer(goal.state, premises[:16], timeout=30)
+#     if hammer_result.success:
+#         open_goals.remove(goal)
+#         context.record_success(hammer_result.tactic, hammer_result.premises)
+#         continue
+#     # If hammer fails, fall through to navigational resolution
+</code></pre>
+<p><strong>Rationale</strong>: LeanHammer (2025) shows hybrid neural+symbolic achieves 37.3% — outperforming any single method by 21%. The AUTOMATION bank direction naturally routes between Wayfinder (AUTOMATION ≥ 0) and hammers (AUTOMATION = -1). Wayfinder's navigational premise retrieval feeds candidates to the hammer, combining structured selection with ATP power.</p>
+<p><strong>Validation</strong>: Compare proof rate with and without hammer delegation on 200 test theorems. Measure what fraction of proved theorems use the hammer path.</p>
+<h3 id="3-3-benchmark-evaluation">3.3 Benchmark Evaluation</h3>
+<p><strong>What</strong>: Evaluate on standard benchmarks.</p>
+<p><strong>Benchmarks</strong>: 1. <strong>MiniF2F-test</strong> (488 problems): Primary comparison benchmark. 2. <strong>Mathlib test split</strong> (~2k held-out theorems): Larger-scale evaluation.</p>
+<p><strong>Metrics</strong>:</p>
+<ul>
+<li>Theorems proved (within search budget)</li>
+<li>Average search budget consumed per proof</li>
+<li>Neural forward passes per proof (should be dramatically lower than baselines)</li>
+<li>Wall-clock time per proof</li>
+</ul>
+<p><strong>Baselines for comparison</strong>:</p>
+<ul>
+<li>ReProver (published numbers)</li>
+<li>LeanProgress (published numbers)</li>
+<li>DeepSeek-Prover-V2 (published numbers, noting parameter count difference)</li>
+<li>Ablated Wayfinder variants (from Phase 2 ablations)</li>
+</ul>
+<p><strong>Stop/go</strong>:</p>
+<ul>
+<li>MiniF2F: ≥20% proved (competitive with ReProver-scale systems, given our much smaller model)</li>
+<li>Mathlib test: ≥15% proved</li>
+<li>Neural forward passes: ≤50% of ReProver per proof (demonstrating the efficiency thesis)</li>
+</ul>
+<p>If proved rates are <10%, analyze failure modes before Phase 4.</p>
+<h3 id="3-4-lane-b-axle-proof-audit-integration">3.4 Lane B: Axle Proof Audit Integration</h3>
+<p><strong>What</strong>: Wire the <code>ProofAuditor</code> (Lane B) as a post-search verification and repair layer.</p>
+<p><strong>How</strong>: 1. After Lane A search completes (success or failure), optionally pass the proof to Lane B. 2. For <strong>successful</strong> Lane A proofs: <code>auditor.verify()</code> provides authoritative confirmation. Tagged <code>raw_success</code>. 3. For <strong>failed</strong> Lane A proofs with partial progress: <code>auditor.repair()</code> attempts to close remaining goals with terminal tactics (<code>grind</code>, <code>aesop</code>, <code>simp</code>, <code>omega</code>, <code>decide</code>). Tagged <code>axle_repair_only</code>. 4. For <strong>failed</strong> Lane A proofs: <code>auditor.decompose()</code> via <code>sorry2lemma</code> extracts subgoals. Navigator retries each subgoal independently. Tagged <code>axle_assisted_success</code> if all subgoals close.</p>
+<p><strong>Cost controls</strong>:</p>
+<ul>
+<li>Content-hash cache (SHA-256) avoids redundant API calls</li>
+<li>Only invoke Axle on top-N candidates or theorems with high critic score</li>
+<li>Bounded async concurrency (<code>axle.max_concurrency</code> in config)</li>
+<li>Fallback policy: on timeout/429/503, Lane B returns failed <code>AuditResult</code>; Lane A result stands as-is</li>
+</ul>
+<p><strong>Metric separation</strong> (enforced in <code>run_benchmark.py</code>):</p>
+<ul>
+<li><code>raw_success</code>: Lane A proved, no Axle involvement</li>
+<li><code>axle_assisted_success</code>: Lane A partial + Axle decompose/repair completed the proof</li>
+<li><code>axle_repair_only</code>: Axle <code>repair_proofs</code> alone closed remaining goals</li>
+</ul>
+<p><strong>Validation</strong>: Run 200 benchmark theorems with Lane B enabled. Report all three metric categories separately. Verify cache hit rate >50% on repeated proofs.</p>
+<p><strong>Scope caveat</strong>: Axle is designed for simple imports/theorems/definitions. Pin <code>axle.environment</code> in config; update only with Mathlib version bumps. For leaderboard submissions, additionally verify with Lane C (lean4checker/Comparator/SafeVerify).</p>
+<h3 id="3-5-axle-enriched-proof-network-optional">3.5 Axle-Enriched Proof Network (Optional)</h3>
+<p><strong>What</strong>: Use Axle's <code>extract_theorems</code> to enrich the proof network with dependency metadata not available from LeanDojo extraction alone.</p>
+<p><strong>How</strong>: <code>auditor.extract_theorems()</code> returns per-theorem <code>proof_length</code>, <code>tactic_counts</code>, and 6 dependency flavors (<code>local_type_dependencies</code>, <code>local_value_dependencies</code>, <code>external_type_dependencies</code>, <code>external_value_dependencies</code>, <code>local_syntactic_dependencies</code>, <code>external_syntactic_dependencies</code>). Write an enrichment script that merges these fields into <code>proof_network.db</code> entity records.</p>
+<p><strong>Value</strong>: Richer dependency graph for spreading activation. <code>tactic_counts</code> directly validates tactic direction labels. <code>proof_length</code> correlates with DEPTH bank positions.</p>
+<hr>
+<h2 id="phase-4-evaluation-and-ablation-week-7-9">Phase 4: Evaluation and Ablation (Week 7-9)</h2>
+<p><em>Goal: Deep analysis of results across all three streams.</em></p>
+<h3 id="4-1-stream-1-analysis-navigation-vs-dense-retrieval">4.1 Stream 1 Analysis: Navigation vs. Dense Retrieval</h3>
+<p><strong>Questions to answer</strong>:</p>
+<ul>
+<li>Where does navigational retrieval outperform dense retrieval? (Which domains, which proof types?)</li>
+<li>Where does it underperform? (Is the deficit in bank positions, anchors, or IDF weighting?)</li>
+<li>What is the compute profile? (Neural forward passes saved per proof)</li>
+<li>Does the multiplicative scoring prevent good matches that additive scoring would find?</li>
+</ul>
+<h3 id="4-2-stream-2-analysis-navigational-decoder-vs-token-classification">4.2 Stream 2 Analysis: Navigational Decoder vs. Token Classification</h3>
+<p><strong>Questions to answer</strong>:</p>
+<ul>
+<li>Do navigational coordinates generalize to unseen theorem types better than vocabulary indices?</li>
+<li>Does the ternary decoder's crystallization pattern reveal structured learning?</li>
+<li>Which navigational bank is learned first? Does the order match architectural expectations?</li>
+<li>Does the anchor prediction quality correlate with proof success?</li>
+</ul>
+<h3 id="4-3-stream-3-analysis-pab-trajectory-evaluation">4.3 Stream 3 Analysis: PAB Trajectory Evaluation</h3>
+<p><strong>Questions to answer</strong>:</p>
+<ul>
+<li>Does navigational accuracy trajectory predict final proof success better than loss trajectory?</li>
+<li>Does crystallization rate predict navigational consistency?</li>
+<li>Does progress prediction accuracy improve monotonically? Does it plateau?</li>
+<li>Does PAB detect failure modes that endpoint metrics miss?</li>
+</ul>
+<h3 id="4-4-ablation-matrix">4.4 Ablation Matrix</h3>
+<p>Run full evaluation for each ablation variant from Phase 2:</p>
+<table><tbody>
+<tr><td>Variant</td><td>MiniF2F</td><td>Mathlib</td><td>Retrieval R@16</td><td>FP/proof</td><td>Notes</td></tr>
+<tr><td>Full Wayfinder</td><td>—</td><td>—</td><td>—</td><td>—</td><td>Primary</td></tr>
+<tr><td>Dense retrieval (no proof network)</td><td>—</td><td>—</td><td>—</td><td>—</td><td>Navigation thesis</td></tr>
+<tr><td>Tactic classification (no navigation)</td><td>—</td><td>—</td><td>—</td><td>—</td><td>Architecture thesis</td></tr>
+<tr><td>No spreading activation</td><td>—</td><td>—</td><td>—</td><td>—</td><td>Spreading thesis</td></tr>
+<tr><td>No progress head</td><td>—</td><td>—</td><td>—</td><td>—</td><td>Progress thesis</td></tr>
+<tr><td>Continuous decoder (no ternary)</td><td>—</td><td>—</td><td>—</td><td>—</td><td>Ternary thesis</td></tr>
+<tr><td>No IDF weighting</td><td>—</td><td>—</td><td>—</td><td>—</td><td>IDF thesis</td></tr>
+<tr><td>No bank alignment (anchors only)</td><td>—</td><td>—</td><td>—</td><td>—</td><td>Bank thesis</td></tr>
+<tr><td>Binary critic (BCE, not soft MSE)</td><td>—</td><td>—</td><td>—</td><td>—</td><td>HTPS soft-target thesis</td></tr>
+<tr><td>No proof history input</td><td>—</td><td>—</td><td>—</td><td>—</td><td>LeanProgress history thesis</td></tr>
+<tr><td>No hammer delegation</td><td>—</td><td>—</td><td>—</td><td>—</td><td>Hammer complementarity thesis</td></tr>
+<tr><td>No accessible-premises filter</td><td>—</td><td>—</td><td>—</td><td>—</td><td>ReProver filtering thesis</td></tr>
+<tr><td>3-bank navigation (original design)</td><td>—</td><td>—</td><td>—</td><td>—</td><td>6-bank expansion thesis</td></tr>
+</tbody></table>
+<h3 id="4-5-write-up">4.5 Write-up</h3>
+<p><strong>Deliverables</strong>:</p>
+<ul>
+<li>Updated <code>WAYFINDER_RESEARCH.md</code> with experimental results</li>
+<li><code>docs/EXPERIMENT_RESULTS.md</code> — raw results ledger</li>
+<li>PAB profile comparisons across all variants</li>
+<li>Failure analysis with navigational interpretation</li>
+</ul>
+<hr>
+<h2 id="phase-5-scale-and-extend-week-9-contingent-on-results">Phase 5: Scale and Extend (Week 9+, contingent on results)</h2>
+<h3 id="5-1-enriched-proof-network">5.1 Enriched Proof Network</h3>
+<p>If navigational retrieval underperforms dense retrieval:</p>
+<ul>
+<li>Add LLM-based anchor extraction (Tier 3) for subtle mathematical properties</li>
+<li>Add cross-namespace links from proof co-occurrence analysis</li>
+<li>Experiment with finer-grained bank positions (depth 3-4 instead of 1-2)</li>
+</ul>
+<h3 id="5-2-online-learning-with-navigational-wavefront-curriculum">5.2 Online Learning with Navigational Wavefront Curriculum</h3>
+<p>If proof search works but slowly improves:</p>
+<ul>
+<li>Update proof network links based on successful proofs (HTPS-inspired online training)</li>
+<li>Add new anchors discovered from proof patterns</li>
+<li>Re-compute IDF as the network evolves</li>
+<li><strong>Navigational wavefront curriculum</strong>: Order new training theorems by distance in the proof network from already-proven results. Spread activation from the set of proven theorems; the frontier (theorems 1-2 hops away with highest activation) defines the next training batch. This addresses the saturation problem: up to 98.5% of proofs during expert iteration are incorrect. By targeting the "cusp of provability" (STP found 47% success on cusp-generated conjectures vs 11.4% on random unproved), training signal is dramatically denser.</li>
+</ul>
+<h3 id="5-3-hybrid-retrieval">5.3 Hybrid Retrieval</h3>
+<p>If navigational and dense retrieval have complementary strengths:</p>
+<ul>
+<li>Use navigational retrieval for initial candidate set (fast, high recall)</li>
+<li>Re-rank with dense retrieval for top-k precision (one neural forward pass for k candidates)</li>
+<li>Compare to pure-dense and pure-navigational</li>
+</ul>
+<h3 id="5-4-subgoal-decomposition-training">5.4 Subgoal Decomposition Training</h3>
+<p>If the SubgoalDecomposer shows promise in ablations:</p>
+<ul>
+<li>Train on DeepSeek-Prover-V2-style <code>have</code>-chain examples</li>
+<li>Evaluate decomposition quality independently</li>
+<li>Measure impact on longer proofs (5+ steps)</li>
+</ul>
+<hr>
+<h2 id="definition-of-ready-to-run">Definition of Ready to Run</h2>
+<p>The primary Wayfinder config works end-to-end:</p>
+<ul>
+<li>[ ] <code>proof_network.db</code> populated with ~98k entities</li>
+<li>[ ] Anchor gap analysis: top-16 recall >= 70% on perfect queries</li>
+<li>[ ] Encoder chosen and integrated</li>
+<li>[ ] Full pipeline forward+backward works on real data</li>
+<li>[ ] Training runs 3000+ steps with decreasing loss, improving nav accuracy</li>
+<li>[ ] Proof search proves >= 5 trivial theorems end-to-end</li>
+<li>[ ] Benchmark runner produces metrics on MiniF2F subset</li>
+<li>[ ] Core tests pass (proof network, navigator, resolution, search, training)</li>
+<li>[ ] Reproducible within tolerance (same seed -> metrics within +/- 1%)</li>
+</ul>
+<p><strong>Post-readiness hardening:</strong></p>
+<ul>
+<li>[ ] All 13 ablation configs load, train, and evaluate</li>
+<li>[ ] PAB trajectory comparison tooling</li>
+<li>[ ] Full test coverage for edge cases</li>
+</ul>
+<hr>
+<h2 id="module-map">Module Map</h2>
+<table><tbody>
+<tr><td>Task</td><td>Start here</td></tr>
+<tr><td>Understand the navigational paradigm</td><td><code>docs/WAYFINDER_RESEARCH.md</code> Section 2</td></tr>
+<tr><td>Understand scoring alternatives</td><td><code>docs/WAYFINDER_RESEARCH.md</code> Section 2.4, <code>docs/WAYFINDER_DESIGN.md</code> Section 3.1</td></tr>
+<tr><td>Understand 6-bank tactic mapping</td><td><code>docs/WAYFINDER_DESIGN.md</code> Section 5.1</td></tr>
+<tr><td>Understand encoder strategy</td><td><code>docs/WAYFINDER_RESEARCH.md</code> Section 3.2</td></tr>
+<tr><td>Understand anchor gap analysis</td><td><code>docs/WAYFINDER_RESEARCH.md</code> Section 2.3, Phase 0.5</td></tr>
+<tr><td>Understand Mutation Theory connections</td><td><code>docs/WAYFINDER_RESEARCH.md</code> Section 2.7-2.8</td></tr>
+<tr><td>Understand the proof network</td><td><code>src/proof_network.py</code></td></tr>
+<tr><td>Understand navigation resolution</td><td><code>src/resolution.py</code></td></tr>
+<tr><td>Understand the ternary navigator</td><td><code>src/proof_navigator.py</code></td></tr>
+<tr><td>Understand proof search</td><td><code>src/proof_search.py</code></td></tr>
+<tr><td>Understand proof auditor (Lane B)</td><td><code>src/proof_auditor.py</code></td></tr>
+<tr><td>Understand navigational contracts</td><td><code>src/nav_contracts.py</code></td></tr>
+<tr><td>Understand PAB metrics</td><td><code>src/pab_tracker.py</code></td></tr>
+<tr><td>Understand training</td><td><code>scripts/train_navigator.py</code></td></tr>
+<tr><td>Understand evaluation</td><td><code>scripts/eval_retrieval.py</code>, <code>scripts/eval_spreading.py</code></td></tr>
+<tr><td>Understand data format</td><td><code>src/nav_contracts.py</code>, <code>src/contracts.py</code></td></tr>
+<tr><td>Run anchor gap analysis</td><td><code>python -m scripts.anchor_gap_analysis</code></td></tr>
+<tr><td>Run training</td><td><code>python -m scripts.train_navigator --config configs/wayfinder.yaml</code></td></tr>
+<tr><td>Run retrieval eval</td><td><code>python -m scripts.eval_retrieval --config configs/wayfinder.yaml</code></td></tr>
+<tr><td>Run spreading eval</td><td><code>python -m scripts.eval_spreading --config configs/wayfinder.yaml</code></td></tr>
+<tr><td>Run benchmark</td><td><code>python -m scripts.run_benchmark --config configs/wayfinder.yaml</code></td></tr>
+<tr><td>Record results</td><td><code>docs/EXPERIMENT_RESULTS.md</code></td></tr>
+</tbody></table>
+<h2 id="key-data-files">Key Data Files</h2>
+<table><tbody>
+<tr><td>File</td><td>Purpose</td></tr>
+<tr><td><code>data/leandojo_mathlib.jsonl</code></td><td>LeanDojo extracted Mathlib dataset (~98k theorems)</td></tr>
+<tr><td><code>data/proof_network.db</code></td><td>SQLite semantic network of mathematical entities</td></tr>
+<tr><td><code>data/nav_training.jsonl</code></td><td>Navigational training data</td></tr>
+<tr><td><code>data/nav_eval.jsonl</code></td><td>Navigational evaluation data (frozen)</td></tr>
+<tr><td><code>configs/wayfinder.yaml</code></td><td>Primary experiment configuration</td></tr>
+</tbody></table>
+<h2 id="invariants">Invariants</h2>
+<p>1. <strong><code>data/nav_eval.jsonl</code> is frozen.</strong> Never modify the evaluation set. 2. <strong>The proof network is populated and gap-analyzed before training begins.</strong> Bank positions, anchors, IDF, accessible-premises sets, and anchor gap analysis (Phase 0.5) must be complete before the first training step. Top-16 recall on perfect queries must exceed 70%. 3. <strong>Neural inference happens once per proof state.</strong> The resolution and search layers must not call neural forward passes. (Exception: hammer delegation calls external ATPs, which is allowed.) 4. <strong>All retrieval scores are auditable.</strong> Every premise retrieval must trace to specific shared anchors and bank alignments. 5. <strong>PAB tracking is mandatory from step 0.</strong> Retrofit trajectory analysis produces incomplete data. 6. <strong>Scoring mechanism is configurable.</strong> The scoring composition (multiplicative, confidence-weighted, etc.) is a config parameter, not hardcoded. Default: <code>confidence_weighted</code>. 7. <strong>Encoder selection is an explicit decision.</strong> Do not default to MiniLM. Evaluate byte-level and math-native candidates (Phase 0.6) before committing. ByT5-small is the proven baseline; BitNet ternary is the distinctive option. 8. <strong>6-bank navigation is default.</strong> All 6 banks are navigable. Graceful degradation to 3-bank is available via <code>navigable_banks</code> config but should not be the starting point. 9. <strong>Critic uses soft targets.</strong> MSE on normalized distance-to-completion, NOT binary BCE. This is a hard constraint per HTPS and AlphaProof findings. Binary critic is an ablation variant only. 10. <strong>Accessible-premises filtering is always on.</strong> Pre-filter to import-accessible premises before scoring. Free ~2% recall gain from ReProver. 11. <strong>Hammer delegation for AUTOMATION = -1.</strong> When the navigator predicts fully decidable, delegate to LeanHammer/Aesop before attempting navigational resolution.</p>
+<h2 id="see-also">See Also</h2>
+<ul>
+<li><a href="../design/">Design</a></li>
+<li><a href="../experiment-results/">Experiment-Results</a></li>
+</ul>
+      </article>
+      
+    </main>
+  </div>
+  <footer class="site-footer">
+    <p>Generated by <a href="https://github.com/rohanvinaik/lintgate">LintGate</a></p>
+  </footer>
+  <script src="../script.js"></script>
+</body>
+</html>

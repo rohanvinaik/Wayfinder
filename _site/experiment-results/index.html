@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Experiment Results — Wayfinder</title>
+  <meta name="description" content="Experiment Results">
+  <meta name="generator" content="LintGate Wiki Publisher">
+  <link rel="canonical" href="https://rohanvinaik.github.io/Wayfinder/experiment-results/">
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+  <header class="site-header">
+    <button class="sidebar-toggle" aria-label="Toggle sidebar">&#9776;</button>
+    <a class="site-title" href="../">Wayfinder</a>
+    <button class="theme-toggle" aria-label="Toggle dark mode" title="Toggle dark mode">&#9790;</button>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" role="navigation" aria-label="Wiki navigation">
+      <div class="sidebar-header">
+        <a href="../">Wayfinder</a>
+      </div>
+      <div class="sidebar-group">
+  <h3>Documentation</h3>
+  <ul>
+    <li data-page="Home"><a href="../home/">Wayfinder — Navigational Proof Search</a></li>
+    <li data-page="Research"><a href="../research/">Research Paper</a></li>
+    <li data-page="Design"><a href="../design/">Engineering Design</a></li>
+    <li data-page="Experiment-Plan"><a href="../experiment-plan/">Experiment Plan</a></li>
+    <li data-page="Experiment-Results"><a href="../experiment-results/">Experiment Results</a></li>
+  </ul>
+</div>
+<div class="sidebar-group">
+  <h3>Theory</h3>
+  <ul>
+    <li data-page="Theory-Profile"><a href="../theory-profile/">Theory Profile</a></li>
+    <li data-page="Theory-Compass"><a href="../theory-compass/">Project Compass</a></li>
+  </ul>
+</div>
+    </nav>
+    <main class="content" role="main">
+      <article>
+        <p><strong>Documentation</strong> | 18 min read | <a href="../home/">Home</a></p>
+<p><strong>Project:</strong> Wayfinder -- Navigational Proof Search Through Structured Semantic Networks <strong>Version:</strong> 1.0 <strong>Started:</strong> March 2026 <strong>Hardware:</strong> Apple Silicon M-series (primary); Xeon macpro + i7 homebridge (CPU workers) <strong>Eval set:</strong> Frozen <code>data/nav_eval.jsonl</code>; MiniF2F-test (488); Mathlib test split (~2k)</p>
+<p>Three-stream results ledger: navigation validation + architecture evaluation + PAB process evaluation.</p>
+<h3 id="metric-categories-3-lane-architecture">Metric Categories (3-Lane Architecture)</h3>
+<p>All benchmark proof success metrics are reported with strict lane separation to prevent inflated claims:</p>
+<table><tbody>
+<tr><td>Category</td><td>Definition</td><td>Lane</td></tr>
+<tr><td><code>raw_success</code></td><td>Proved by Lane A (step-wise search) alone, no Axle involvement</td><td>A</td></tr>
+<tr><td><code>axle_assisted_success</code></td><td>Lane A partial progress + Axle decompose/repair completed the proof</td><td>A+B</td></tr>
+<tr><td><code>axle_repair_only</code></td><td>Axle <code>repair_proofs</code> alone closed remaining goals (no Lane A success)</td><td>B</td></tr>
+<tr><td><code>lane_c_verified</code></td><td>Independently confirmed by lean4checker/Comparator/SafeVerify</td><td>C</td></tr>
+</tbody></table>
+<p>Primary comparison metric is always <code>raw_success</code>. Other categories are reported alongside but never summed into headline numbers.</p>
+<hr>
+<h2 id="baselines-established-before-experiments">Baselines (Established Before Experiments)</h2>
+<h3 id="bl-1-dense-retrieval-baseline-reprover-style">BL-1: Dense Retrieval Baseline (ReProver-style)</h3>
+<p>Cosine similarity between goal state embeddings and pre-computed premise embeddings.</p>
+<table><tbody>
+<tr><td>Metric</td><td>Value</td><td>Date</td><td>Notes</td></tr>
+<tr><td>recall@1</td><td></td><td></td><td><code>scripts/eval_retrieval.py --samples 500</code></td></tr>
+<tr><td>recall@4</td><td></td><td></td><td></td></tr>
+<tr><td>recall@8</td><td></td><td></td><td></td></tr>
+<tr><td>recall@16</td><td></td><td></td><td></td></tr>
+<tr><td>Avg retrieval time (ms)</td><td></td><td></td><td>Per-goal forward pass + dot product</td></tr>
+<tr><td>Encoder</td><td></td><td></td><td>Selected in EXP-0.2</td></tr>
+<tr><td>Premise corpus size</td><td></td><td></td><td>Mathlib lemmas in proof_network.db</td></tr>
+</tbody></table>
+<h3 id="bl-2-random-retrieval-baseline">BL-2: Random Retrieval Baseline</h3>
+<table><tbody>
+<tr><td>Metric</td><td>Value</td><td>Notes</td></tr>
+<tr><td>recall@16 (random)</td><td></td><td>Expected: ~16/N where N = corpus size</td></tr>
+</tbody></table>
+<h3 id="bl-3-published-systems-from-literature">BL-3: Published Systems (from literature)</h3>
+<table><tbody>
+<tr><td>System</td><td>MiniF2F-test</td><td>Mathlib</td><td>Params</td><td>FP/proof</td><td>Source</td></tr>
+<tr><td>ReProver</td><td>~26%</td><td>~15%</td><td>~299M</td><td>~1000s</td><td>Yang et al. 2024</td></tr>
+<tr><td>LeanProgress</td><td>~33%</td><td>—</td><td>~299M</td><td>—</td><td></td></tr>
+<tr><td>DeepSeek-Prover-V2</td><td>88.9%</td><td>—</td><td>671B</td><td>—</td><td>Ren et al. 2025</td></tr>
+<tr><td>BFS-Prover</td><td>—</td><td>—</td><td>—</td><td>—</td><td></td></tr>
+<tr><td>LeanHammer (hybrid)</td><td>37.3%</td><td>—</td><td>—</td><td>—</td><td></td></tr>
+</tbody></table>
+<hr>
+<h2 id="experiment-cycle-0-proof-network-validation">Experiment Cycle 0: Proof Network Validation</h2>
+<p><em>Purpose: Validate that the proof network structure supports retrieval before any training.</em></p>
+<h3 id="exp-0-1-proof-network-coverage">EXP-0.1: Proof Network Coverage</h3>
+<p><strong>Date:</strong> ____ <strong>Script:</strong> <code>scripts/extract_proof_network.py</code></p>
+<table><tbody>
+<tr><td>Metric</td><td>Value</td><td>Target</td><td>Notes</td></tr>
+<tr><td>Total entities</td><td></td><td>~98k</td><td>Mathlib lemmas</td></tr>
+<tr><td>Bank position coverage (%)</td><td></td><td>>= 95%</td><td>Entities with all 6 banks</td></tr>
+<tr><td>Average anchors per entity</td><td></td><td>>= 3</td><td></td></tr>
+<tr><td>Total anchor types</td><td></td><td>~300+</td><td>Bootstrap + gap analysis</td></tr>
+<tr><td>IDF computed</td><td></td><td>Yes</td><td></td></tr>
+<tr><td>Accessible premises extracted</td><td></td><td>Yes</td><td></td></tr>
+</tbody></table>
+<p><strong>Stop/go:</strong> Coverage >= 95%, anchors/entity >= 3.</p>
+<h3 id="exp-0-2-anchor-gap-analysis-iterative">EXP-0.2: Anchor Gap Analysis (Iterative)</h3>
+<p><strong>Date:</strong> ____ <strong>Script:</strong> <code>scripts/anchor_gap_analysis.py --db data/proof_network.db --samples 500</code></p>
+<table><tbody>
+<tr><td>Iteration</td><td>recall@16 (perfect queries)</td><td>New anchors added</td><td>Top gap themes</td><td>Notes</td></tr>
+<tr><td>0 (bootstrap)</td><td></td><td>0</td><td></td><td>Initial ~300 anchors</td></tr>
+<tr><td>1</td><td></td><td></td><td></td><td></td></tr>
+<tr><td>2</td><td></td><td></td><td></td><td></td></tr>
+<tr><td>3</td><td></td><td></td><td></td><td></td></tr>
+</tbody></table>
+<p><strong>Top 20 gap anchors (final iteration):</strong></p>
+<table><tbody>
+<tr><td>Anchor</td><td>Miss count</td><td>Theme</td></tr>
+</tbody></table>
+<p><strong>Stop/go:</strong> recall@16 >= 70% on perfect queries. If <50% after 3 iterations, bank positioning needs rethinking.</p>
+<h3 id="exp-0-3-encoder-selection">EXP-0.3: Encoder Selection</h3>
+<p><strong>Date:</strong> ____ <strong>Protocol:</strong> Encode 1000 Mathlib goal states per candidate. Evaluate clustering quality.</p>
+<table><tbody>
+<tr><td>Candidate</td><td>Params</td><td>Premise cluster overlap @10</td><td>Alpha-equiv distance</td><td>Domain separability</td><td>Byte-level</td><td>Notes</td></tr>
+<tr><td>ByT5-small (frozen)</td><td>299M</td><td></td><td></td><td></td><td>Yes</td><td>Baseline</td></tr>
+<tr><td>ByT5-small + LoRA</td><td>299M</td><td></td><td></td><td></td><td>Yes</td><td>Fine-tuned</td></tr>
+<tr><td>Math-native candidate</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+<tr><td>BitNet ternary</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+</tbody></table>
+<p><strong>Decision:</strong> [ ] ByT5-small / [ ] ByT5-small + LoRA / [ ] Math-native / [ ] BitNet / [ ] Other: ____</p>
+<hr>
+<h2 id="experiment-cycle-1-navigation-training">Experiment Cycle 1: Navigation Training</h2>
+<p><em>Purpose: Train the navigational pipeline and track per-bank learning dynamics.</em></p>
+<h3 id="exp-1-1-curriculum-training-run">EXP-1.1: Curriculum Training Run</h3>
+<p><strong>Date:</strong> ____ <strong>Config:</strong> <code>configs/wayfinder.yaml</code> <strong>Script:</strong> <code>scripts/train_navigator.py --config configs/wayfinder.yaml --run-id NAV-___</code> <strong>Checkpoint:</strong> <code>models/NAV-____step____.pt</code></p>
+<p><strong>Training Configuration:</strong></p>
+<table><tbody>
+<tr><td>Parameter</td><td>Value</td></tr>
+<tr><td>Encoder</td><td></td></tr>
+<tr><td>Navigable banks</td><td>6 (STRUCTURE, DOMAIN, DEPTH, AUTOMATION, CONTEXT, DECOMPOSITION)</td></tr>
+<tr><td>Scoring mechanism</td><td>confidence_weighted</td></tr>
+<tr><td>Batch size</td><td>32</td></tr>
+<tr><td>Learning rate</td><td>1e-3</td></tr>
+<tr><td>Max iterations</td><td>5000</td></tr>
+<tr><td>Curriculum</td><td>Phase A: 0-500 (1-2 step), Phase B: 500-2000 (<=5 step), Phase C: 2000+ (all)</td></tr>
+<tr><td>Device</td><td>mps</td></tr>
+</tbody></table>
+<p><strong>Phase Gates:</strong></p>
+<table><tbody>
+<tr><td>Phase</td><td>Step range</td><td>Nav accuracy target</td><td>Actual</td><td>Status</td></tr>
+<tr><td>A (warmup)</td><td>0-500</td><td>>= 60% on 1-2 step proofs</td><td></td><td>[ ] Pass / [ ] Fail</td></tr>
+<tr><td>B (growth)</td><td>500-2000</td><td>>= 50% on <=5 step proofs</td><td></td><td>[ ] Pass / [ ] Fail</td></tr>
+<tr><td>C (full)</td><td>2000-5000</td><td>>= 45% on all proofs</td><td></td><td>[ ] Pass / [ ] Fail</td></tr>
+</tbody></table>
+<p><strong>Training Dynamics (sampled at PAB checkpoints every 50 steps):</strong></p>
+<table><tbody>
+<tr><td>Step</td><td>L_total</td><td>L_nav</td><td>L_anchor</td><td>L_critic</td><td>Nav acc (mean)</td><td>Anchor F1</td><td>Progress MAE</td></tr>
+<tr><td>50</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+<tr><td>100</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+<tr><td>250</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+<tr><td>500</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+<tr><td>1000</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+<tr><td>2000</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+<tr><td>3000</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+<tr><td>5000</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+</tbody></table>
+<p><strong>Per-Bank Navigation Accuracy (key checkpoints):</strong></p>
+<table><tbody>
+<tr><td>Bank</td><td>Step 500</td><td>Step 1000</td><td>Step 2000</td><td>Step 3000</td><td>Step 5000</td><td>Crystallization order</td></tr>
+<tr><td>STRUCTURE</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+<tr><td>DOMAIN</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+<tr><td>DEPTH</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+<tr><td>AUTOMATION</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+<tr><td>CONTEXT</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+<tr><td>DECOMPOSITION</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+</tbody></table>
+<p><strong>Hypothesis:</strong> AUTOMATION and STRUCTURE crystallize first (clearest signal from tactic analysis). DOMAIN and CONTEXT crystallize last (noisier extraction).</p>
+<p><strong>PAB Trajectory Profile:</strong></p>
+<p><em>Full profile: <code>runs/NAV-___/NAV-____pab_profile.json</code></em></p>
+<table><tbody>
+<tr><td>PAB Metric</td><td>Value</td><td>Assessment</td></tr>
+<tr><td>Stability mean</td><td></td><td><= 0.15 = stable</td></tr>
+<tr><td>Stability std</td><td></td><td>Low = consistent</td></tr>
+<tr><td>Predictability (final)</td><td></td><td><= 0.05 = structured</td></tr>
+<tr><td>Stability regime</td><td></td><td>stable / chaotic / phase_transition</td></tr>
+<tr><td>Ternary crystallization (final)</td><td></td><td>% of stable weight signs</td></tr>
+<tr><td>Crystallization rate</td><td></td><td>Slope of crystallization curve</td></tr>
+<tr><td>Convergence step</td><td></td><td>Step where S < 0.10 for 5 consecutive</td></tr>
+</tbody></table>
+<p><strong>Observations:</strong></p>
+<hr>
+<h2 id="experiment-cycle-2-retrieval-comparison">Experiment Cycle 2: Retrieval Comparison</h2>
+<p><em>Purpose: Stream 1 core question -- does navigational retrieval match or exceed dense retrieval?</em></p>
+<h3 id="exp-2-1-navigational-vs-dense-retrieval">EXP-2.1: Navigational vs Dense Retrieval</h3>
+<p><strong>Date:</strong> ____ <strong>Script:</strong> <code>scripts/eval_retrieval.py --config configs/wayfinder.yaml --checkpoint models/NAV-___</code> <strong>Checkpoint:</strong> Best from EXP-1.1</p>
+<table><tbody>
+<tr><td>k</td><td>Nav recall@k</td><td>Dense recall@k</td><td>Delta</td><td>Nav time (ms)</td><td>Dense time (ms)</td><td>Speedup</td></tr>
+<tr><td>1</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+<tr><td>4</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+<tr><td>8</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+<tr><td>16</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+</tbody></table>
+<p><strong>Target:</strong> Nav recall@16 >= 80% of dense recall@16.</p>
+<p><strong>Stream 1 verdict:</strong> [ ] Navigation matches/exceeds dense / [ ] Dense superior / [ ] Inconclusive</p>
+<h3 id="exp-2-2-spreading-activation-benefit">EXP-2.2: Spreading Activation Benefit</h3>
+<p><strong>Date:</strong> ____ <strong>Script:</strong> <code>scripts/eval_spreading.py --config configs/wayfinder.yaml --checkpoint models/NAV-___</code></p>
+<table><tbody>
+<tr><td>k</td><td>No-spread recall@k</td><td>With-spread recall@k</td><td>Delta</td><td>Notes</td></tr>
+<tr><td>4</td><td></td><td></td><td></td><td></td></tr>
+<tr><td>8</td><td></td><td></td><td></td><td></td></tr>
+<tr><td>16</td><td></td><td></td><td></td><td></td></tr>
+</tbody></table>
+<table><tbody>
+<tr><td>Timing</td><td>No-spread (ms)</td><td>With-spread (ms)</td></tr>
+<tr><td>Average per-goal</td><td></td><td></td></tr>
+</tbody></table>
+<p><strong>Target:</strong> Spreading adds >= 5% recall@16 on proof steps 3+.</p>
+<p><strong>Observations:</strong></p>
+<h3 id="exp-2-3-scoring-mechanism-comparison">EXP-2.3: Scoring Mechanism Comparison</h3>
+<p><strong>Date:</strong> ____ <strong>Protocol:</strong> Same checkpoint, different scoring mechanisms in <code>navigate()</code>.</p>
+<table><tbody>
+<tr><td>Mechanism</td><td>recall@4</td><td>recall@8</td><td>recall@16</td><td>Notes</td></tr>
+<tr><td>multiplicative</td><td></td><td></td><td></td><td>Pure product</td></tr>
+<tr><td>confidence_weighted</td><td></td><td></td><td></td><td>Default</td></tr>
+<tr><td>soft_floor (eps=0.1)</td><td></td><td></td><td></td><td></td></tr>
+<tr><td>geometric_mean</td><td></td><td></td><td></td><td></td></tr>
+<tr><td>log_additive</td><td></td><td></td><td></td><td></td></tr>
+</tbody></table>
+<p><strong>Best mechanism:</strong> ____ <strong>Observations:</strong></p>
+<hr>
+<h2 id="experiment-cycle-3-proof-search-evaluation">Experiment Cycle 3: Proof Search Evaluation</h2>
+<p><em>Purpose: End-to-end theorem proving on standard benchmarks.</em></p>
+<h3 id="exp-3-1-smoke-test-trivial-theorems">EXP-3.1: Smoke Test (trivial theorems)</h3>
+<p><strong>Date:</strong> ____ <strong>Target:</strong> >= 80% proved within budget=100 on 1-2 step proofs.</p>
+<table><tbody>
+<tr><td>Metric</td><td>Value</td></tr>
+<tr><td>Theorems tested</td><td>50</td></tr>
+<tr><td>Proved</td><td></td></tr>
+<tr><td>Prove rate</td><td></td></tr>
+<tr><td>Avg attempts per proof</td><td></td></tr>
+<tr><td>Avg time per proof (s)</td><td></td></tr>
+</tbody></table>
+<p><strong>Stop/go:</strong> >= 80% on trivials before proceeding to benchmarks.</p>
+<h3 id="exp-3-2-minif2f-test-benchmark">EXP-3.2: MiniF2F-test Benchmark</h3>
+<p><strong>Date:</strong> ____ <strong>Script:</strong> <code>scripts/run_benchmark.py --config configs/wayfinder.yaml --checkpoint models/NAV-___</code></p>
+<table><tbody>
+<tr><td>Metric</td><td>Value</td><td>vs BL-3 (ReProver)</td><td>Notes</td></tr>
+<tr><td>Total theorems</td><td>488</td><td>—</td><td></td></tr>
+<tr><td>Proved</td><td></td><td>Delta=</td><td></td></tr>
+<tr><td>Prove rate</td><td></td><td>Delta=</td><td></td></tr>
+<tr><td>Failed</td><td></td><td></td><td></td></tr>
+<tr><td>Avg attempts/theorem</td><td></td><td></td><td></td></tr>
+<tr><td>Avg attempts (proved only)</td><td></td><td></td><td></td></tr>
+<tr><td>Avg time/theorem (s)</td><td></td><td></td><td></td></tr>
+<tr><td>Total time</td><td></td><td></td><td></td></tr>
+<tr><td>Neural FP per proof</td><td></td><td></td><td>Target: <= 50% of ReProver</td></tr>
+</tbody></table>
+<p><strong>Stop/go:</strong> >= 20% proved (competitive at our parameter count).</p>
+<h3 id="exp-3-3-mathlib-test-split">EXP-3.3: Mathlib Test Split</h3>
+<p><strong>Date:</strong> ____</p>
+<table><tbody>
+<tr><td>Metric</td><td>Value</td><td>Notes</td></tr>
+<tr><td>Total theorems</td><td>~2000</td><td></td></tr>
+<tr><td>Proved</td><td></td><td></td></tr>
+<tr><td>Prove rate</td><td></td><td>Target: >= 15%</td></tr>
+<tr><td>By source: benchmark_theorems</td><td>/</td><td></td></tr>
+<tr><td>By source: mathlib_test_split</td><td>/</td><td></td></tr>
+</tbody></table>
+<h3 id="exp-3-4-hammer-delegation-analysis">EXP-3.4: Hammer Delegation Analysis</h3>
+<p><strong>Date:</strong> ____</p>
+<table><tbody>
+<tr><td>Path</td><td>Theorems proved</td><td>% of total proved</td><td>Avg attempts</td><td>Notes</td></tr>
+<tr><td>Navigator only</td><td></td><td></td><td></td><td>AUTOMATION >= 0</td></tr>
+<tr><td>Hammer delegated</td><td></td><td></td><td></td><td>AUTOMATION = -1</td></tr>
+<tr><td>Hammer fallback (failed first)</td><td></td><td></td><td></td><td></td></tr>
+</tbody></table>
+<p><strong>Observations:</strong></p>
+<hr>
+<h2 id="experiment-cycle-4-ablation-matrix">Experiment Cycle 4: Ablation Matrix</h2>
+<p><em>Purpose: Isolate the contribution of each architectural component.</em></p>
+<h3 id="full-ablation-results">Full Ablation Results</h3>
+<p><strong>Checkpoint:</strong> Best from EXP-1.1 <strong>Eval set:</strong> MiniF2F-test (488) + Mathlib test split</p>
+<table><tbody>
+<tr><td>#</td><td>Variant</td><td>MiniF2F proved</td><td>MiniF2F rate</td><td>Mathlib proved</td><td>Mathlib rate</td><td>recall@16</td><td>FP/proof</td><td>Notes</td></tr>
+<tr><td>1</td><td>Full Wayfinder</td><td></td><td></td><td></td><td></td><td></td><td></td><td>Primary</td></tr>
+<tr><td>2</td><td>Dense retrieval (no proof network)</td><td></td><td></td><td></td><td></td><td></td><td></td><td>Stream 1 thesis</td></tr>
+<tr><td>3</td><td>Tactic classification (no navigation)</td><td></td><td></td><td></td><td></td><td></td><td></td><td>Stream 2 thesis</td></tr>
+<tr><td>4</td><td>No spreading activation</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+<tr><td>5</td><td>No progress head</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+<tr><td>6</td><td>Continuous decoder (no ternary)</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+<tr><td>7</td><td>No IDF weighting</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+<tr><td>8</td><td>No bank alignment (anchors only)</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+<tr><td>9</td><td>Binary critic (BCE)</td><td></td><td></td><td></td><td></td><td></td><td></td><td>HTPS soft-target thesis</td></tr>
+<tr><td>10</td><td>No proof history</td><td></td><td></td><td></td><td></td><td></td><td></td><td>LeanProgress thesis</td></tr>
+<tr><td>11</td><td>No hammer delegation</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+<tr><td>12</td><td>No accessible-premises filter</td><td></td><td></td><td></td><td></td><td></td><td></td><td>ReProver thesis</td></tr>
+<tr><td>13</td><td>3-bank navigation (original)</td><td></td><td></td><td></td><td></td><td></td><td></td><td>6-bank expansion thesis</td></tr>
+</tbody></table>
+<h3 id="per-ablation-pab-comparison">Per-Ablation PAB Comparison</h3>
+<table><tbody>
+<tr><td>#</td><td>Variant</td><td>PAB stability</td><td>PAB regime</td><td>Crystallization rate</td><td>Nav acc (final)</td></tr>
+<tr><td>1</td><td>Full Wayfinder</td><td></td><td></td><td></td><td></td></tr>
+<tr><td>6</td><td>Continuous decoder</td><td></td><td></td><td></td><td></td></tr>
+<tr><td>13</td><td>3-bank navigation</td><td></td><td></td><td></td><td></td></tr>
+</tbody></table>
+<p><strong>Key findings:</strong></p>
+<ul>
+<li>Navigation thesis (1 vs 2): ____</li>
+<li>Architecture thesis (1 vs 3): ____</li>
+<li>Ternary thesis (1 vs 6): ____</li>
+<li>6-bank thesis (1 vs 13): ____</li>
+<li>Spreading thesis (1 vs 4): ____</li>
+</ul>
+<hr>
+<h2 id="experiment-cycle-5-pab-framework-validation">Experiment Cycle 5: PAB Framework Validation</h2>
+<p><em>Purpose: Stream 3 -- does PAB trajectory evaluation reveal information that endpoint metrics miss?</em></p>
+<h3 id="exp-5-1-similar-endpoints-different-trajectories">EXP-5.1: Similar Endpoints, Different Trajectories</h3>
+<p><strong>Date:</strong> ____ <strong>Configuration pair:</strong> Two ablation variants with <= 2% endpoint difference.</p>
+<table><tbody>
+<tr><td>Metric</td><td>Config A</td><td>Config B</td></tr>
+<tr><td>MiniF2F prove rate</td><td></td><td></td></tr>
+<tr><td>PAB stability_mean</td><td></td><td></td></tr>
+<tr><td>PAB regime</td><td></td><td></td></tr>
+</tbody></table>
+<p><strong>Stress test (distribution shift -- unseen theorem domains):</strong></p>
+<table><tbody>
+<tr><td>Test</td><td>Config A</td><td>Config B</td><td>Better</td></tr>
+<tr><td>Novel domain theorems</td><td></td><td></td><td></td></tr>
+<tr><td>Longer proofs (10+ steps)</td><td></td><td></td><td></td></tr>
+<tr><td>Heavy type coercion</td><td></td><td></td><td></td></tr>
+</tbody></table>
+<p><strong>PAB prediction (better trajectory = more robust):</strong> [ ] Confirmed / [ ] Refuted / [ ] Inconclusive</p>
+<h3 id="exp-5-2-navigational-accuracy-trajectory-vs-prove-rate">EXP-5.2: Navigational Accuracy Trajectory vs Prove Rate</h3>
+<p><strong>Date:</strong> ____</p>
+<table><tbody>
+<tr><td>Configuration</td><td>Nav accuracy trajectory slope</td><td>Final prove rate</td><td>Correlation</td></tr>
+</tbody></table>
+<p><strong>Does nav accuracy trajectory predict final proof success better than loss trajectory?</strong> [ ] Yes / [ ] No / [ ] Inconclusive</p>
+<h3 id="exp-5-3-bank-crystallization-order">EXP-5.3: Bank Crystallization Order</h3>
+<p><strong>Date:</strong> ____</p>
+<table><tbody>
+<tr><td>Bank</td><td>Crystallization step</td><td>Predicted order</td><td>Actual order</td><td>Notes</td></tr>
+<tr><td>STRUCTURE</td><td></td><td>1-2</td><td></td><td></td></tr>
+<tr><td>AUTOMATION</td><td></td><td>1-2</td><td></td><td></td></tr>
+<tr><td>DEPTH</td><td></td><td>3-4</td><td></td><td></td></tr>
+<tr><td>DECOMPOSITION</td><td></td><td>3-4</td><td></td><td></td></tr>
+<tr><td>DOMAIN</td><td></td><td>5-6</td><td></td><td></td></tr>
+<tr><td>CONTEXT</td><td></td><td>5-6</td><td></td><td></td></tr>
+</tbody></table>
+<p><strong>Does crystallization order match architectural expectations?</strong> [ ] Yes / [ ] Partially / [ ] No</p>
+<hr>
+<h2 id="visualization-pipeline">Visualization Pipeline</h2>
+<p>All visualizations use <code>mlx-vis</code> (GPU-accelerated on Metal) unless noted.</p>
+<h3 id="figure-conventions">Figure Conventions</h3>
+<p>Every figure title is an assertion, not a topic:</p>
+<ul>
+<li>"Bank positions separate mathematical domains without training" (not "Bank position distribution")</li>
+<li>"AUTOMATION and STRUCTURE banks crystallize before DOMAIN and CONTEXT" (not "Training dynamics")</li>
+<li>"Navigational retrieval matches dense retrieval at 1/50th the neural compute" (not "Retrieval comparison")</li>
+</ul>
+<h3 id="planned-visualizations">Planned Visualizations</h3>
+<table><tbody>
+<tr><td>Phase</td><td>Visualization</td><td>Method</td><td>Data source</td><td>Purpose</td></tr>
+<tr><td>EXP-0.2</td><td>Entity positions colored by retrieval success/failure</td><td>UMAP</td><td>proof_network.db entity positions</td><td>Show where anchor gaps cluster</td></tr>
+<tr><td>EXP-1.1</td><td>Navigational embeddings across curriculum phases</td><td>PaCMAP (animated)</td><td>Bridge outputs at steps 500/2000/5000</td><td>Progressive structure emergence</td></tr>
+<tr><td>EXP-1.1</td><td>Per-bank accuracy curves (6 panels)</td><td>Line plot</td><td>PAB checkpoints</td><td>Bank learning dynamics</td></tr>
+<tr><td>EXP-2.1</td><td>recall@k curves: nav vs dense</td><td>Line plot</td><td>eval_retrieval output</td><td>Core Stream 1 figure</td></tr>
+<tr><td>EXP-3.2</td><td>Proved/failed theorems in bank position space</td><td>t-SNE</td><td>proof_network.db positions</td><td>Where does navigation succeed/fail?</td></tr>
+<tr><td>EXP-4</td><td>Side-by-side: full Wayfinder vs no-bank ablation</td><td>UMAP</td><td>Bridge outputs</td><td>Visual fencing: what navigation adds</td></tr>
+<tr><td>EXP-4</td><td>Ablation matrix heatmap</td><td>Heatmap</td><td>Ablation results table</td><td>Component importance at a glance</td></tr>
+<tr><td>EXP-5.3</td><td>Ternary weight evolution per bank head</td><td>Histogram series</td><td>Navigator weight snapshots</td><td>Crystallization dynamics</td></tr>
+</tbody></table>
+<h3 id="visualization-toolkit">Visualization Toolkit</h3>
+<pre><code class="language-bash">
+# Entity position UMAP (anchor gap analysis)
+python -c &quot;
+import mlx_vis
+# Load entity positions from proof_network.db
+# Color by: domain, retrieval success, bank position
+# Output: figures/entity_umap_*.png
+&quot;
+
+# Training dynamics PaCMAP
+python -c &quot;
+import mlx_vis
+# Load bridge outputs from PAB checkpoints
+# Animate across curriculum phases
+# Output: figures/training_pacmap_*.png
+&quot;
+
+# t-SNE of proved/failed theorems
+python -c &quot;
+import mlx_vis
+# Load theorem positions + benchmark results
+# Color by proved/failed, size by attempt count
+# Output: figures/benchmark_tsne_*.png
+&quot;
+</code></pre>
+<hr>
+<h2 id="cumulative-findings">Cumulative Findings</h2>
+<h3 id="hypothesis-status-tracker">Hypothesis Status Tracker</h3>
+<table><tbody>
+<tr><td>#</td><td>Hypothesis</td><td>Status</td><td>Evidence</td><td>Cycle</td></tr>
+<tr><td>H1</td><td>Navigational retrieval matches or exceeds dense retrieval for premise selection</td><td></td><td></td><td>EXP-2.1</td></tr>
+<tr><td>H2</td><td>Ternary navigational decoder outperforms tactic classification</td><td></td><td></td><td>EXP-4 (#1 vs #3)</td></tr>
+<tr><td>H3</td><td>6-bank navigation disambiguates tactics better than 3-bank</td><td></td><td></td><td>EXP-4 (#1 vs #13)</td></tr>
+<tr><td>H4</td><td>IDF weighting is necessary for anchor relevance</td><td></td><td></td><td>EXP-4 (#1 vs #7)</td></tr>
+<tr><td>H5</td><td>Spreading activation improves later-step premise recall</td><td></td><td></td><td>EXP-2.2</td></tr>
+<tr><td>H6</td><td>Soft critic targets outperform binary (per HTPS)</td><td></td><td></td><td>EXP-4 (#1 vs #9)</td></tr>
+<tr><td>H7</td><td>Proof history improves retrieval (per LeanProgress)</td><td></td><td></td><td>EXP-4 (#1 vs #10)</td></tr>
+<tr><td>H8</td><td>Hammer delegation for AUTOMATION=-1 goals improves prove rate</td><td></td><td></td><td>EXP-3.4</td></tr>
+<tr><td>H9</td><td>Accessible-premises filtering gives free recall gain</td><td></td><td></td><td>EXP-4 (#1 vs #12)</td></tr>
+<tr><td>H10</td><td>Confidence-weighted scoring outperforms pure multiplicative</td><td></td><td></td><td>EXP-2.3</td></tr>
+<tr><td>H11</td><td>AUTOMATION and STRUCTURE banks crystallize before DOMAIN and CONTEXT</td><td></td><td></td><td>EXP-5.3</td></tr>
+<tr><td>H12</td><td>PAB trajectory predicts generalization better than endpoint metrics</td><td></td><td></td><td>EXP-5.1, 5.2</td></tr>
+<tr><td>H13</td><td>Neural forward passes per proof are <= 50% of dense retrieval baselines</td><td></td><td></td><td>EXP-3.2</td></tr>
+<tr><td>H14</td><td>Anchor gap analysis achieves >= 70% recall@16 on perfect queries</td><td></td><td></td><td>EXP-0.2</td></tr>
+<tr><td>H15</td><td>The proof network separates mathematical domains without neural training</td><td></td><td></td><td>EXP-0.1 visualization</td></tr>
+</tbody></table>
+<h3 id="decision-log">Decision Log</h3>
+<table><tbody>
+<tr><td>Date</td><td>Decision</td><td>Rationale</td><td>Alternatives Considered</td></tr>
+<tr><td>2026-03-06</td><td>Architecture: navigational proof search via structured semantic networks</td><td>ModelAtlas paradigm applied to theorem proving</td><td>Dense retrieval (ReProver), token classification, MCTS</td></tr>
+<tr><td>2026-03-06</td><td>6-bank ternary navigation (729 direction bins)</td><td>Resolves many-to-one tactic mapping from 3-bank (27 bins)</td><td>3-bank (fallback available), continuous directions</td></tr>
+<tr><td>2026-03-06</td><td>UW-SO adaptive loss weighting</td><td>Handles different convergence rates across nav/anchor/progress/critic</td><td>Fixed coefficients, manual curriculum</td></tr>
+<tr><td>2026-03-06</td><td>Soft critic targets (MSE, not BCE)</td><td>HTPS finding: binary critic worse than no critic</td><td>Binary critic (ablation only)</td></tr>
+<tr><td>2026-03-06</td><td>Proof history via mean-pooled closed goals</td><td>LeanProgress: 61.8% -> 75.1% from history</td><td>No history (ablation only)</td></tr>
+<tr><td></td><td>Encoder selection: ____</td><td>EXP-0.3 results</td><td></td></tr>
+<tr><td></td><td>Scoring mechanism: ____</td><td>EXP-2.3 results</td><td></td></tr>
+</tbody></table>
+<hr>
+<h2 id="appendix-a-raw-eval-outputs">Appendix A: Raw Eval Outputs</h2>
+<p><em>Per-experiment run outputs stored at:</em> <code>runs/<run_id>/eval_results.json</code> -- structured JSON from eval scripts <code>runs/<run_id>/benchmark_results.json</code> -- benchmark runner output <code>runs/<run_id>/benchmark_results.jsonl</code> -- per-theorem detail</p>
+<h2 id="appendix-b-training-curves">Appendix B: Training Curves</h2>
+<p><em>Training logs stored at:</em> <code>runs/<run_id>/<run_id>_training_log.jsonl</code></p>
+<p><em>Schema per line:</em></p>
+<pre><code class="language-json">
+{
+  &quot;step&quot;: 100,
+  &quot;L_total&quot;: 2.31,
+  &quot;L_nav&quot;: 1.45,
+  &quot;L_anchor&quot;: 0.52,
+  &quot;L_progress&quot;: 0.22,
+  &quot;L_critic&quot;: 0.12,
+  &quot;nav_accuracy_mean&quot;: 0.42,
+  &quot;nav_accuracy_STRUCTURE&quot;: 0.55,
+  &quot;nav_accuracy_DOMAIN&quot;: 0.35,
+  &quot;anchor_f1&quot;: 0.28,
+  &quot;progress_mae&quot;: 2.1,
+  &quot;ternary_crystallization&quot;: 0.45,
+  &quot;curriculum_phase&quot;: &quot;B&quot;
+}
+</code></pre>
+<h2 id="appendix-c-compute-log">Appendix C: Compute Log</h2>
+<table><tbody>
+<tr><td>Date</td><td>Experiment</td><td>Machine</td><td>Duration</td><td>Notes</td></tr>
+<tr><td></td><td>Proof network extraction</td><td>macpro (Xeon)</td><td></td><td>CPU-only</td></tr>
+<tr><td></td><td>Anchor gap analysis</td><td>macpro (Xeon)</td><td></td><td>CPU-only, iterative</td></tr>
+<tr><td></td><td>Encoder evaluation</td><td>laptop (M-series)</td><td></td><td>MLX/Metal</td></tr>
+<tr><td></td><td>Navigation training</td><td>laptop (M-series)</td><td></td><td>Metal, ~5000 steps</td></tr>
+<tr><td></td><td>Benchmark (MiniF2F)</td><td>laptop (M-series)</td><td></td><td>Target: <24h</td></tr>
+<tr><td></td><td>Ablation runs (13x)</td><td>laptop (M-series)</td><td></td><td></td></tr>
+</tbody></table>
+<h2 id="appendix-d-pab-profile-schema">Appendix D: PAB Profile Schema</h2>
+<p><em>Full PAB profiles saved per-run at: <code>runs/<run_id>/<run_id>_pab_profile.json</code></em></p>
+<p><em>Schema:</em></p>
+<pre><code class="language-json">
+{
+  &quot;experiment_id&quot;: &quot;NAV-001&quot;,
+  &quot;checkpoints&quot;: [50, 100, 150, &quot;...&quot;],
+  &quot;stability&quot;: [0.35, 0.22, 0.18, &quot;...&quot;],
+  &quot;predictability&quot;: [0.12, 0.08, 0.04, &quot;...&quot;],
+  &quot;domain_accuracies&quot;: {
+    &quot;STRUCTURE&quot;: [0.40, 0.55, 0.68, &quot;...&quot;],
+    &quot;DOMAIN&quot;: [0.25, 0.35, 0.45, &quot;...&quot;],
+    &quot;AUTOMATION&quot;: [0.42, 0.58, 0.72, &quot;...&quot;]
+  },
+  &quot;ternary_crystallization&quot;: [0.33, 0.45, 0.62, &quot;...&quot;],
+  &quot;summary&quot;: {
+    &quot;stability_mean&quot;: 0.14,
+    &quot;stability_std&quot;: 0.08,
+    &quot;predictability_final&quot;: 0.03,
+    &quot;stability_regime&quot;: &quot;stable&quot;,
+    &quot;crystallization_rate&quot;: 0.0015,
+    &quot;convergence_step&quot;: 2500
+  }
+}
+</code></pre>
+<h2 id="appendix-e-anchor-gap-analysis-detail">Appendix E: Anchor Gap Analysis Detail</h2>
+<p><em>Gap analysis JSONL stored at: <code>data/gap_analysis.jsonl</code></em></p>
+<p><em>Schema per line:</em></p>
+<pre><code class="language-json">
+{
+  &quot;theorem_id&quot;: &quot;Nat.add_comm&quot;,
+  &quot;goal_state&quot;: &quot;...&quot;,
+  &quot;ground_truth_premises&quot;: [&quot;Nat.succ_add&quot;, &quot;Nat.zero_add&quot;],
+  &quot;retrieved_premises&quot;: [&quot;Nat.add_zero&quot;, &quot;Nat.succ_add&quot;, &quot;...&quot;],
+  &quot;recall_at_16&quot;: 0.5,
+  &quot;missed_premises&quot;: [&quot;Nat.zero_add&quot;],
+  &quot;gap_anchors&quot;: [&quot;comm-pattern&quot;, &quot;zero-identity&quot;]
+}
+</code></pre>
+<hr>
+<p><em>Ledger version: 1.0. Template created 2026-03-06. Skeleton awaiting experimental data.</em></p>
+<h2 id="see-also">See Also</h2>
+<ul>
+<li><a href="../experiment-plan/">Experiment-Plan</a></li>
+</ul>
+      </article>
+      
+    </main>
+  </div>
+  <footer class="site-footer">
+    <p>Generated by <a href="https://github.com/rohanvinaik/lintgate">LintGate</a></p>
+  </footer>
+  <script src="../script.js"></script>
+</body>
+</html>
