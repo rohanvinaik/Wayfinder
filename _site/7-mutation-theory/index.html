@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Connection to Mutation Theory — Wayfinder</title>
+  <meta name="description" content="Connection to Mutation Theory — Design">
+  <meta name="generator" content="LintGate Wiki Publisher">
+  <link rel="canonical" href="https://rohanvinaik.github.io/Wayfinder/7-mutation-theory/">
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+  <header class="site-header">
+    <button class="sidebar-toggle" aria-label="Toggle sidebar">&#9776;</button>
+    <a class="site-title" href="../">Wayfinder</a>
+    <button class="theme-toggle" aria-label="Toggle dark mode" title="Toggle dark mode">&#9790;</button>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" role="navigation" aria-label="Wiki navigation">
+      <div class="sidebar-header">
+        <a href="../">Wayfinder</a>
+      </div>
+      <div class="sidebar-group">
+  <h3>Research</h3>
+  <ul>
+    <li data-page="Abstract"><a href="../abstract/">Abstract</a></li>
+    <li data-page="1-Introduction"><a href="../1-introduction/">Introduction</a></li>
+    <li data-page="2-Theoretical-Framework"><a href="../2-theoretical-framework/">Theoretical Framework</a></li>
+    <li data-page="3-Architecture-Specification"><a href="../3-architecture-specification/">Architecture Specification</a></li>
+    <li data-page="4-Training"><a href="../4-training/">Training</a></li>
+    <li data-page="5-Evaluation"><a href="../5-evaluation/">Evaluation</a></li>
+    <li data-page="6-Related-Work"><a href="../6-related-work/">Related Work</a></li>
+    <li data-page="7-Discussion"><a href="../7-discussion/">Discussion</a></li>
+  </ul>
+</div>
+<div class="sidebar-group">
+  <h3>Design</h3>
+  <ul>
+    <li data-page="1-Design-Thesis"><a href="../1-design-thesis/">Design Thesis</a></li>
+    <li data-page="2-The-Proof-Network"><a href="../2-the-proof-network/">The Proof Network</a></li>
+    <li data-page="3-Scoring-System"><a href="../3-scoring-system/">Scoring System</a></li>
+    <li data-page="4-Spreading-Activation"><a href="../4-spreading-activation/">Spreading Activation</a></li>
+    <li data-page="5-Nav-Training-Data"><a href="../5-nav-training-data/">Navigation Training Data</a></li>
+    <li data-page="6-Ternary-Navigation"><a href="../6-ternary-navigation/">Ternary Navigation</a></li>
+    <li data-page="7-Mutation-Theory"><a href="../7-mutation-theory/">Connection to Mutation Theory</a></li>
+    <li data-page="8-Module-Architecture"><a href="../8-module-architecture/">Module Architecture</a></li>
+    <li data-page="9-Configuration"><a href="../9-configuration/">Configuration</a></li>
+  </ul>
+</div>
+<div class="sidebar-group">
+  <h3>Experiment Plan</h3>
+  <ul>
+    <li data-page="Plan-Overview"><a href="../plan-overview/">Plan Overview</a></li>
+    <li data-page="Phase-0"><a href="../phase-0/">Phase 0: Proof Network Construction</a></li>
+    <li data-page="Phase-1"><a href="../phase-1/">Phase 1: Core Pipeline</a></li>
+    <li data-page="Phase-2"><a href="../phase-2/">Phase 2: Navigation Training</a></li>
+    <li data-page="Phase-3"><a href="../phase-3/">Phase 3: Proof Search Integration</a></li>
+    <li data-page="Phase-4"><a href="../phase-4/">Phase 4: Evaluation and Ablation</a></li>
+    <li data-page="Phase-5"><a href="../phase-5/">Phase 5: Scale and Extend</a></li>
+  </ul>
+</div>
+<div class="sidebar-group">
+  <h3>Theory</h3>
+  <ul>
+    <li data-page="Theory-Profile"><a href="../theory-profile/">Theory Profile</a></li>
+    <li data-page="Theory-Compass"><a href="../theory-compass/">Project Compass</a></li>
+  </ul>
+</div>
+    </nav>
+    <main class="content" role="main">
+      <article>
+        <p><strong>Design</strong> | Chapter 7 | Prerequisites: <a href="../6-ternary-navigation/">6-Ternary-Navigation</a> | 24 min read | <a href="../home/">Home</a></p>
+<h2 id="7-connection-to-mutation-theory">7. Connection to Mutation Theory</h2>
+<p>The Mutation Theory corpus provides formal guarantees applicable to Wayfinder's navigational search. These connections are structural correspondences, not loose analogies — theorem proving is the ML application domain most naturally aligned with formal learning theory (exact verification oracle, well-defined state space, decomposable structure). See <code>WAYFINDER_RESEARCH.md</code> Section 2.7-2.8 for the full argument.</p>
+<h3 id="7-1-convergence-guarantees">7.1 Convergence Guarantees</h3>
+<p><strong>Theorem (Trajectory Monotonicity, T7.0):</strong> Killed sets grow monotonically along well-structured trajectories.</p>
+<p><strong>Application:</strong> In ModelAtlas terms: as you add constraints (require/prefer/avoid anchors), the candidate set monotonically shrinks. In proof search terms: each successful tactic application monotonically reduces the survivor set (remaining open goals). The Lyapunov monotonicity theorem (T7.5) guarantees convergence when the progress head's estimate (remaining steps) decreases at each step. This connects progress prediction → Lyapunov estimate → T7.5 → formal convergence guarantee.</p>
+<p><strong>Research direction:</strong> Existing work on proof complexity measures (proof tree depth, cut-rank, quantifier depth) may provide better Lyapunov function candidates than raw step count. See Phase 2.0 literature review.</p>
+<h3 id="7-2-phase-transition">7.2 Phase Transition</h3>
+<p><strong>Theorem (Phase Transition, T7.3):</strong> Greedy kill trajectories exhibit a structural transition step: initial rapid progress followed by a harder regime.</p>
+<p><strong>Application:</strong> The first 1-3 tactics in most proofs are easy (intro, unfold, basic rewrites — near the origin in proof space). The hard part is finding the right deep lemma (far from origin, requiring specific anchors). The phase transition is precisely where navigational retrieval matters most — after the easy tactics, the model must navigate to specific, rare anchors in specialized regions of the semantic network.</p>
+<h3 id="7-3-fixed-point-partition">7.3 Fixed-Point Partition</h3>
+<p><strong>Theorem (fixedPointPartition, T4):</strong> The mutant space partitions into Killed × Equivalent × DistinguishableSurvivors.</p>
+<p><strong>Application:</strong> The proof space partitions identically:</p>
+<table><tbody>
+<tr><td>Mutation Theory Partition</td><td>Scoring Signal</td><td>Role</td></tr>
+<tr><td>Killed vs. Survivor</td><td><code>bank_alignment</code></td><td>Right region of proof space?</td></tr>
+<tr><td>Equivalent detection</td><td><code>anchor_relevance</code></td><td>Semantic labels match? (IDF-weighted)</td></tr>
+<tr><td>Distinguishable → navigate to known</td><td><code>seed_similarity</code></td><td>Similar to already-solved patterns?</td></tr>
+</tbody></table>
+<p>The three-signal multiplicative scoring structure mirrors this three-way partition.</p>
+<h3 id="7-4-decomposition-optimality">7.4 Decomposition Optimality</h3>
+<p><strong>Theorem (Separable Independent Testing, T3):</strong> When a system decomposes into independent components, each can be tested independently with additive (not multiplicative) cost.</p>
+<p><strong>Application:</strong> The SubgoalDecomposer's decision to create <code>have</code> subgoals is formally justified when the subgoals are independent. Independent subgoals can be solved with separate navigational queries, and the total compute is <code>Σ solve_cost(subgoal_i)</code>, not <code>Π</code>. Independence can be verified by checking whether subgoals share anchors — shared anchors suggest dependency.</p>
+<h3 id="7-5-teaching-dimension">7.5 Teaching Dimension</h3>
+<p><strong>Theorem (TD = κ, T5.17):</strong> Teaching dimension equals specification complexity.</p>
+<p><strong>Application:</strong> The minimum number of premises needed to uniquely determine a proof is bounded by the specification complexity of the theorem. This provides a formal lower bound on the <code>premise_candidates</code> parameter: if a theorem's specification complexity is 4, retrieving 3 premises is provably insufficient. The proof network's anchor count per theorem approximates specification complexity.</p>
+<hr>
+<hr>
+<p><em>Sources: <code>docs/WAYFINDER_DESIGN.md</code></em></p>
+<h2 id="see-also">See Also</h2>
+<ul>
+<li><a href="6-Ternary-Navigation">6-Ternary-Navigation</a></li>
+<li><a href="8-Module-Architecture">8-Module-Architecture</a></li>
+</ul>
+      </article>
+      <nav class="prev-next" aria-label="Page navigation">
+  <a class="prev" href="../6-ternary-navigation/">&larr; Ternary Navigation</a>
+  <a class="next" href="../8-module-architecture/">Module Architecture &rarr;</a>
+</nav>
+    </main>
+  </div>
+  <footer class="site-footer">
+    <p>Generated by <a href="https://github.com/rohanvinaik/lintgate">LintGate</a></p>
+  </footer>
+  <script src="../script.js"></script>
+</body>
+</html>

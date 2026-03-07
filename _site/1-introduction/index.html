@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Introduction — Wayfinder</title>
+  <meta name="description" content="Introduction — Research">
+  <meta name="generator" content="LintGate Wiki Publisher">
+  <link rel="canonical" href="https://rohanvinaik.github.io/Wayfinder/1-introduction/">
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+  <header class="site-header">
+    <button class="sidebar-toggle" aria-label="Toggle sidebar">&#9776;</button>
+    <a class="site-title" href="../">Wayfinder</a>
+    <button class="theme-toggle" aria-label="Toggle dark mode" title="Toggle dark mode">&#9790;</button>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" role="navigation" aria-label="Wiki navigation">
+      <div class="sidebar-header">
+        <a href="../">Wayfinder</a>
+      </div>
+      <div class="sidebar-group">
+  <h3>Research</h3>
+  <ul>
+    <li data-page="Abstract"><a href="../abstract/">Abstract</a></li>
+    <li data-page="1-Introduction"><a href="../1-introduction/">Introduction</a></li>
+    <li data-page="2-Theoretical-Framework"><a href="../2-theoretical-framework/">Theoretical Framework</a></li>
+    <li data-page="3-Architecture-Specification"><a href="../3-architecture-specification/">Architecture Specification</a></li>
+    <li data-page="4-Training"><a href="../4-training/">Training</a></li>
+    <li data-page="5-Evaluation"><a href="../5-evaluation/">Evaluation</a></li>
+    <li data-page="6-Related-Work"><a href="../6-related-work/">Related Work</a></li>
+    <li data-page="7-Discussion"><a href="../7-discussion/">Discussion</a></li>
+  </ul>
+</div>
+<div class="sidebar-group">
+  <h3>Design</h3>
+  <ul>
+    <li data-page="1-Design-Thesis"><a href="../1-design-thesis/">Design Thesis</a></li>
+    <li data-page="2-The-Proof-Network"><a href="../2-the-proof-network/">The Proof Network</a></li>
+    <li data-page="3-Scoring-System"><a href="../3-scoring-system/">Scoring System</a></li>
+    <li data-page="4-Spreading-Activation"><a href="../4-spreading-activation/">Spreading Activation</a></li>
+    <li data-page="5-Nav-Training-Data"><a href="../5-nav-training-data/">Navigation Training Data</a></li>
+    <li data-page="6-Ternary-Navigation"><a href="../6-ternary-navigation/">Ternary Navigation</a></li>
+    <li data-page="7-Mutation-Theory"><a href="../7-mutation-theory/">Connection to Mutation Theory</a></li>
+    <li data-page="8-Module-Architecture"><a href="../8-module-architecture/">Module Architecture</a></li>
+    <li data-page="9-Configuration"><a href="../9-configuration/">Configuration</a></li>
+  </ul>
+</div>
+<div class="sidebar-group">
+  <h3>Experiment Plan</h3>
+  <ul>
+    <li data-page="Plan-Overview"><a href="../plan-overview/">Plan Overview</a></li>
+    <li data-page="Phase-0"><a href="../phase-0/">Phase 0: Proof Network Construction</a></li>
+    <li data-page="Phase-1"><a href="../phase-1/">Phase 1: Core Pipeline</a></li>
+    <li data-page="Phase-2"><a href="../phase-2/">Phase 2: Navigation Training</a></li>
+    <li data-page="Phase-3"><a href="../phase-3/">Phase 3: Proof Search Integration</a></li>
+    <li data-page="Phase-4"><a href="../phase-4/">Phase 4: Evaluation and Ablation</a></li>
+    <li data-page="Phase-5"><a href="../phase-5/">Phase 5: Scale and Extend</a></li>
+  </ul>
+</div>
+<div class="sidebar-group">
+  <h3>Theory</h3>
+  <ul>
+    <li data-page="Theory-Profile"><a href="../theory-profile/">Theory Profile</a></li>
+    <li data-page="Theory-Compass"><a href="../theory-compass/">Project Compass</a></li>
+  </ul>
+</div>
+    </nav>
+    <main class="content" role="main">
+      <article>
+        <p><strong>Research</strong> | Chapter 2 | Prerequisites: <a href="../abstract/">Abstract</a> | 56 min read | <a href="../home/">Home</a></p>
+<h2 id="1-introduction">1. Introduction</h2>
+<h3 id="1-1-the-navigation-problem-in-proof-search">1.1 The Navigation Problem in Proof Search</h3>
+<p>Every competitive neural theorem prover uses the same fundamental approach: encode the proof state as a dense vector, predict the next tactic token from a vocabulary, and embed the prediction in a tree search (BFS, MCTS, or best-first). Premise selection — choosing which lemmas from a library of ~100k candidates are relevant — is handled by a learned retriever that computes dot-product similarity between the proof state embedding and pre-computed premise embeddings.</p>
+<p>This approach works. ReProver (Yang et al., 2024) achieves state-of-the-art premise retrieval via an encoder that jointly embeds proof states and premises. DeepSeek-Prover-V2 (Ren et al., 2025) achieves 88.9% on MiniF2F-test via subgoal decomposition and reinforcement learning. HTPS (Lample et al., 2022) uses AlphaZero-inspired MCTS with a policy-critic architecture.</p>
+<p>But the approach has a structural limitation: <strong>the intelligence is in the wrong place.</strong> The neural network must run at every search node — every candidate tactic, every candidate premise, every expansion of the proof tree. Search budgets are dominated by neural forward passes. A single MiniF2F proof attempt may require thousands of forward passes through a multi-billion parameter model.</p>
+<p>Meanwhile, the <em>structure</em> of mathematical knowledge is rich, regular, and well-understood. Mathematicians don't search for premises by computing similarity in a continuous embedding space. They navigate structured relationships: "this is an inequality, so I need monotonicity lemmas; this is about finite sets, so I need the Finset API; I already used <code>linarith</code> here, so the premises should be arithmetic." This navigation is <em>combinatorial</em> — it operates on discrete properties, categorical relationships, and structured hierarchies.</p>
+<p>What if we could build a system where the neural network handles the hard part (understanding the proof state, predicting which <em>direction</em> to go) while search and retrieval are handled by deterministic symbolic operations on structured data?</p>
+<h3 id="1-2-the-modelatlas-paradigm">1.2 The ModelAtlas Paradigm</h3>
+<p>ModelAtlas (Vinaik, 2025) solves an analogous problem in a different domain: navigating a space of ~40,000 ML models on HuggingFace to find the ones most relevant to a user's needs. Its core insight is that structured navigation through signed semantic coordinates outperforms both flat database queries and dense embedding retrieval for this task.</p>
+<p>The key mechanisms:</p>
+<p>1. <strong>Signed orthogonal banks.</strong> Eight independent dimensions (ARCHITECTURE, CAPABILITY, EFFICIENCY, etc.), each with a <strong>zero state</strong> placed at the most common query target. Models are positioned as signed distances from zero. A 3B model is at EFFICIENCY = (-1, 2), meaning "two steps in the negative direction from the 7B zero." Positions enable gradient scoring: a query for "small" gives full marks to negative-efficiency models, partial marks to zero-efficiency, and decaying marks to positive.</p>
+<p>2. <strong>Anchor dictionary.</strong> A shared vocabulary of ~130+ semantic labels (e.g., "instruction-following", "GGUF-available", "Llama-family"). Models link to their applicable anchors. Similarity is <em>emergent</em> — two models sharing 15 anchors are related without an explicit edge. No embeddings are computed or stored.</p>
+<p>3. <strong>IDF-weighted scoring.</strong> Rare anchors (present on few models) count far more than ubiquitous ones. Sharing the anchor "proof-assistant" (12 models) matters more than sharing "decoder-only" (17,000 models). This prevents common features from dominating retrieval.</p>
+<p>4. <strong>Multiplicative composition.</strong> The final score is <code>bank_alignment × anchor_relevance × seed_similarity</code>. A zero in any component kills the result. A model that perfectly matches efficiency but completely fails capability scores 0, not 0.5. This prevents averaging away bad matches.</p>
+<p>5. <strong>Spreading activation.</strong> Bellman-Ford propagation from seed nodes through both explicit links (fine_tuned_from, variant_of) and implicit connections (shared anchors). Bank scoping prevents semantic bleeding — spreading through irrelevant dimensions is suppressed.</p>
+<p>6. <strong>Zero neural inference at query time.</strong> The entire query engine runs on SQLite, integer arithmetic, set intersection, and logarithmic decay. Full semantic decomposition was done once at ingestion. Queries execute in milliseconds.</p>
+<p>This paper asks: <strong>can the same paradigm be applied to mathematical theorem proving?</strong></p>
+<h3 id="1-3-the-lean-4-mathlib-testbed">1.3 The Lean 4 / Mathlib Testbed</h3>
+<p>Lean 4 with Mathlib provides an ideal testbed for navigational proof search:</p>
+<ul>
+<li><strong>Formally verified output</strong>: The Lean kernel provides unambiguous pass/fail verification. No proxy metrics, no subjective scores.</li>
+<li><strong>Structured mathematical entities</strong>: Mathlib's ~100k lemmas have rich type information, namespace hierarchies, and dependency graphs — natural structure for bank positioning and anchor assignment.</li>
+<li><strong>Finite tactic vocabulary</strong>: The set of commonly-used Lean 4 tactics is bounded (~50 core tactics, ~200 with variants). This is a navigational decision, not open-ended text generation.</li>
+<li><strong>Hierarchical proof structure</strong>: Proofs are trees of subgoals, not flat sequences. Each subgoal has a structured goal state with hypotheses, target type, and local context.</li>
+<li><strong>Existing benchmarks</strong>: MiniF2F (488 problems), Mathlib test split (~10k theorems), and full Mathlib (~100k theorems) provide standardized evaluation at multiple scales.</li>
+</ul>
+<h3 id="1-4-research-questions">1.4 Research Questions</h3>
+<p>This work addresses five interconnected questions:</p>
+<p>1. <strong>Navigational (Q1)</strong>: Can structured semantic navigation — bank positions, IDF-weighted anchors, and spreading activation — match or exceed dense embedding retrieval for premise selection from Mathlib?</p>
+<p>2. <strong>Architectural (Q2)</strong>: Can a ternary {-1, 0, +1} decoder that produces navigational coordinates (directions in proof space) outperform classification-based tactic prediction, by leveraging the semantic network for resolution?</p>
+<p>3. <strong>Search efficiency (Q3)</strong>: Does separating the neural network (runs once per proof state) from the search engine (runs deterministic symbolic operations) enable faster proof search with equivalent or better success rates?</p>
+<p>4. <strong>Process (Q4)</strong>: Does the architecture's learning trajectory satisfy PAB's quality criteria? Can progress prediction (remaining proof steps) serve as both a training signal and a search heuristic?</p>
+<p>5. <strong>Convergence (Q5)</strong>: Do the formal guarantees from Mutation Theory (trajectory monotonicity, phase transitions, fixed-point partitions) apply to this navigational search process, providing formal convergence bounds?</p>
+<h3 id="1-5-scope-and-stance">1.5 Scope and Stance</h3>
+<p>This is a research project with three streams:</p>
+<ul>
+<li><strong>Primary objective</strong>: A working theorem prover that navigates proof space via structured semantic networks, evaluated on standard Lean 4 benchmarks against ReProver, LeanProgress, and DeepSeek-Prover-V2 baselines.</li>
+<li><strong>Co-equal objective</strong>: Empirical validation that navigational search (symbolic operations on structured data) can compete with or exceed learned retrieval (neural forward passes) for premise selection.</li>
+<li><strong>Tertiary objective</strong>: Empirical validation of PAB's trajectory evaluation framework in the theorem-proving domain, with progress prediction as a novel PAB metric.</li>
+</ul>
+<p><strong>Non-goal</strong>: Beating DeepSeek-Prover-V2's 88.9% on MiniF2F. That system uses a 671B parameter model and reinforcement learning. Our contribution is architectural: demonstrating that a small model (sub-100M trainable parameters) with structured navigation can achieve competitive results by spending compute on symbolic search rather than neural inference.</p>
+<hr>
+<hr>
+<p><em>Sources: <code>docs/WAYFINDER_RESEARCH.md</code></em></p>
+<h2 id="see-also">See Also</h2>
+<ul>
+<li><a href="../abstract/">Abstract</a></li>
+<li><a href="2-Theoretical-Framework">2-Theoretical-Framework</a></li>
+</ul>
+      </article>
+      <nav class="prev-next" aria-label="Page navigation">
+  <a class="prev" href="../abstract/">&larr; Abstract</a>
+  <a class="next" href="../2-theoretical-framework/">Theoretical Framework &rarr;</a>
+</nav>
+    </main>
+  </div>
+  <footer class="site-footer">
+    <p>Generated by <a href="https://github.com/rohanvinaik/lintgate">LintGate</a></p>
+  </footer>
+  <script src="../script.js"></script>
+</body>
+</html>

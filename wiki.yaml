@@ -1,0 +1,280 @@
+materializer_version: "0.2.0"
+
+defaults:
+  theory_scope: false
+
+rails:
+  research:
+    name: "Research"
+  design:
+    name: "Design"
+  experiment-plan:
+    name: "Experiment Plan"
+  experiment-results:
+    name: "Experiment Results"
+  theory:
+    name: "Theory"
+
+pages:
+  # --- Home (no rail) ---
+  - id: home
+    title: "Home"
+    sources:
+      - path: docs/WAYFINDER_RESEARCH.md
+        heading: "Abstract"
+        level: 2
+
+  # --- Research ---
+  - id: Abstract
+    title: "Abstract"
+    rail: research
+    chapter: 1
+    sources:
+      - path: docs/WAYFINDER_RESEARCH.md
+        heading: "Abstract"
+        level: 2
+
+  - id: 1-Introduction
+    title: "Introduction"
+    rail: research
+    chapter: 2
+    prerequisites: [Abstract]
+    sources:
+      - path: docs/WAYFINDER_RESEARCH.md
+        heading: "1. Introduction"
+        level: 2
+
+  - id: 2-Theoretical-Framework
+    title: "Theoretical Framework"
+    rail: research
+    chapter: 3
+    prerequisites: [1-Introduction]
+    sources:
+      - path: docs/WAYFINDER_RESEARCH.md
+        heading: "2. Theoretical Framework"
+        level: 2
+
+  - id: 3-Architecture-Specification
+    title: "Architecture Specification"
+    rail: research
+    chapter: 4
+    prerequisites: [2-Theoretical-Framework]
+    sources:
+      - path: docs/WAYFINDER_RESEARCH.md
+        heading: "3. Architecture Specification"
+        level: 2
+
+  - id: 4-Training
+    title: "Training"
+    rail: research
+    chapter: 5
+    prerequisites: [3-Architecture-Specification]
+    sources:
+      - path: docs/WAYFINDER_RESEARCH.md
+        heading: "4. Training"
+        level: 2
+
+  - id: 5-Evaluation
+    title: "Evaluation"
+    rail: research
+    chapter: 6
+    prerequisites: [4-Training]
+    sources:
+      - path: docs/WAYFINDER_RESEARCH.md
+        heading: "5. Evaluation"
+        level: 2
+
+  - id: 6-Related-Work
+    title: "Related Work"
+    rail: research
+    chapter: 7
+    prerequisites: [1-Introduction]
+    sources:
+      - path: docs/WAYFINDER_RESEARCH.md
+        heading: "6. Related Work"
+        level: 2
+
+  - id: 7-Discussion
+    title: "Discussion"
+    rail: research
+    chapter: 8
+    prerequisites: [5-Evaluation]
+    sources:
+      - path: docs/WAYFINDER_RESEARCH.md
+        heading: "7. Discussion"
+        level: 2
+
+  # --- Design ---
+  - id: 1-Design-Thesis
+    title: "Design Thesis"
+    rail: design
+    chapter: 1
+    sources:
+      - path: docs/WAYFINDER_DESIGN.md
+        heading: "1. Design Thesis"
+        level: 2
+
+  - id: 2-The-Proof-Network
+    title: "The Proof Network"
+    rail: design
+    chapter: 2
+    prerequisites: [1-Design-Thesis]
+    sources:
+      - path: docs/WAYFINDER_DESIGN.md
+        heading: "2. The Proof Network"
+        level: 2
+
+  - id: 3-Scoring-System
+    title: "Scoring System"
+    rail: design
+    chapter: 3
+    prerequisites: [2-The-Proof-Network]
+    sources:
+      - path: docs/WAYFINDER_DESIGN.md
+        heading: "3. Scoring System"
+        level: 2
+
+  - id: 4-Spreading-Activation
+    title: "Spreading Activation"
+    rail: design
+    chapter: 4
+    prerequisites: [3-Scoring-System]
+    sources:
+      - path: docs/WAYFINDER_DESIGN.md
+        heading: "4. Spreading Activation"
+        level: 2
+
+  - id: 5-Nav-Training-Data
+    title: "Navigation Training Data"
+    rail: design
+    chapter: 5
+    prerequisites: [2-The-Proof-Network]
+    sources:
+      - path: docs/WAYFINDER_DESIGN.md
+        heading: "5. Navigational Training Data Format"
+        level: 2
+
+  - id: 6-Ternary-Navigation
+    title: "Ternary Navigation"
+    rail: design
+    chapter: 6
+    prerequisites: [1-Design-Thesis]
+    sources:
+      - path: docs/WAYFINDER_DESIGN.md
+        heading: "6. The Ternary Navigation Correspondence"
+        level: 2
+
+  - id: 7-Mutation-Theory
+    title: "Connection to Mutation Theory"
+    rail: design
+    chapter: 7
+    prerequisites: [6-Ternary-Navigation]
+    sources:
+      - path: docs/WAYFINDER_DESIGN.md
+        heading: "7. Connection to Mutation Theory"
+        level: 2
+
+  - id: 8-Module-Architecture
+    title: "Module Architecture"
+    rail: design
+    chapter: 8
+    prerequisites: [1-Design-Thesis]
+    sources:
+      - path: docs/WAYFINDER_DESIGN.md
+        heading: "8. Module Architecture"
+        level: 2
+
+  - id: 9-Configuration
+    title: "Configuration"
+    rail: design
+    chapter: 9
+    prerequisites: [8-Module-Architecture]
+    sources:
+      - path: docs/WAYFINDER_DESIGN.md
+        heading: "9. Configuration"
+        level: 2
+
+  # --- Experiment Plan ---
+  - id: Plan-Overview
+    title: "Plan Overview"
+    rail: experiment-plan
+    chapter: 1
+    sources:
+      - path: docs/WAYFINDER_PLAN.md
+        heading: "Overview"
+        level: 2
+
+  - id: Phase-0
+    title: "Phase 0: Proof Network Construction"
+    rail: experiment-plan
+    chapter: 2
+    prerequisites: [Plan-Overview]
+    sources:
+      - path: docs/WAYFINDER_PLAN.md
+        heading: "Phase 0: Proof Network Construction (Week 1-2)"
+        level: 2
+
+  - id: Phase-1
+    title: "Phase 1: Core Pipeline"
+    rail: experiment-plan
+    chapter: 3
+    prerequisites: [Phase-0]
+    sources:
+      - path: docs/WAYFINDER_PLAN.md
+        heading: "Phase 1: Core Pipeline (Week 2-3)"
+        level: 2
+
+  - id: Phase-2
+    title: "Phase 2: Navigation Training"
+    rail: experiment-plan
+    chapter: 4
+    prerequisites: [Phase-1]
+    sources:
+      - path: docs/WAYFINDER_PLAN.md
+        heading: "Phase 2: Navigation Training (Week 3-5)"
+        level: 2
+
+  - id: Phase-3
+    title: "Phase 3: Proof Search Integration"
+    rail: experiment-plan
+    chapter: 5
+    prerequisites: [Phase-2]
+    sources:
+      - path: docs/WAYFINDER_PLAN.md
+        heading: "Phase 3: Proof Search Integration (Three-Lane, Week 5-7)"
+        level: 2
+
+  - id: Phase-4
+    title: "Phase 4: Evaluation and Ablation"
+    rail: experiment-plan
+    chapter: 6
+    prerequisites: [Phase-3]
+    sources:
+      - path: docs/WAYFINDER_PLAN.md
+        heading: "Phase 4: Evaluation and Ablation (Week 7-9)"
+        level: 2
+
+  - id: Phase-5
+    title: "Phase 5: Scale and Extend"
+    rail: experiment-plan
+    chapter: 7
+    prerequisites: [Phase-4]
+    sources:
+      - path: docs/WAYFINDER_PLAN.md
+        heading: "Phase 5: Scale and Extend (Week 9+, contingent on results)"
+        level: 2
+
+  # --- Theory ---
+  - id: Theory-Profile
+    title: "Theory Profile"
+    rail: theory
+    chapter: 1
+    generator: theory_profile
+    theory_scope: true
+
+  - id: Theory-Compass
+    title: "Project Compass"
+    rail: theory
+    chapter: 2
+    generator: compass_state
+    theory_scope: true

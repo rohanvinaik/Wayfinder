@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Training — Wayfinder</title>
+  <meta name="description" content="Training — Research">
+  <meta name="generator" content="LintGate Wiki Publisher">
+  <link rel="canonical" href="https://rohanvinaik.github.io/Wayfinder/4-training/">
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+  <header class="site-header">
+    <button class="sidebar-toggle" aria-label="Toggle sidebar">&#9776;</button>
+    <a class="site-title" href="../">Wayfinder</a>
+    <button class="theme-toggle" aria-label="Toggle dark mode" title="Toggle dark mode">&#9790;</button>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" role="navigation" aria-label="Wiki navigation">
+      <div class="sidebar-header">
+        <a href="../">Wayfinder</a>
+      </div>
+      <div class="sidebar-group">
+  <h3>Research</h3>
+  <ul>
+    <li data-page="Abstract"><a href="../abstract/">Abstract</a></li>
+    <li data-page="1-Introduction"><a href="../1-introduction/">Introduction</a></li>
+    <li data-page="2-Theoretical-Framework"><a href="../2-theoretical-framework/">Theoretical Framework</a></li>
+    <li data-page="3-Architecture-Specification"><a href="../3-architecture-specification/">Architecture Specification</a></li>
+    <li data-page="4-Training"><a href="../4-training/">Training</a></li>
+    <li data-page="5-Evaluation"><a href="../5-evaluation/">Evaluation</a></li>
+    <li data-page="6-Related-Work"><a href="../6-related-work/">Related Work</a></li>
+    <li data-page="7-Discussion"><a href="../7-discussion/">Discussion</a></li>
+  </ul>
+</div>
+<div class="sidebar-group">
+  <h3>Design</h3>
+  <ul>
+    <li data-page="1-Design-Thesis"><a href="../1-design-thesis/">Design Thesis</a></li>
+    <li data-page="2-The-Proof-Network"><a href="../2-the-proof-network/">The Proof Network</a></li>
+    <li data-page="3-Scoring-System"><a href="../3-scoring-system/">Scoring System</a></li>
+    <li data-page="4-Spreading-Activation"><a href="../4-spreading-activation/">Spreading Activation</a></li>
+    <li data-page="5-Nav-Training-Data"><a href="../5-nav-training-data/">Navigation Training Data</a></li>
+    <li data-page="6-Ternary-Navigation"><a href="../6-ternary-navigation/">Ternary Navigation</a></li>
+    <li data-page="7-Mutation-Theory"><a href="../7-mutation-theory/">Connection to Mutation Theory</a></li>
+    <li data-page="8-Module-Architecture"><a href="../8-module-architecture/">Module Architecture</a></li>
+    <li data-page="9-Configuration"><a href="../9-configuration/">Configuration</a></li>
+  </ul>
+</div>
+<div class="sidebar-group">
+  <h3>Experiment Plan</h3>
+  <ul>
+    <li data-page="Plan-Overview"><a href="../plan-overview/">Plan Overview</a></li>
+    <li data-page="Phase-0"><a href="../phase-0/">Phase 0: Proof Network Construction</a></li>
+    <li data-page="Phase-1"><a href="../phase-1/">Phase 1: Core Pipeline</a></li>
+    <li data-page="Phase-2"><a href="../phase-2/">Phase 2: Navigation Training</a></li>
+    <li data-page="Phase-3"><a href="../phase-3/">Phase 3: Proof Search Integration</a></li>
+    <li data-page="Phase-4"><a href="../phase-4/">Phase 4: Evaluation and Ablation</a></li>
+    <li data-page="Phase-5"><a href="../phase-5/">Phase 5: Scale and Extend</a></li>
+  </ul>
+</div>
+<div class="sidebar-group">
+  <h3>Theory</h3>
+  <ul>
+    <li data-page="Theory-Profile"><a href="../theory-profile/">Theory Profile</a></li>
+    <li data-page="Theory-Compass"><a href="../theory-compass/">Project Compass</a></li>
+  </ul>
+</div>
+    </nav>
+    <main class="content" role="main">
+      <article>
+        <p><strong>Research</strong> | Chapter 5 | Prerequisites: <a href="../3-architecture-specification/">3-Architecture-Specification</a> | 56 min read | <a href="../home/">Home</a></p>
+<h2 id="4-training">4. Training</h2>
+<h3 id="4-1-data-preparation">4.1 Data Preparation</h3>
+<p><strong>Training corpus</strong>: LeanDojo's extracted Mathlib dataset (~98,734 theorems with proof traces). Each example provides:</p>
+<ul>
+<li>Theorem statement and goal state</li>
+<li>Tactic proof with intermediate goal states</li>
+<li>Premise information (which lemmas are referenced)</li>
+</ul>
+<p><strong>Conversion to navigational training data</strong>: For each proof step, extract:</p>
+<ul>
+<li>Ground-truth navigational directions (from the tactic used, mapped to bank coordinates)</li>
+<li>Ground-truth anchors (from the goal state and tactic/premise analysis)</li>
+<li>Ground-truth progress (number of remaining proof steps)</li>
+<li>Ground-truth solvability (1.0 for all goals in successful proofs)</li>
+</ul>
+<p><strong>Negative examples</strong>: Failed proof attempts, wrong tactic selections, incorrect premises — sourced from proof search logs and synthetic perturbation.</p>
+<h3 id="4-2-curriculum-learning">4.2 Curriculum Learning</h3>
+<p>Inspired by LeanAgent's complexity ordering (<code>complexity = e^S</code> where S = proof steps) and the navigational wavefront concept:</p>
+<p>1. <strong>Phase A (warmup)</strong>: Train on 1-2 step proofs only. The model learns basic navigation near the origin. 2. <strong>Phase B (expansion)</strong>: Gradually increase proof depth. 3-5 step proofs. 3. <strong>Phase C (full)</strong>: All proof lengths, with oversampling of medium-difficulty theorems.</p>
+<p>This follows the Mutation Theory's phase-transition insight: start with easy kills (short proofs near the origin), then venture into harder regions.</p>
+<p><strong>Navigational wavefront curriculum (Phase C refinement).</strong> During expert iteration (Phase 5), the curriculum should be navigational, not just complexity-based: order theorems by their <em>distance in the proof network from already-proven results</em>, creating a wavefront of learnability that expands outward through mathematical space. Theorems whose premises are 1-2 hops from already-proven theorems are trained first; theorems requiring navigation into unexplored regions of the semantic network are deferred. This addresses the saturation problem observed across systems — up to 98.5% of generated proofs during expert iteration are incorrect, and remaining unproven theorems become exponentially harder. STP (Self-play Theorem Prover) found that 47% of self-generated conjectures at the "cusp of provability" are successfully proved, vs only 11.4% of real unproved statements. The wavefront curriculum targets this cusp by definition.</p>
+<h3 id="4-3-pab-integration">4.3 PAB Integration</h3>
+<p>PAB metrics are collected at every checkpoint (every 50 training steps):</p>
+<ul>
+<li>Loss components (L_nav, L_anchor, L_progress, L_critic)</li>
+<li>Ternary crystallization rate</li>
+<li>Per-bank navigational accuracy</li>
+<li>Progress prediction correlation with actual remaining steps</li>
+<li>Critic calibration (predicted solvability vs. actual proof success)</li>
+<li>Domain-wise accuracy (by Mathlib namespace)</li>
+</ul>
+<hr>
+<hr>
+<p><em>Sources: <code>docs/WAYFINDER_RESEARCH.md</code></em></p>
+<h2 id="see-also">See Also</h2>
+<ul>
+<li><a href="3-Architecture-Specification">3-Architecture-Specification</a></li>
+<li><a href="5-Evaluation">5-Evaluation</a></li>
+</ul>
+      </article>
+      <nav class="prev-next" aria-label="Page navigation">
+  <a class="prev" href="../3-architecture-specification/">&larr; Architecture Specification</a>
+  <a class="next" href="../5-evaluation/">Evaluation &rarr;</a>
+</nav>
+    </main>
+  </div>
+  <footer class="site-footer">
+    <p>Generated by <a href="https://github.com/rohanvinaik/lintgate">LintGate</a></p>
+  </footer>
+  <script src="../script.js"></script>
+</body>
+</html>

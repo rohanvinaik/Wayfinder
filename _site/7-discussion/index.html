@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Discussion — Wayfinder</title>
+  <meta name="description" content="Discussion — Research">
+  <meta name="generator" content="LintGate Wiki Publisher">
+  <link rel="canonical" href="https://rohanvinaik.github.io/Wayfinder/7-discussion/">
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+  <header class="site-header">
+    <button class="sidebar-toggle" aria-label="Toggle sidebar">&#9776;</button>
+    <a class="site-title" href="../">Wayfinder</a>
+    <button class="theme-toggle" aria-label="Toggle dark mode" title="Toggle dark mode">&#9790;</button>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" role="navigation" aria-label="Wiki navigation">
+      <div class="sidebar-header">
+        <a href="../">Wayfinder</a>
+      </div>
+      <div class="sidebar-group">
+  <h3>Research</h3>
+  <ul>
+    <li data-page="Abstract"><a href="../abstract/">Abstract</a></li>
+    <li data-page="1-Introduction"><a href="../1-introduction/">Introduction</a></li>
+    <li data-page="2-Theoretical-Framework"><a href="../2-theoretical-framework/">Theoretical Framework</a></li>
+    <li data-page="3-Architecture-Specification"><a href="../3-architecture-specification/">Architecture Specification</a></li>
+    <li data-page="4-Training"><a href="../4-training/">Training</a></li>
+    <li data-page="5-Evaluation"><a href="../5-evaluation/">Evaluation</a></li>
+    <li data-page="6-Related-Work"><a href="../6-related-work/">Related Work</a></li>
+    <li data-page="7-Discussion"><a href="../7-discussion/">Discussion</a></li>
+  </ul>
+</div>
+<div class="sidebar-group">
+  <h3>Design</h3>
+  <ul>
+    <li data-page="1-Design-Thesis"><a href="../1-design-thesis/">Design Thesis</a></li>
+    <li data-page="2-The-Proof-Network"><a href="../2-the-proof-network/">The Proof Network</a></li>
+    <li data-page="3-Scoring-System"><a href="../3-scoring-system/">Scoring System</a></li>
+    <li data-page="4-Spreading-Activation"><a href="../4-spreading-activation/">Spreading Activation</a></li>
+    <li data-page="5-Nav-Training-Data"><a href="../5-nav-training-data/">Navigation Training Data</a></li>
+    <li data-page="6-Ternary-Navigation"><a href="../6-ternary-navigation/">Ternary Navigation</a></li>
+    <li data-page="7-Mutation-Theory"><a href="../7-mutation-theory/">Connection to Mutation Theory</a></li>
+    <li data-page="8-Module-Architecture"><a href="../8-module-architecture/">Module Architecture</a></li>
+    <li data-page="9-Configuration"><a href="../9-configuration/">Configuration</a></li>
+  </ul>
+</div>
+<div class="sidebar-group">
+  <h3>Experiment Plan</h3>
+  <ul>
+    <li data-page="Plan-Overview"><a href="../plan-overview/">Plan Overview</a></li>
+    <li data-page="Phase-0"><a href="../phase-0/">Phase 0: Proof Network Construction</a></li>
+    <li data-page="Phase-1"><a href="../phase-1/">Phase 1: Core Pipeline</a></li>
+    <li data-page="Phase-2"><a href="../phase-2/">Phase 2: Navigation Training</a></li>
+    <li data-page="Phase-3"><a href="../phase-3/">Phase 3: Proof Search Integration</a></li>
+    <li data-page="Phase-4"><a href="../phase-4/">Phase 4: Evaluation and Ablation</a></li>
+    <li data-page="Phase-5"><a href="../phase-5/">Phase 5: Scale and Extend</a></li>
+  </ul>
+</div>
+<div class="sidebar-group">
+  <h3>Theory</h3>
+  <ul>
+    <li data-page="Theory-Profile"><a href="../theory-profile/">Theory Profile</a></li>
+    <li data-page="Theory-Compass"><a href="../theory-compass/">Project Compass</a></li>
+  </ul>
+</div>
+    </nav>
+    <main class="content" role="main">
+      <article>
+        <p><strong>Research</strong> | Chapter 8 | Prerequisites: <a href="../5-evaluation/">5-Evaluation</a> | 56 min read | <a href="../home/">Home</a></p>
+<h2 id="7-discussion">7. Discussion</h2>
+<h3 id="7-1-the-intelligence-budget-argument">7.1 The Intelligence Budget Argument</h3>
+<p>The key insight driving Wayfinder is about <em>where to spend intelligence</em>. Current theorem provers spend enormous compute on neural inference during search — every candidate tactic, every candidate premise, every tree node expansion requires a forward pass through a large model. The model must encode <em>all</em> mathematical knowledge in its weights because search is parametric.</p>
+<p>Wayfinder inverts this: mathematical knowledge is encoded <em>explicitly</em> in a structured semantic network (the proof network). The neural model handles only the genuinely hard part — understanding the current proof state and predicting which <em>direction</em> to go. Search and retrieval are outsourced to deterministic symbolic operations that are orders of magnitude cheaper per query.</p>
+<p>This is the same design philosophy as ModelAtlas: "Don't waste tokens on problems that have been solved for 50 years — waste them on <em>your</em> terms." Set intersection, IDF computation, and Bellman-Ford are solved problems. Understanding a Lean goal state is not. Spend the neural compute where it matters.</p>
+<h3 id="7-2-limitations">7.2 Limitations</h3>
+<p>1. <strong>Proof network construction requires Mathlib-specific engineering.</strong> Bank positions and anchors must be extracted from Lean's type system, namespace hierarchy, and proof corpus. This is significant upfront work. The anchor gap analysis procedure (Section 2.3) mitigates but does not eliminate this cost.</p>
+<p>2. <strong>Scoring mechanism sensitivity.</strong> The scoring mechanism (multiplicative, confidence-weighted, or hybrid — see Section 2.4) must balance precision against noise tolerance. The optimal mechanism likely varies with proof network maturity and may need to evolve during training. This is an active design question with multiple viable alternatives under evaluation.</p>
+<p>3. <strong>Anchor dictionary coverage.</strong> The system can only retrieve premises whose relevant properties are captured by anchors. Subtle mathematical relationships not expressible as discrete labels will be missed. The iterative anchor gap analysis (Section 2.3) is designed to systematically close these gaps, but long-tail mathematical concepts will always be harder to anchor than common ones.</p>
+<p>4. <strong>Encoder quality.</strong> The encoder is the system's perceptual bottleneck (Section 3.2). The strategy of evaluating math-native models, aggressively pruned large models, and fine-tuned sentence transformers mitigates this risk, but the optimal encoder may not be known until empirical evaluation in Phase 1.</p>
+<p>5. <strong>Comparison fairness.</strong> DeepSeek-Prover-V2 uses a 671B model. Direct comparison on theorem-proved rate is unfair. Our contribution is architectural efficiency (proofs found per compute unit), not raw performance.</p>
+<h3 id="7-3-hammer-complementarity">7.3 Hammer Complementarity</h3>
+<p>Wayfinder is not a replacement for ATP-based hammer tools (Sledgehammer, CoqHammer, LeanHammer). It is complementary. The AUTOMATION bank cleanly separates their domains:</p>
+<ul>
+<li><strong>AUTOMATION ≤ -1 (fully decidable)</strong>: Goals that can be translated to first-order logic and solved by external ATPs. These are the hammer's domain. When the navigator predicts AUTOMATION = -1, delegate to LeanHammer/Aesop directly. This is the "known region" of proof space — no navigation needed.</li>
+<li><strong>AUTOMATION ≥ 0 (requires structured reasoning)</strong>: Goals needing specific lemma selection, manual case analysis, induction, or multi-step decomposition. These are Wayfinder's domain. Hammers fail here because the goals aren't translatable to first-order logic, or the right premises aren't in the hammer's premise set.</li>
+</ul>
+<p>LeanHammer (2025) shows that hybrid neural+symbolic achieves 37.3% — outperforming any single method by 21%. Wayfinder + hammer is a natural hybrid: navigational retrieval feeds premise candidates to hammers for the decidable portion, while handling the non-decidable portion via structured proof search. The AUTOMATION bank direction is the routing decision.</p>
+<h3 id="7-4-the-broader-vision">7.4 The Broader Vision</h3>
+<p>If navigational proof search works — if structured semantic networks can compete with dense retrieval for mathematical reasoning — the implications extend beyond theorem proving:</p>
+<ul>
+<li><strong>Any domain with structured output</strong>: Code generation (API calls from a known catalog), molecular design (reactions from known reaction types), circuit synthesis (components from known libraries).</li>
+<li><strong>Any domain with a verification oracle</strong>: The Lean kernel provides binary pass/fail. Any domain with an equivalent (compiler, simulator, SAT solver) can use the same navigational architecture.</li>
+<li><strong>Any domain where knowledge structure is known a priori</strong>: Mathematics has a rich, well-understood structure (algebraic hierarchies, topological properties, order relations). Any domain with similar structure can be encoded in a semantic network.</li>
+</ul>
+<p>The thesis of Wayfinder is not specific to theorem proving. It is a general claim about the relationship between structured knowledge and neural prediction: <strong>when the knowledge structure is known, encode it explicitly and let the neural network navigate it. Don't force the neural network to learn what you already know.</strong></p>
+<hr>
+<hr>
+<p><em>Sources: <code>docs/WAYFINDER_RESEARCH.md</code></em></p>
+<h2 id="see-also">See Also</h2>
+<ul>
+<li><a href="6-Related-Work">6-Related-Work</a></li>
+<li><a href="1-Design-Thesis">1-Design-Thesis</a></li>
+</ul>
+      </article>
+      <nav class="prev-next" aria-label="Page navigation">
+  <a class="prev" href="../6-related-work/">&larr; Related Work</a>
+  <span class="next"></span>
+</nav>
+    </main>
+  </div>
+  <footer class="site-footer">
+    <p>Generated by <a href="https://github.com/rohanvinaik/lintgate">LintGate</a></p>
+  </footer>
+  <script src="../script.js"></script>
+</body>
+</html>

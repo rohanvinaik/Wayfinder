@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Project Compass — Wayfinder</title>
-  <meta name="description" content="Project Compass — Theory">
+  <title>Phase 2: Navigation Training — Wayfinder</title>
+  <meta name="description" content="Phase 2: Navigation Training — Experiment Plan">
   <meta name="generator" content="LintGate Wiki Publisher">
-  <link rel="canonical" href="https://rohanvinaik.github.io/Wayfinder/theory-compass/">
+  <link rel="canonical" href="https://rohanvinaik.github.io/Wayfinder/phase-2/">
   <link rel="stylesheet" href="../style.css">
 </head>
 <body>
@@ -69,23 +69,49 @@
     </nav>
     <main class="content" role="main">
       <article>
-        <p><strong>Theory</strong> | Chapter 2 | 1 min read | <a href="../home/">Home</a></p>
-<h3 id="problem">Problem</h3>
-<p><strong>Depth</strong>: 3</p>
-<h3 id="solution">Solution</h3>
-<p><strong>Depth</strong>: 1</p>
-<h3 id="implementation">Implementation</h3>
-<p><strong>Depth</strong>: 3</p>
-<h3 id="world">World</h3>
-<p><strong>Depth</strong>: 1</p>
-<h2 id="see-also">See Also</h2>
+        <p><strong>Experiment Plan</strong> | Chapter 4 | Prerequisites: <a href="../phase-1/">Phase-1</a> | 28 min read | <a href="../home/">Home</a></p>
+<h2 id="phase-2-navigation-training-week-3-5">Phase 2: Navigation Training (Week 3-5)</h2>
+<p><em>Goal: Train the navigational components and validate that the proof network enables meaningful retrieval.</em> <em>Code status: Training script (<code>train_navigator.py</code>), eval scripts (<code>eval_retrieval.py</code>, <code>eval_spreading.py</code>), and config (<code>wayfinder.yaml</code>) all implemented. Awaiting Phase 0-1 data.</em></p>
+<h3 id="2-0-literature-review-lean4-proof-search-algorithms">2.0 Literature Review: Lean4 Proof Search Algorithms</h3>
+<p><strong>What</strong>: Survey existing work on proof search termination, progress estimation, and potential functions in interactive theorem provers. The Mutation Theory connections (trajectory monotonicity, Lyapunov convergence) may have tighter domain-specific analogs in the ITP literature.</p>
+<p><strong>Already completed</strong>: Initial survey in <code>docs/Wayfinder_External_Research.md</code> covers 8 major systems. Key findings already incorporated:</p>
 <ul>
-<li><a href="../theory-profile/">Theory-Profile</a></li>
+<li>AlphaProof uses remaining-tactic-count as value target (adopted for critic head)</li>
+<li>HTPS: soft critic targets >> hard binary (adopted)</li>
+<li>LeanProgress: proof history gives 13-point improvement (adopted)</li>
+<li>BFS-Prover: best-first search competitive with MCTS when policy is strong</li>
+<li>No system uses knowledge graph navigation for proof search (validates novelty)</li>
+<li>LeanHammer hybrid achieves 37.3% (hammer integration adopted)</li>
 </ul>
+<p><strong>Remaining areas to investigate</strong>:</p>
+<ul>
+<li>Well-founded recursion and termination metrics in Lean 4 itself</li>
+<li>Proof complexity measures (proof tree depth, cut-rank, quantifier depth) as alternative Lyapunov function candidates — raw step count may not be the best training target for the progress head</li>
+<li>QEDCartographer's reward-free RL for state values — compare to our Lyapunov approach</li>
+<li>Crouse et al.'s GNN-based proof length prediction in first-order logic</li>
+<li>Formal connection between proof complexity and teaching dimension (T5.17)</li>
+</ul>
+<p><strong>Output</strong>: Annotated bibliography in <code>docs/RELATED_PROOF_SEARCH.md</code>. Focus on: (1) better progress head training targets, (2) formal convergence criteria, (3) any existing structured retrieval approaches we may have missed.</p>
+<p><strong>Time</strong>: 2-3 days concurrent with Phase 1/2 implementation.</p>
+<h3 id="2-1-navigational-direction-training">2.1 Navigational Direction Training</h3>
+<p><strong>What</strong>: Train the ProofNavigator to predict correct navigational directions from goal state embeddings.</p>
+<p><strong>How</strong>:</p>
+<pre><code class="language-python">
+
+
+---
+*Sources: `docs/WAYFINDER_PLAN.md`*
+## See Also
+
+- [Phase-1](../phase-1/)
+- [Phase-3](../phase-3/)
+
+
+</code></pre>
       </article>
       <nav class="prev-next" aria-label="Page navigation">
-  <a class="prev" href="../theory-profile/">&larr; Theory Profile</a>
-  <span class="next"></span>
+  <a class="prev" href="../phase-1/">&larr; Phase 1: Core Pipeline</a>
+  <a class="next" href="../phase-3/">Phase 3: Proof Search Integration &rarr;</a>
 </nav>
     </main>
   </div>

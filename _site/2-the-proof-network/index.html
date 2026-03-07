@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The Proof Network — Wayfinder</title>
+  <meta name="description" content="The Proof Network — Design">
+  <meta name="generator" content="LintGate Wiki Publisher">
+  <link rel="canonical" href="https://rohanvinaik.github.io/Wayfinder/2-the-proof-network/">
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+  <header class="site-header">
+    <button class="sidebar-toggle" aria-label="Toggle sidebar">&#9776;</button>
+    <a class="site-title" href="../">Wayfinder</a>
+    <button class="theme-toggle" aria-label="Toggle dark mode" title="Toggle dark mode">&#9790;</button>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" role="navigation" aria-label="Wiki navigation">
+      <div class="sidebar-header">
+        <a href="../">Wayfinder</a>
+      </div>
+      <div class="sidebar-group">
+  <h3>Research</h3>
+  <ul>
+    <li data-page="Abstract"><a href="../abstract/">Abstract</a></li>
+    <li data-page="1-Introduction"><a href="../1-introduction/">Introduction</a></li>
+    <li data-page="2-Theoretical-Framework"><a href="../2-theoretical-framework/">Theoretical Framework</a></li>
+    <li data-page="3-Architecture-Specification"><a href="../3-architecture-specification/">Architecture Specification</a></li>
+    <li data-page="4-Training"><a href="../4-training/">Training</a></li>
+    <li data-page="5-Evaluation"><a href="../5-evaluation/">Evaluation</a></li>
+    <li data-page="6-Related-Work"><a href="../6-related-work/">Related Work</a></li>
+    <li data-page="7-Discussion"><a href="../7-discussion/">Discussion</a></li>
+  </ul>
+</div>
+<div class="sidebar-group">
+  <h3>Design</h3>
+  <ul>
+    <li data-page="1-Design-Thesis"><a href="../1-design-thesis/">Design Thesis</a></li>
+    <li data-page="2-The-Proof-Network"><a href="../2-the-proof-network/">The Proof Network</a></li>
+    <li data-page="3-Scoring-System"><a href="../3-scoring-system/">Scoring System</a></li>
+    <li data-page="4-Spreading-Activation"><a href="../4-spreading-activation/">Spreading Activation</a></li>
+    <li data-page="5-Nav-Training-Data"><a href="../5-nav-training-data/">Navigation Training Data</a></li>
+    <li data-page="6-Ternary-Navigation"><a href="../6-ternary-navigation/">Ternary Navigation</a></li>
+    <li data-page="7-Mutation-Theory"><a href="../7-mutation-theory/">Connection to Mutation Theory</a></li>
+    <li data-page="8-Module-Architecture"><a href="../8-module-architecture/">Module Architecture</a></li>
+    <li data-page="9-Configuration"><a href="../9-configuration/">Configuration</a></li>
+  </ul>
+</div>
+<div class="sidebar-group">
+  <h3>Experiment Plan</h3>
+  <ul>
+    <li data-page="Plan-Overview"><a href="../plan-overview/">Plan Overview</a></li>
+    <li data-page="Phase-0"><a href="../phase-0/">Phase 0: Proof Network Construction</a></li>
+    <li data-page="Phase-1"><a href="../phase-1/">Phase 1: Core Pipeline</a></li>
+    <li data-page="Phase-2"><a href="../phase-2/">Phase 2: Navigation Training</a></li>
+    <li data-page="Phase-3"><a href="../phase-3/">Phase 3: Proof Search Integration</a></li>
+    <li data-page="Phase-4"><a href="../phase-4/">Phase 4: Evaluation and Ablation</a></li>
+    <li data-page="Phase-5"><a href="../phase-5/">Phase 5: Scale and Extend</a></li>
+  </ul>
+</div>
+<div class="sidebar-group">
+  <h3>Theory</h3>
+  <ul>
+    <li data-page="Theory-Profile"><a href="../theory-profile/">Theory Profile</a></li>
+    <li data-page="Theory-Compass"><a href="../theory-compass/">Project Compass</a></li>
+  </ul>
+</div>
+    </nav>
+    <main class="content" role="main">
+      <article>
+        <p><strong>Design</strong> | Chapter 2 | Prerequisites: <a href="../1-design-thesis/">1-Design-Thesis</a> | 24 min read | <a href="../home/">Home</a></p>
+<h2 id="2-the-proof-network">2. The Proof Network</h2>
+<p>The proof network is a SQLite database encoding mathematical structure. It is the architectural equivalent of ModelAtlas's <code>network.db</code> — the precomputed semantic space through which all search navigates.</p>
+<h3 id="2-1-proof-banks">2.1 Proof Banks</h3>
+<p>Six orthogonal signed dimensions. Each bank has a <strong>zero state</strong> at the mode — the most common mathematical situation a working mathematician encounters.</p>
+<table><tbody>
+<tr><td>Bank</td><td>Zero State</td><td>Negative Direction</td><td>Positive Direction</td><td>Extraction Source</td></tr>
+<tr><td>STRUCTURE</td><td>equality / rewrite</td><td>decidable, arithmetic</td><td>quantified, dependent</td><td>Goal type analysis</td></tr>
+<tr><td>DOMAIN</td><td>general algebra</td><td>concrete (ℕ, ℤ, ℚ)</td><td>abstract (topology, category)</td><td>Namespace hierarchy</td></tr>
+<tr><td>DEPTH</td><td>2-3 tactic proof</td><td>trivial (1 tactic)</td><td>deep (10+ tactics)</td><td>Proof length</td></tr>
+<tr><td>AUTOMATION</td><td>partially automated</td><td>fully auto (omega, simp)</td><td>manual reasoning</td><td>Tactic analysis</td></tr>
+<tr><td>CONTEXT</td><td>moderate context (3-5 hyps)</td><td>no hypotheses</td><td>rich context (10+)</td><td>Goal state parsing</td></tr>
+<tr><td>DECOMPOSITION</td><td>single goal</td><td>atomic (no splits)</td><td>multi-subgoal</td><td>Proof structure</td></tr>
+</tbody></table>
+<p><strong>Signed position encoding</strong>: Each entity stores <code>(sign, depth)</code> per bank. <code>sign ∈ {-1, 0, +1}</code>, <code>depth ∈ {0, 1, 2, 3}</code>. Signed position = <code>sign × depth</code>.</p>
+<p><strong>Why signed hierarchies instead of categories</strong>: A categorical "domain" field with values {algebra, topology, analysis} can't express proximity. Signed positions give gradient scoring — a linear algebra lemma (DOMAIN = 0, between concrete and abstract) scores better against an algebra query than a topology lemma, without binary mismatch. Zero placement at the mode means most queries resolve near the origin.</p>
+<h3 id="2-2-anchor-dictionary">2.2 Anchor Dictionary</h3>
+<p>A shared vocabulary of semantic labels. Target: ~300 anchors at launch, growing organically as the system discovers mathematical patterns.</p>
+<p><strong>Bootstrap anchors</strong> (created before training):</p>
+<p><strong>STRUCTURE bank:</strong> <code>equality</code>, <code>inequality</code>, <code>membership</code>, <code>universal-quantifier</code>, <code>existential-quantifier</code>, <code>iff-statement</code>, <code>implication</code>, <code>negation</code>, <code>dependent-type</code>, <code>pi-type</code>, <code>sigma-type</code>, <code>propositional</code>, <code>data-type</code>, <code>function-type</code></p>
+<p><strong>DOMAIN bank:</strong> <code>nat-arithmetic</code>, <code>int-arithmetic</code>, <code>rat-arithmetic</code>, <code>real-analysis</code>, <code>complex-analysis</code>, <code>group-theory</code>, <code>ring-theory</code>, <code>field-theory</code>, <code>module-theory</code>, <code>linear-algebra</code>, <code>topology</code>, <code>metric-space</code>, <code>measure-theory</code>, <code>probability</code>, <code>order-theory</code>, <code>lattice-theory</code>, <code>set-theory</code>, <code>finset</code>, <code>multiset</code>, <code>category-theory</code>, <code>homological-algebra</code>, <code>number-theory</code>, <code>combinatorics</code>, <code>graph-theory</code></p>
+<p><strong>DEPTH bank:</strong> <code>one-liner</code>, <code>two-step</code>, <code>multi-step</code>, <code>deep-induction</code>, <code>structural-recursion</code>, <code>nested-proof</code></p>
+<p><strong>AUTOMATION bank:</strong> <code>omega-solvable</code>, <code>simp-solvable</code>, <code>decide-solvable</code>, <code>norm-num-solvable</code>, <code>linarith-solvable</code>, <code>ring-solvable</code>, <code>field-simp-solvable</code>, <code>aesop-solvable</code>, <code>tauto-solvable</code>, <code>needs-manual-intro</code>, <code>needs-manual-cases</code>, <code>needs-manual-induction</code>, <code>needs-manual-apply</code>, <code>needs-manual-exact</code></p>
+<p><strong>CONTEXT bank:</strong> <code>hypothesis-free</code>, <code>hypothesis-light</code>, <code>hypothesis-rich</code>, <code>uses-local-def</code>, <code>uses-instance</code>, <code>uses-classical</code>, <code>uses-choice</code></p>
+<p><strong>DECOMPOSITION bank:</strong> <code>single-goal</code>, <code>needs-cases</code>, <code>needs-induction</code>, <code>needs-have-chain</code>, <code>needs-constructor</code>, <code>multi-branch</code>, <code>needs-rcases</code>, <code>needs-obtain</code></p>
+<p><strong>Cross-cutting anchors</strong> (mathematical properties, not bank-specific): <code>monotonicity</code>, <code>commutativity</code>, <code>associativity</code>, <code>distributivity</code>, <code>idempotency</code>, <code>transitivity</code>, <code>reflexivity</code>, <code>symmetry</code>, <code>antisymmetry</code>, <code>injectivity</code>, <code>surjectivity</code>, <code>bijectivity</code>, <code>continuity</code>, <code>differentiability</code>, <code>integrability</code>, <code>compactness</code>, <code>connectedness</code>, <code>finiteness</code>, <code>countability</code>, <code>convergence</code>, <code>boundedness</code>, <code>well-foundedness</code>, <code>decidability</code>, <code>cancellation</code>, <code>absorption</code></p>
+<p><strong>Known anchor gaps</strong> (to be addressed in bootstrap):</p>
+<ul>
+<li><strong>Type coercion</strong>: <code>needs-cast</code>, <code>nat-int-coercion</code>, <code>subtype-coercion</code>, <code>coe-simp</code> — Mathlib proofs frequently struggle with coercion between numeric types</li>
+<li><strong>Algebraic hierarchy</strong>: <code>monoid-level</code>, <code>group-level</code>, <code>ring-level</code>, <code>field-level</code> — position in the typeclass hierarchy</li>
+<li><strong>Proof patterns</strong>: <code>split-and-recombine</code>, <code>contrapositive-argument</code>, <code>epsilon-delta</code>, <code>sequence-limit</code>, <code>diagonal-argument</code> — recurring structural patterns beyond individual tactics</li>
+</ul>
+<p><strong>Anchor lifecycle</strong>: 1. <strong>Bootstrap</strong>: ~300 anchors from the lists above, plus known gap anchors. 2. <strong>Deterministic extraction</strong>: Type analysis and namespace matching assign anchors with confidence 1.0. 3. <strong>Pattern matching</strong>: Proof text analysis assigns anchors with confidence 0.8. 4. <strong>Discovery</strong>: New anchors may be minted when the extraction pipeline encounters unclassifiable patterns. These start at confidence 0.5 and are validated by checking co-occurrence with existing anchors. 5. <strong>Gap analysis</strong> (iterative, Phase 0-1): For 500 random proof steps, attempt resolution with current anchors. For each failure (correct premise not in top-16), identify what anchors <em>would have</em> connected goal to premise. Cluster gaps by theme, add as new anchors, re-run. Iterate until top-16 recall exceeds 70% on the sample. This is the highest-leverage Phase 0 activity.</p>
+<p><strong>IDF computation</strong>: <code>idf(anchor) = log(N / count_entities_with_anchor)</code>. Cached in <code>anchor_idf</code> table. Invalidated and recomputed after any batch update to entity-anchor links.</p>
+<h3 id="2-3-entity-links">2.3 Entity Links</h3>
+<p>Explicit relationships between mathematical entities:</p>
+<table><tbody>
+<tr><td>Relation</td><td>Weight</td><td>Extraction Source</td></tr>
+<tr><td><code>depends_on</code></td><td>0.9</td><td>Proof references this lemma</td></tr>
+<tr><td><code>same_namespace</code></td><td>0.7</td><td>Share Mathlib namespace (e.g., <code>Nat.</code>)</td></tr>
+<tr><td><code>same_declaration_block</code></td><td>0.8</td><td>Adjacent in source file</td></tr>
+<tr><td><code>commonly_co_occurs</code></td><td>0.6</td><td>Frequently used together in proofs</td></tr>
+<tr><td><code>tactic_precedes</code></td><td>0.5</td><td>Tactic T commonly follows tactic S</td></tr>
+<tr><td><code>generalization_of</code></td><td>0.85</td><td>One lemma generalizes another</td></tr>
+</tbody></table>
+<p>Links enable the spreading activation channel. When a proof has already used lemma A, activation spreads through <code>depends_on</code> and <code>commonly_co_occurs</code> links to find related lemmas.</p>
+<h3 id="2-4-tactic-entities">2.4 Tactic Entities</h3>
+<p>Tactics are entities in the proof network, not just string labels. Each tactic has bank positions and anchors:</p>
+<table><tbody>
+<tr><td>Tactic</td><td>STRUCTURE</td><td>AUTOMATION</td><td>Anchors</td></tr>
+<tr><td><code>omega</code></td><td>(-1, 2)</td><td>(-1, 2)</td><td><code>omega-solvable</code>, <code>nat-arithmetic</code>, <code>int-arithmetic</code>, <code>decidable</code></td></tr>
+<tr><td><code>simp</code></td><td>(-1, 1)</td><td>(-1, 1)</td><td><code>simp-solvable</code>, <code>rewriting</code>, <code>simplification</code></td></tr>
+<tr><td><code>intro</code></td><td>(0, 0)</td><td>(+1, 1)</td><td><code>needs-manual-intro</code>, <code>universal-quantifier</code>, <code>implication</code></td></tr>
+<tr><td><code>cases</code></td><td>(+1, 1)</td><td>(+1, 1)</td><td><code>needs-cases</code>, <code>multi-branch</code>, <code>inductive-type</code></td></tr>
+<tr><td><code>induction</code></td><td>(+1, 2)</td><td>(+1, 2)</td><td><code>needs-induction</code>, <code>structural-recursion</code>, <code>nat-arithmetic</code></td></tr>
+<tr><td><code>apply</code></td><td>(0, 0)</td><td>(+1, 1)</td><td><code>needs-manual-apply</code>, <code>implication</code></td></tr>
+<tr><td><code>exact</code></td><td>(-1, 1)</td><td>(+1, 1)</td><td><code>needs-manual-exact</code>, <code>one-liner</code></td></tr>
+<tr><td><code>have</code></td><td>(+1, 1)</td><td>(+1, 1)</td><td><code>needs-have-chain</code>, <code>multi-step</code>, <code>decomposition</code></td></tr>
+<tr><td><code>rw</code></td><td>(0, 0)</td><td>(0, 0)</td><td><code>rewriting</code>, <code>equality</code></td></tr>
+<tr><td><code>linarith</code></td><td>(-1, 2)</td><td>(-1, 2)</td><td><code>linarith-solvable</code>, <code>inequality</code>, <code>arithmetic</code></td></tr>
+</tbody></table>
+<p>When the Proof Navigator produces navigational coordinates, <code>navigate()</code> over the tactic entity table finds the tactics whose bank positions align with the predicted direction.</p>
+<p><strong>External validation</strong>: This two-level resolution (coarse tactic category → fine argument selection) is validated by TacticToe's finding that <em>argument prediction for abstracted tactics has the highest impact on proof success</em>. The hard part isn't selecting <code>apply</code> vs <code>cases</code> — it's selecting <em>which lemma</em> to apply. Navigation handles the coarse level; the proof network's anchor-based premise retrieval handles the fine level. See <code>WAYFINDER_RESEARCH.md</code> Section 2.5 for the activation steering evidence that further supports this decomposition.</p>
+<hr>
+<hr>
+<p><em>Sources: <code>docs/WAYFINDER_DESIGN.md</code></em></p>
+<h2 id="see-also">See Also</h2>
+<ul>
+<li><a href="1-Design-Thesis">1-Design-Thesis</a></li>
+<li><a href="3-Scoring-System">3-Scoring-System</a></li>
+</ul>
+      </article>
+      <nav class="prev-next" aria-label="Page navigation">
+  <a class="prev" href="../1-design-thesis/">&larr; Design Thesis</a>
+  <a class="next" href="../3-scoring-system/">Scoring System &rarr;</a>
+</nav>
+    </main>
+  </div>
+  <footer class="site-footer">
+    <p>Generated by <a href="https://github.com/rohanvinaik/lintgate">LintGate</a></p>
+  </footer>
+  <script src="../script.js"></script>
+</body>
+</html>

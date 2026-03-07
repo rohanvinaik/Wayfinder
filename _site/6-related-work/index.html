@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Related Work — Wayfinder</title>
+  <meta name="description" content="Related Work — Research">
+  <meta name="generator" content="LintGate Wiki Publisher">
+  <link rel="canonical" href="https://rohanvinaik.github.io/Wayfinder/6-related-work/">
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+  <header class="site-header">
+    <button class="sidebar-toggle" aria-label="Toggle sidebar">&#9776;</button>
+    <a class="site-title" href="../">Wayfinder</a>
+    <button class="theme-toggle" aria-label="Toggle dark mode" title="Toggle dark mode">&#9790;</button>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" role="navigation" aria-label="Wiki navigation">
+      <div class="sidebar-header">
+        <a href="../">Wayfinder</a>
+      </div>
+      <div class="sidebar-group">
+  <h3>Research</h3>
+  <ul>
+    <li data-page="Abstract"><a href="../abstract/">Abstract</a></li>
+    <li data-page="1-Introduction"><a href="../1-introduction/">Introduction</a></li>
+    <li data-page="2-Theoretical-Framework"><a href="../2-theoretical-framework/">Theoretical Framework</a></li>
+    <li data-page="3-Architecture-Specification"><a href="../3-architecture-specification/">Architecture Specification</a></li>
+    <li data-page="4-Training"><a href="../4-training/">Training</a></li>
+    <li data-page="5-Evaluation"><a href="../5-evaluation/">Evaluation</a></li>
+    <li data-page="6-Related-Work"><a href="../6-related-work/">Related Work</a></li>
+    <li data-page="7-Discussion"><a href="../7-discussion/">Discussion</a></li>
+  </ul>
+</div>
+<div class="sidebar-group">
+  <h3>Design</h3>
+  <ul>
+    <li data-page="1-Design-Thesis"><a href="../1-design-thesis/">Design Thesis</a></li>
+    <li data-page="2-The-Proof-Network"><a href="../2-the-proof-network/">The Proof Network</a></li>
+    <li data-page="3-Scoring-System"><a href="../3-scoring-system/">Scoring System</a></li>
+    <li data-page="4-Spreading-Activation"><a href="../4-spreading-activation/">Spreading Activation</a></li>
+    <li data-page="5-Nav-Training-Data"><a href="../5-nav-training-data/">Navigation Training Data</a></li>
+    <li data-page="6-Ternary-Navigation"><a href="../6-ternary-navigation/">Ternary Navigation</a></li>
+    <li data-page="7-Mutation-Theory"><a href="../7-mutation-theory/">Connection to Mutation Theory</a></li>
+    <li data-page="8-Module-Architecture"><a href="../8-module-architecture/">Module Architecture</a></li>
+    <li data-page="9-Configuration"><a href="../9-configuration/">Configuration</a></li>
+  </ul>
+</div>
+<div class="sidebar-group">
+  <h3>Experiment Plan</h3>
+  <ul>
+    <li data-page="Plan-Overview"><a href="../plan-overview/">Plan Overview</a></li>
+    <li data-page="Phase-0"><a href="../phase-0/">Phase 0: Proof Network Construction</a></li>
+    <li data-page="Phase-1"><a href="../phase-1/">Phase 1: Core Pipeline</a></li>
+    <li data-page="Phase-2"><a href="../phase-2/">Phase 2: Navigation Training</a></li>
+    <li data-page="Phase-3"><a href="../phase-3/">Phase 3: Proof Search Integration</a></li>
+    <li data-page="Phase-4"><a href="../phase-4/">Phase 4: Evaluation and Ablation</a></li>
+    <li data-page="Phase-5"><a href="../phase-5/">Phase 5: Scale and Extend</a></li>
+  </ul>
+</div>
+<div class="sidebar-group">
+  <h3>Theory</h3>
+  <ul>
+    <li data-page="Theory-Profile"><a href="../theory-profile/">Theory Profile</a></li>
+    <li data-page="Theory-Compass"><a href="../theory-compass/">Project Compass</a></li>
+  </ul>
+</div>
+    </nav>
+    <main class="content" role="main">
+      <article>
+        <p><strong>Research</strong> | Chapter 7 | Prerequisites: <a href="../1-introduction/">1-Introduction</a> | 56 min read | <a href="../home/">Home</a></p>
+<h2 id="6-related-work">6. Related Work</h2>
+<p>A comprehensive survey of the external landscape is in <code>docs/Wayfinder_External_Research.md</code>. This section summarizes the most architecturally relevant systems and their implications for Wayfinder.</p>
+<h3 id="6-1-reprover-leandojo-yang-et-al-neurips-2023">6.1 ReProver / LeanDojo (Yang et al., NeurIPS 2023)</h3>
+<p>Retrieval-augmented tactic generation for Lean 4. ByT5-small (299M) dual-encoder retriever with 1472-dim embeddings, MSE-based contrastive loss with 3 negatives per example. Restricts retrieval to accessible premises only (~33k of ~130k), giving ~2% recall improvement for free. On premises never seen during training, recall@10 drops from 38.4% to 27.6% — a 30% degradation revealing the fundamental limitation of dense retrieval for unseen entities. <strong>Key difference from Wayfinder</strong>: Dense retrieval (learned embeddings) vs structured navigation (bank positions + IDF-weighted anchors). ReProver requires neural forward passes for every retrieval; Wayfinder resolves via SQL queries. <strong>Design influence</strong>: Accessible-premises filtering adopted directly; ByT5-small as encoder candidate.</p>
+<h3 id="6-2-alphaproof-deepmind-2024">6.2 AlphaProof (DeepMind, 2024)</h3>
+<p>~3B encoder-decoder transformer with AND/OR tree search and AlphaZero-style MCTS. Critically, the value function predicts <em>remaining tactics to completion</em>, not binary provability — because all proven states have probability 1.0, destroying the training signal. Test-time RL (TTRL): for each hard problem, generates millions of variants and trains a specialist agent, requiring hundreds of TPU-days per IMO problem. Backpropagates the <em>value of the hardest branch</em> rather than the product. <strong>Design influence</strong>: Soft critic targets (distance, not binary) adopted directly. Encoder-decoder pattern with dual policy/value output is the efficiency model for search-heavy systems.</p>
+<h3 id="6-3-htps-lample-et-al-neurips-2022">6.3 HTPS (Lample et al., NeurIPS 2022)</h3>
+<p>AlphaZero-inspired proof search with shared 600M encoder-decoder as policy and critic. Critic restricts decoder to two tokens (PROVABLE/UNPROVABLE). Critical finding: <strong>soft critic targets dramatically outperform hard targets</strong> — 78.1% vs 63.1% on Equations benchmark. Hard critic is worse than <em>no critic at all</em>. Value backpropagation through AND nodes uses product of children's values. Online training (continuous refresh every 5 minutes) outperforms batch expert iteration. <strong>Design influence</strong>: Soft critic targets adopted; our spreading activation replaces MCTS for search prioritization.</p>
+<h3 id="6-4-bfs-prover-bytedance-2025">6.4 BFS-Prover (ByteDance, 2025)</h3>
+<p>Achieved 72.95% on MiniF2F-test with plain best-first search plus expert iteration, DPO from Lean compiler feedback, and length normalization. At fixed inference budget, outperforms InternLM2.5-StepProver's value-guided search (65.9%) and DeepSeek-Prover-V1.5's MCTS (63.5%). <strong>Implication for Wayfinder</strong>: With a strong enough policy, sophisticated search may be unnecessary. If Wayfinder's navigational directions are accurate, simple best-first search with spreading activation may suffice — no MCTS needed.</p>
+<h3 id="6-5-leanprogress-2025">6.5 LeanProgress (2025)</h3>
+<p>Fine-tuned DeepSeek Coder 1.3B to predict remaining proof steps. Including proof history boosts accuracy from 61.8% to 75.1%. Combined score <code>C(sᵢ) = α·N(sᵢ) + (1-α)·P(sᵢ)</code> yields 3.8% improvement on Mathlib4. <strong>Design influence</strong>: Progress head inspired by this work; proof history input adopted (mean-pooled embeddings of previously closed goals concatenated to bridge input).</p>
+<h3 id="6-6-deepseek-prover-v2-ren-et-al-2025">6.6 DeepSeek-Prover-V2 (Ren et al., 2025)</h3>
+<p>Two-model architecture: DeepSeek-V3 (671B MoE, ~21B activated) for <code>have</code>-chain decomposition, 7B prover for individual subgoals. GRPO with binary Lean compiler rewards. 88.9% on MiniF2F-test. <strong>Design influence</strong>: SubgoalDecomposer inspired by this, but as ternary decision within a small model. The division of labor (reasoning about proof structure vs executing individual steps) maps to our separation: neural network reasons about direction, proof network handles resolution.</p>
+<h3 id="6-7-aristotle-harmonic-2025">6.7 Aristotle (Harmonic, 2025)</h3>
+<p>200B+ transformer with Monte Carlo Graph Search (MCTS extended to hypergraphs with state equivalence classes). Lemma-based informal reasoning: natural-language proof sketches → formal lemmas → iterative refinement. Test-time training on search traces. Disproof augmentation: each goal gets a negation transition to prune impossible branches. <strong>Implication for Wayfinder</strong>: State equivalence merging (if two proof states have identical goals) could reduce the search graph; worth exploring in Phase 5.</p>
+<h3 id="6-8-leanhammer-2025-and-the-hammer-tradition">6.8 LeanHammer (2025) and the Hammer Tradition</h3>
+<p>Combines neural premise selection (LeanPremise) with symbolic methods (MePo relevance filter) and routes to both Aesop and ATP translation (Zipperposition). Achieves 37.3% cumulative proof rate on Mathlib, outperforming any single method by 21%. Magnushammer's two-stage SELECT+RERANK pipeline achieves 59.5% on PISA vs Sledgehammer's 38.3%.</p>
+<p><strong>Hammer complementarity.</strong> The broader hammer tradition (Sledgehammer for Isabelle, CoqHammer for Coq, LeanHammer for Lean) translates ITP goals into first-order logic for external ATP solvers. Wayfinder does not replace hammers; it handles the cases they cannot. Hammers dominate the AUTOMATION = -1 region of proof space (fully decidable, translatable to first-order logic). Wayfinder navigates the AUTOMATION ≥ 0 region (structured manual reasoning, lemma selection, subgoal decomposition). The optimal system is a <strong>hybrid</strong>: Wayfinder's navigational retrieval feeds premise candidates to hammers for the decidable portion, while handling the non-decidable portion via structured proof search. Integration point: when the navigator predicts AUTOMATION = -1 for a goal, delegate directly to LeanHammer/Aesop rather than attempting navigational resolution.</p>
+<h3 id="6-9-knowledge-graphs-for-mathematics">6.9 Knowledge Graphs for Mathematics</h3>
+<p>AutoMathKG (2025): 13,388 entities, 29,459 edges, SBERT embeddings, evaluated with TransE/DistMult/R-GCN. A separate Lean 4 Mathlib graph in Neo4j captures theorem dependencies. GNN-augmented ReProver (arXiv 2510.23637) layers an RGCN over ByT5 embeddings. Tree-Based Premise Selection (NeurIPS 2025) proposes training-free selection using Weisfeiler-Lehman kernels.</p>
+<p><strong>Critical gap</strong>: Not a single published system uses a knowledge graph to guide proof search or premise selection. The integration stops at basic dependency filtering. No system implements spreading activation over mathematical knowledge structures. No system positions entities in structured coordinate systems beyond standard embeddings. <strong>This is Wayfinder's most distinctive design opportunity</strong> — the proof network architecture is genuinely novel in this landscape.</p>
+<h3 id="6-10-tactictoe-and-structured-tactic-prediction">6.10 TacticToe and Structured Tactic Prediction</h3>
+<p>TacticToe (HOL4) abstracts tactics to ~100 templates and separately predicts arguments. Graph2Tac (Coq, ICML 2024) uses GNN-based classification over ~100 tactic categories. ASTactic generates tactics as programs via grammar-controlled RNN. Proof transformation prediction (FroCoS 2023) guesses the correct tactic 74% of the time given before-and-after states.</p>
+<p><strong>No existing system cleanly separates tactic category prediction from specific tactic/argument generation.</strong> TacticToe's abstraction is the closest precedent, and its finding about argument prediction's importance validates the decomposition. Wayfinder's two-level architecture (ternary directions → structured resolution) is the first to develop this separation into a full navigation paradigm.</p>
+<h3 id="6-11-bitnet-and-ternary-architectures">6.11 BitNet and Ternary Architectures</h3>
+<p>BitNet b1.58 (ternary weights) at 2B matches full-precision models on mathematical reasoning with 2.7× speedup and 3.5× memory reduction. No one has applied ternary architectures to formal theorem proving. <strong>Wayfinder opportunity</strong>: A ternary encoder (BitNet-style) feeding into a ternary decoder (existing STE infrastructure) would create a fully ternary pipeline — maximally efficient for real-time proof search.</p>
+<h3 id="6-12-modelatlas-vinaik-2025">6.12 ModelAtlas (Vinaik, 2025)</h3>
+<p>Semantic network of ~40k ML models positioned across 8 orthogonal signed banks with anchor-based similarity. IDF-weighted structured navigation outperforms keyword search and embedding-based similarity. <strong>Connection to Wayfinder</strong>: The entire navigational paradigm — banks, anchors, IDF scoring, multiplicative composition, spreading activation — is adapted from ModelAtlas.</p>
+<h3 id="6-13-mutation-theory-vinaik-2025-2026-formalized-in-lean-4">6.13 Mutation Theory (Vinaik, 2025-2026; formalized in Lean 4)</h3>
+<p>200+ Lean 4 theorems formalizing specification complexity, exact learning, teaching dimension, decomposition, trajectory convergence, and phase transitions. <strong>Connection to Wayfinder</strong>: Provides formal convergence guarantees. See Sections 2.7-2.8.</p>
+<hr>
+<hr>
+<p><em>Sources: <code>docs/WAYFINDER_RESEARCH.md</code></em></p>
+<h2 id="see-also">See Also</h2>
+<ul>
+<li><a href="5-Evaluation">5-Evaluation</a></li>
+<li><a href="7-Discussion">7-Discussion</a></li>
+</ul>
+      </article>
+      <nav class="prev-next" aria-label="Page navigation">
+  <a class="prev" href="../5-evaluation/">&larr; Evaluation</a>
+  <a class="next" href="../7-discussion/">Discussion &rarr;</a>
+</nav>
+    </main>
+  </div>
+  <footer class="site-footer">
+    <p>Generated by <a href="https://github.com/rohanvinaik/lintgate">LintGate</a></p>
+  </footer>
+  <script src="../script.js"></script>
+</body>
+</html>

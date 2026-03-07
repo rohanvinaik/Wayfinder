@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Architecture Specification — Wayfinder</title>
+  <meta name="description" content="Architecture Specification — Research">
+  <meta name="generator" content="LintGate Wiki Publisher">
+  <link rel="canonical" href="https://rohanvinaik.github.io/Wayfinder/3-architecture-specification/">
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+  <header class="site-header">
+    <button class="sidebar-toggle" aria-label="Toggle sidebar">&#9776;</button>
+    <a class="site-title" href="../">Wayfinder</a>
+    <button class="theme-toggle" aria-label="Toggle dark mode" title="Toggle dark mode">&#9790;</button>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" role="navigation" aria-label="Wiki navigation">
+      <div class="sidebar-header">
+        <a href="../">Wayfinder</a>
+      </div>
+      <div class="sidebar-group">
+  <h3>Research</h3>
+  <ul>
+    <li data-page="Abstract"><a href="../abstract/">Abstract</a></li>
+    <li data-page="1-Introduction"><a href="../1-introduction/">Introduction</a></li>
+    <li data-page="2-Theoretical-Framework"><a href="../2-theoretical-framework/">Theoretical Framework</a></li>
+    <li data-page="3-Architecture-Specification"><a href="../3-architecture-specification/">Architecture Specification</a></li>
+    <li data-page="4-Training"><a href="../4-training/">Training</a></li>
+    <li data-page="5-Evaluation"><a href="../5-evaluation/">Evaluation</a></li>
+    <li data-page="6-Related-Work"><a href="../6-related-work/">Related Work</a></li>
+    <li data-page="7-Discussion"><a href="../7-discussion/">Discussion</a></li>
+  </ul>
+</div>
+<div class="sidebar-group">
+  <h3>Design</h3>
+  <ul>
+    <li data-page="1-Design-Thesis"><a href="../1-design-thesis/">Design Thesis</a></li>
+    <li data-page="2-The-Proof-Network"><a href="../2-the-proof-network/">The Proof Network</a></li>
+    <li data-page="3-Scoring-System"><a href="../3-scoring-system/">Scoring System</a></li>
+    <li data-page="4-Spreading-Activation"><a href="../4-spreading-activation/">Spreading Activation</a></li>
+    <li data-page="5-Nav-Training-Data"><a href="../5-nav-training-data/">Navigation Training Data</a></li>
+    <li data-page="6-Ternary-Navigation"><a href="../6-ternary-navigation/">Ternary Navigation</a></li>
+    <li data-page="7-Mutation-Theory"><a href="../7-mutation-theory/">Connection to Mutation Theory</a></li>
+    <li data-page="8-Module-Architecture"><a href="../8-module-architecture/">Module Architecture</a></li>
+    <li data-page="9-Configuration"><a href="../9-configuration/">Configuration</a></li>
+  </ul>
+</div>
+<div class="sidebar-group">
+  <h3>Experiment Plan</h3>
+  <ul>
+    <li data-page="Plan-Overview"><a href="../plan-overview/">Plan Overview</a></li>
+    <li data-page="Phase-0"><a href="../phase-0/">Phase 0: Proof Network Construction</a></li>
+    <li data-page="Phase-1"><a href="../phase-1/">Phase 1: Core Pipeline</a></li>
+    <li data-page="Phase-2"><a href="../phase-2/">Phase 2: Navigation Training</a></li>
+    <li data-page="Phase-3"><a href="../phase-3/">Phase 3: Proof Search Integration</a></li>
+    <li data-page="Phase-4"><a href="../phase-4/">Phase 4: Evaluation and Ablation</a></li>
+    <li data-page="Phase-5"><a href="../phase-5/">Phase 5: Scale and Extend</a></li>
+  </ul>
+</div>
+<div class="sidebar-group">
+  <h3>Theory</h3>
+  <ul>
+    <li data-page="Theory-Profile"><a href="../theory-profile/">Theory Profile</a></li>
+    <li data-page="Theory-Compass"><a href="../theory-compass/">Project Compass</a></li>
+  </ul>
+</div>
+    </nav>
+    <main class="content" role="main">
+      <article>
+        <p><strong>Research</strong> | Chapter 4 | Prerequisites: <a href="../2-theoretical-framework/">2-Theoretical-Framework</a> | 56 min read | <a href="../home/">Home</a></p>
+<h2 id="3-architecture-specification">3. Architecture Specification</h2>
+<h3 id="3-1-system-overview">3.1 System Overview</h3>
+<pre><code>
+┌──────────────────────────────────────────────────────────────────────┐
+│                         WAYFINDER v1                                  │
+│                                                                      │
+│  [Lean Goal State Text]                                              │
+│          │                                                           │
+│          ▼                                                           │
+│  ┌─────────────────────────────────────────────┐                     │
+│  │  GOAL ENCODER (math-native, see §3.2)       │                    │
+│  │  Model: TBD (Qwen3.5/DeepSeek-Math/pruned)  │                    │
+│  │  Output: h_enc ∈ ℝ^embed_dim                │                    │
+│  └─────────────┬───────────────────────────────┘                     │
+│                │                                                      │
+│       ┌────────┴────────┐                                            │
+│       │                 │                                             │
+│  ┌────▼─────┐   ┌──────▼───────────────────────────┐                │
+│  │ DOMAIN   │   │  GOAL ANALYZER                    │                │
+│  │ GATE     │   │  (continuous, learnable)           │                │
+│  │          │   │  Output: features ∈ ℝ^256         │                │
+│  │ Binary:  │   │  + bank positions (6 banks)       │                │
+│  │ in/out   │   │  + anchor logits                   │                │
+│  └──────────┘   └──────────┬───────────────────────┘                │
+│                            │                                          │
+│  ┌─────────────────────────▼───────────────────────────────┐         │
+│  │  SUBGOAL DECOMPOSER                                      │        │
+│  │  Ternary decision: decompose? {-1, 0, +1}               │        │
+│  │  If +1: predict &#x27;have&#x27; subgoals, recurse                │        │
+│  │  If 0/-1: proceed with current goal                      │        │
+│  └─────────────────────────┬───────────────────────────────┘         │
+│                            │ (per subgoal)                            │
+│  ┌─────────────────────────▼───────────────────────────────┐         │
+│  │  INFORMATION BRIDGE                                       │        │
+│  │  Continuous → discrete transition                         │        │
+│  │  Compression to bridge_dim (128)                          │        │
+│  │  LayerNorm + projection                                   │        │
+│  └─────────────────────────┬───────────────────────────────┘         │
+│                            │                                          │
+│  ┌─────────────────────────▼───────────────────────────────┐         │
+│  │  PROOF NAVIGATOR (ternary decoder, 6-bank)                 │        │
+│  │  Weights ∈ {-1, 0, +1}, trained via STE                  │        │
+│  │                                                           │        │
+│  │  Output heads (3^6 = 729 coarse direction bins):          │        │
+│  │    • structure_direction    ∈ {-1, 0, +1}                │        │
+│  │    • domain_direction       ∈ {-1, 0, +1}                │        │
+│  │    • depth_direction        ∈ {-1, 0, +1}                │        │
+│  │    • automation_direction   ∈ {-1, 0, +1}                │        │
+│  │    • context_direction      ∈ {-1, 0, +1}                │        │
+│  │    • decompose_direction    ∈ {-1, 0, +1}                │        │
+│  │    • anchor_logits          ∈ ℝ^|anchors|   (sigmoid)    │        │
+│  │    • progress               ∈ ℝ^1           (remaining)  │        │
+│  │    • critic                 ∈ ℝ^1           (solvable?)  │        │
+│  │                                                           │        │
+│  │  Loss: L_nav + λ₁·L_anchor + λ₂·L_progress + λ₃·L_critic│        │
+│  │  (adaptive λ via learned log-σ uncertainty)               │        │
+│  └─────────────────────────┬───────────────────────────────┘         │
+│                            │                                          │
+│  ┌─────────────────────────▼───────────────────────────────┐         │
+│  │  STRUCTURED RESOLUTION (deterministic, no NN)             │        │
+│  │                                                           │        │
+│  │  navigate(tactic_network, directions + anchors) → tactic  │        │
+│  │  navigate(premise_network, directions + anchors) → lemmas │        │
+│  │  spread(proof_network, current_goals) → search priority   │        │
+│  └─────────────────────────┬───────────────────────────────┘         │
+│                            │                                          │
+│  ┌─────────────────────────▼───────────────────────────────┐         │
+│  │  DETERMINISTIC LOWERING                                   │        │
+│  │  Tactic + premises → Lean syntax string                   │        │
+│  └─────────────────────────┬───────────────────────────────┘         │
+│                            │                                          │
+│                            ▼                                          │
+│  [Lean 4 Kernel: verify tactic, return new goals or error]           │
+│          │                                                           │
+│          ▼                                                           │
+│  [Update proof network: new goals → new seeds for spread()]          │
+└──────────────────────────────────────────────────────────────────────┘
+</code></pre>
+<h3 id="3-2-goal-encoder">3.2 Goal Encoder</h3>
+<p><strong>Status</strong>: Encoder selection is an active design decision. The original prototype used <code>all-MiniLM-L6-v2</code>, but the encoder is the system's perceptual bottleneck and deserves more aggressive investment.</p>
+<p><strong>The problem with small general-purpose encoders</strong>: Lean goal states are formal syntax with type annotations, unicode math symbols, and dependent type structure — not natural language. A sentence-transformer trained on English text will produce mediocre embeddings for <code>⊢ ∀ (x : α) [inst : TopologicalSpace α], IsOpen (⋃ i, s i)</code>. If two goal states are semantically different in math but look similar as strings, the encoder conflates them, and no amount of downstream projection can recover the lost information.</p>
+<p><strong>Encoder strategy — four tiers under evaluation</strong>:</p>
+<p>1. <strong>Byte-level models (strong candidate)</strong>. ByT5-small (299M) is the de facto standard for Lean, used by ReProver, LeanAgent, and Lean Copilot. Its byte-level operation handles Lean's Unicode symbols (∀, ⊢, →, ℕ, ⋃) without tokenization artifacts — a critical advantage over subword tokenizers that fragment mathematical notation. ByT5-small produces 1472-dimensional embeddings via average pooling. Training requires only 120 GPU hours. A Lean-specific retrained tokenizer variant (arXiv 2501.13959) achieves 30.74% vs ReProver's 28.28% on MiniF2F. However, ByT5 has no mathematical pretraining — it is a generic byte-level model.</p>
+<p>2. <strong>Math-native models (preferred if byte-level gap is addressed)</strong>. Recent releases like Qwen 3.5, DeepSeek-Math, and InternLM-Math are trained on mathematical corpora including formal languages. These models understand Lean-like syntax natively. A math-native encoder (even at 1-7B parameters) will produce dramatically better embeddings for goal states than any general-purpose sentence transformer. The risk: most math-native models use subword tokenizers that may fragment Lean syntax. Evaluate both byte-level and subword-based math models.</p>
+<p>3. <strong>Ternary/BitNet encoder (architecturally distinctive)</strong>. BitNet b1.58 (ternary weights, 1.58 bits/parameter) at 2B matches full-precision models on mathematical reasoning benchmarks with 2.7× speedup and 3.5× memory reduction — but no one has applied ternary architectures to formal theorem proving. Since Wayfinder already uses ternary weights in the decoder (TernaryLinear with STE), extending ternary quantization to the encoder would be architecturally consistent and could enable real-time premise retrieval. A ternary encoder is the most distinctive option and would make the full pipeline ternary-native.</p>
+<p>4. <strong>Aggressively pruned large models</strong>. Recent work on structured pruning demonstrates that ~95-99% of nodes can be removed from large generalist models while retaining domain-specific performance, especially when followed by brief fine-tuning on in-domain data. Quantization to 4-bit introduces up to 32% accuracy degradation on math benchmarks, but fine-tuning on just 545 task-specific examples for 3 minutes can recover full performance. A 4-bit quantized 14B still outperforms its dense 7B counterpart. Techniques: structured pruning (SparseGPT, Wanda), layer dropping, distillation, and post-pruning fine-tuning on Mathlib goal states.</p>
+<p><strong>Key design constraint</strong>: The encoder may be frozen <em>or</em> fine-tuned, but the downstream architecture (GoalAnalyzer, Bridge, Navigator) must work with either. The encoder's output dimensionality is a configuration parameter (<code>embed_dim</code> in <code>configs/base.yaml</code>), not hardcoded.</p>
+<p><strong>Evaluation criterion</strong>: Encoder quality is measured by navigational accuracy at Phase 1 (smoke test). If navigational accuracy on 1-2 step proofs plateaus below 60% after 500 training steps, the encoder is the prime suspect and should be upgraded before debugging other components.</p>
+<h3 id="3-3-goal-analyzer">3.3 Goal Analyzer</h3>
+<p><strong>Parameters</strong>: ~100K (learnable) <strong>Input</strong>: 384-dim embedding from encoder <strong>Output</strong>: 256-dim feature vector + bank position estimates + anchor logits</p>
+<p>The GoalAnalyzer serves three functions:</p>
+<p>1. <strong>Feature projection</strong>: Linear projection from 384 to 256 dimensions. Extracts proof-relevant features from the general-purpose sentence embedding. 2. <strong>Bank position estimation</strong>: Six classification heads, one per proof bank. Each predicts (sign, depth) for the goal state. Used to position the current goal in the semantic network. 3. <strong>Anchor extraction</strong>: Multi-label classification over the anchor dictionary. Predicts which semantic labels apply to the current goal state.</p>
+<p>Bank positions and anchors enable the navigational queries that follow. The analyzer bridges the continuous embedding space and the structured semantic network.</p>
+<h3 id="3-4-subgoal-decomposer">3.4 Subgoal Decomposer</h3>
+<p><strong>Parameters</strong>: ~50K (learnable) <strong>Input</strong>: 256-dim features from GoalAnalyzer <strong>Output</strong>: Ternary decomposition decision + subgoal projections</p>
+<p>Inspired by DeepSeek-Prover-V2's proof sketching, the SubgoalDecomposer decides whether to decompose the current goal into subgoals via <code>have</code> statements:</p>
+<ul>
+<li><strong>-1 (atomize)</strong>: The goal is already atomic. Proceed directly to tactic prediction.</li>
+<li><strong>0 (neutral)</strong>: No decomposition signal. Proceed with current goal.</li>
+<li><strong>+1 (decompose)</strong>: The goal should be broken into subgoals. Predict subgoal count and project features for each subgoal.</li>
+</ul>
+<p>When decomposing, each subgoal gets its own feature vector (via learned projection heads) and is processed independently through the rest of the pipeline. This implements Mutation Theory Phase 3's <code>separableIndependentTesting</code>: independent subgoals can be solved independently.</p>
+<h3 id="3-5-information-bridge">3.5 Information Bridge</h3>
+<p><strong>Parameters</strong>: ~33K (learnable) <strong>Input</strong>: 256-dim features <strong>Output</strong>: 128-dim compressed representation</p>
+<p>The bottleneck between continuous and discrete space. LayerNorm + linear projection compresses the feature representation to a dimensionality suitable for the ternary decoder.</p>
+<p><strong>Information-theoretic role</strong>: The bridge tests the hypothesis that the mutual information between goal understanding and tactic selection is low-dimensional. If a 128-dim bridge suffices for accurate navigation, the goal→tactic mapping has low intrinsic dimensionality.</p>
+<h3 id="3-6-proof-navigator-ternary-decoder">3.6 Proof Navigator (Ternary Decoder)</h3>
+<p><strong>Parameters</strong>: ~200K (learnable, ternary hidden layers) <strong>Input</strong>: 128-dim bridge output <strong>Output</strong>: 6 navigational directions + anchor logits + progress + critic</p>
+<p>The core innovation. Unlike a traditional decoder that classifies into a tactic vocabulary, the Proof Navigator outputs <em>directions in proof space</em>. The expanded 6-bank design (see Section 2.5) gives 3^6 = 729 coarse direction bins, resolving the many-to-one problem where semantically distinct tactics collapsed to the same coordinates.</p>
+<p><strong>Ternary direction heads</strong> (hidden layers use TernaryLinear with STE, one per navigable bank):</p>
+<ul>
+<li><code>structure_direction ∈ {-1, 0, +1}</code>: Simplify / maintain / complexify</li>
+<li><code>domain_direction ∈ {-1, 0, +1}</code>: Concrete / general / abstract</li>
+<li><code>depth_direction ∈ {-1, 0, +1}</code>: Shallow / moderate / deep</li>
+<li><code>automation_direction ∈ {-1, 0, +1}</code>: Automate / mixed / manual</li>
+<li><code>context_direction ∈ {-1, 0, +1}</code>: Reduce context / maintain / enrich context</li>
+<li><code>decompose_direction ∈ {-1, 0, +1}</code>: Atomize / maintain / decompose</li>
+</ul>
+<p><strong>Continuous heads</strong> (standard linear, on top of ternary hidden layers):</p>
+<ul>
+<li><code>anchor_logits ∈ ℝ^|anchors|</code>: Which semantic labels should the next tactic/premises have</li>
+<li><code>progress ∈ ℝ^1</code>: Estimated remaining proof steps (MSE loss against ground truth). Connects to Mutation Theory's Lyapunov convergence guarantee (T7.5) — when progress decreases monotonically, convergence is formally guaranteed. LeanProgress showed that including proof history boosts accuracy from 61.8% to 75.1%. We incorporate this by concatenating embeddings of previously closed goals into the bridge input (see Section 3.10 for details).</li>
+<li><code>critic ∈ ℝ^1</code>: Estimated <strong>distance to proof completion</strong> (MSE loss), NOT binary solvability. HTPS found that hard binary critic targets (solvable/not-solvable) are <em>worse than no critic at all</em> — even worse than random. Soft targets dramatically outperform: 78.1% vs 63.1% on their benchmark. AlphaProof similarly trains its value function to predict remaining tactic count rather than binary provability, because all proven states have probability 1.0, destroying the training signal. Our critic head predicts a continuous distance metric (normalized remaining steps / budget consumed), trained with MSE loss.</li>
+</ul>
+<p><strong>Training loss</strong> (UW-SO adaptive weighting via learned log-σ):</p>
+<pre><code>
+L_total = (1/2σ₁²)·L_nav + (1/2σ₂²)·L_anchor + (1/2σ₃²)·L_progress
+        + (1/2σ₄²)·L_critic + log(σ₁σ₂σ₃σ₄)
+</code></pre>
+<p>Where:</p>
+<ul>
+<li><code>L_nav</code>: Cross-entropy on navigational directions (ternary classification, 6 banks, summed)</li>
+<li><code>L_anchor</code>: Binary cross-entropy on anchor predictions</li>
+<li><code>L_progress</code>: MSE on remaining-step prediction</li>
+<li><code>L_critic</code>: MSE on normalized distance-to-completion (soft target, NOT binary BCE — per HTPS finding)</li>
+</ul>
+<p>The <code>navigable_banks</code> configuration parameter controls which banks are active. Setting <code>navigable_banks: [STRUCTURE, AUTOMATION, DECOMPOSITION]</code> reverts to 3-bank navigation (27 bins) if the full 6-bank version proves too hard to learn.</p>
+<h3 id="3-7-proof-network-semantic-database">3.7 Proof Network (Semantic Database)</h3>
+<p><strong>Storage</strong>: SQLite database (single file, ~100MB for full Mathlib) <strong>Entities</strong>: Lemmas, tactics, proof patterns <strong>Schema</strong> (adapted from ModelAtlas):</p>
+<pre><code class="language-sql">
+-- Mathematical entities (lemmas, definitions, instances)
+CREATE TABLE entities (
+    entity_id   TEXT PRIMARY KEY,
+    kind        TEXT,  -- &#x27;lemma&#x27;, &#x27;def&#x27;, &#x27;instance&#x27;, &#x27;tactic&#x27;
+    namespace   TEXT,
+    display     TEXT
+);
+
+-- Bank positions (6 proof banks)
+CREATE TABLE entity_positions (
+    entity_id   TEXT REFERENCES entities(entity_id),
+    bank        TEXT,
+    sign        INTEGER,
+    depth       INTEGER,
+    PRIMARY KEY (entity_id, bank)
+);
+
+-- Anchor dictionary
+CREATE TABLE anchors (
+    anchor_id   INTEGER PRIMARY KEY AUTOINCREMENT,
+    label       TEXT UNIQUE,
+    bank        TEXT,
+    source      TEXT DEFAULT &#x27;deterministic&#x27;
+);
+
+-- Entity ↔ anchor links
+CREATE TABLE entity_anchors (
+    entity_id   TEXT REFERENCES entities(entity_id),
+    anchor_id   INTEGER REFERENCES anchors(anchor_id),
+    confidence  REAL DEFAULT 1.0,
+    PRIMARY KEY (entity_id, anchor_id)
+);
+
+-- Explicit links (dependency, co-occurrence)
+CREATE TABLE entity_links (
+    source_id   TEXT REFERENCES entities(entity_id),
+    target_id   TEXT REFERENCES entities(entity_id),
+    relation    TEXT,  -- &#x27;depends_on&#x27;, &#x27;commonly_precedes&#x27;, &#x27;same_namespace&#x27;
+    weight      REAL DEFAULT 1.0,
+    PRIMARY KEY (source_id, target_id, relation)
+);
+
+-- IDF cache
+CREATE TABLE anchor_idf (
+    anchor_id   INTEGER PRIMARY KEY,
+    idf_value   REAL
+);
+</code></pre>
+<p><strong>Population</strong>: Deterministic extraction from Mathlib's Lean source: 1. Parse all theorem/lemma declarations → entities table 2. Extract types and namespaces → bank positions 3. Analyze proof text for tactic usage → anchors 4. Walk import graph → dependency links 5. Compute IDF from anchor frequencies</p>
+<h3 id="3-8-structured-resolution">3.8 Structured Resolution</h3>
+<p>The resolution layer converts the Proof Navigator's output into concrete tactics and premises. <strong>No neural inference</strong> — pure symbolic operations:</p>
+<pre><code class="language-python">
+def resolve(nav_output, proof_network, current_context):
+    &quot;&quot;&quot;Convert navigational coordinates to tactic + premises.&quot;&quot;&quot;
+
+    # Build structured query from ternary directions + anchor logits
+    query = StructuredQuery(
+        structure=nav_output.structure_direction,
+        automation=nav_output.automation_direction,
+        decomposition=nav_output.decompose_direction,
+        prefer_anchors=top_k_anchors(nav_output.anchor_logits, k=8),
+        avoid_anchors=current_context.recently_failed,
+    )
+
+    # Navigate tactic space
+    tactic_candidates = navigate(proof_network.tactic_table, query, limit=5)
+
+    # Navigate premise space
+    premise_candidates = navigate(proof_network.lemma_table, query, limit=16)
+
+    # Spreading activation from current proof context
+    context_activation = spread(
+        proof_network,
+        seeds=current_context.used_lemmas + current_context.open_goals,
+        banks=[&quot;DOMAIN&quot;, &quot;STRUCTURE&quot;],
+        max_depth=3,
+    )
+
+    # Combine: navigate score × spreading activation
+    for p in premise_candidates:
+        p.score *= context_activation.get(p.entity_id, 0.1)
+
+    return tactic_candidates, sorted(premise_candidates, key=lambda p: p.score, reverse=True)
+</code></pre>
+<h3 id="3-9-deterministic-lowering">3.9 Deterministic Lowering</h3>
+<p>Template-based conversion from (tactic, premises) to Lean syntax:</p>
+<pre><code class="language-python">
+def lower_step(tactic, premises, context):
+    if tactic.name in NULLARY_TACTICS:  # omega, ring, linarith, ...
+        return tactic.name
+    if tactic.name in PREMISE_TACTICS:  # apply, exact, rw, ...
+        return f&quot;{tactic.name} {&#x27; &#x27;.join(p.name for p in premises)}&quot;
+    if tactic.name == &quot;have&quot;:
+        return f&quot;have {premises[0].name} := by&quot;
+    # ... etc
+</code></pre>
+<p>This is the existing <code>lowering.py</code> module, adapted to accept navigational resolution output instead of tier tokens.</p>
+<h3 id="3-10-lean-kernel-interaction">3.10 Lean Kernel Interaction</h3>
+<p>The outer proof search loop interacts with the Lean kernel via Pantograph (LeanDojo's interaction protocol):</p>
+<pre><code class="language-python">
+while open_goals:
+    goal = select_goal(open_goals, critic_scores, progress_estimates)
+
+    # Neural forward pass (ONCE per goal)
+    embedding = encoder.encode(goal.state)
+    features = analyzer(embedding)
+    nav_output = navigator(bridge(features))
+
+    # Symbolic resolution (fast, no NN)
+    tactics, premises = resolve(nav_output, proof_network, context)
+
+    # Try candidates (interaction with Lean kernel)
+    for tactic, premise_set in product(tactics[:3], premise_combinations(premises)):
+        lean_text = lower_step(tactic, premise_set, context)
+        result = lean_kernel.try_tactic(goal.state, lean_text)
+
+        if result.success:
+            open_goals.remove(goal)
+            open_goals.extend(result.new_goals)
+            context.record_success(tactic, premise_set)
+            break
+        else:
+            context.record_failure(tactic, premise_set)
+</code></pre>
+<p><strong>Goal selection</strong> uses the critic head (estimated distance-to-completion) and progress head (estimated remaining steps). Prioritize goals with lowest combined distance estimate.</p>
+<p><strong>Proof history input.</strong> LeanProgress demonstrated a 13-point accuracy improvement (61.8% → 75.1%) from including proof history in progress prediction. The spreading activation mechanism captures this symbolically (seeds from already-used lemmas), but the neural side also benefits. At each goal, the encoder receives not just the current goal state but also a summary of proof context: embeddings of previously closed goals are mean-pooled and concatenated to the bridge input. This gives the progress and critic heads access to "where we've been," not just "where we are."</p>
+<hr>
+<hr>
+<p><em>Sources: <code>docs/WAYFINDER_RESEARCH.md</code></em></p>
+<h2 id="see-also">See Also</h2>
+<ul>
+<li><a href="2-Theoretical-Framework">2-Theoretical-Framework</a></li>
+<li><a href="4-Training">4-Training</a></li>
+</ul>
+      </article>
+      <nav class="prev-next" aria-label="Page navigation">
+  <a class="prev" href="../2-theoretical-framework/">&larr; Theoretical Framework</a>
+  <a class="next" href="../4-training/">Training &rarr;</a>
+</nav>
+    </main>
+  </div>
+  <footer class="site-footer">
+    <p>Generated by <a href="https://github.com/rohanvinaik/lintgate">LintGate</a></p>
+  </footer>
+  <script src="../script.js"></script>
+</body>
+</html>

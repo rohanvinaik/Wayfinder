@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Project Compass — Wayfinder</title>
-  <meta name="description" content="Project Compass — Theory">
+  <title>Spreading Activation — Wayfinder</title>
+  <meta name="description" content="Spreading Activation — Design">
   <meta name="generator" content="LintGate Wiki Publisher">
-  <link rel="canonical" href="https://rohanvinaik.github.io/Wayfinder/theory-compass/">
+  <link rel="canonical" href="https://rohanvinaik.github.io/Wayfinder/4-spreading-activation/">
   <link rel="stylesheet" href="../style.css">
 </head>
 <body>
@@ -69,23 +69,42 @@
     </nav>
     <main class="content" role="main">
       <article>
-        <p><strong>Theory</strong> | Chapter 2 | 1 min read | <a href="../home/">Home</a></p>
-<h3 id="problem">Problem</h3>
-<p><strong>Depth</strong>: 3</p>
-<h3 id="solution">Solution</h3>
-<p><strong>Depth</strong>: 1</p>
-<h3 id="implementation">Implementation</h3>
-<p><strong>Depth</strong>: 3</p>
-<h3 id="world">World</h3>
-<p><strong>Depth</strong>: 1</p>
+        <p><strong>Design</strong> | Chapter 4 | Prerequisites: <a href="../3-scoring-system/">3-Scoring-System</a> | 24 min read | <a href="../home/">Home</a></p>
+<h2 id="4-spreading-activation">4. Spreading Activation</h2>
+<p>Priority-queue Bellman-Ford from seed nodes, adapted from ModelAtlas.</p>
+<h3 id="4-1-two-channels">4.1 Two Channels</h3>
+<p><strong>Link channel (Layer 1):</strong> Traverse <code>entity_links</code> bidirectionally. Activation decays by link weight × hop decay (0.8 per hop). A <code>depends_on</code> link (weight 0.9) transmits 72% of activation per hop. A <code>commonly_co_occurs</code> link (weight 0.6) transmits 48%.</p>
+<p><strong>Anchor channel (Layer 2):</strong> Find entities sharing anchors with the current node. Activation weighted by fraction of shared anchors. A entity sharing 8/10 of the current node's anchors receives higher activation than one sharing 2/10.</p>
+<h3 id="4-2-bank-scoping">4.2 Bank Scoping</h3>
+<p>If the current proof is about algebra (DOMAIN ≤ 0), only spread through DOMAIN-bank anchors. This prevents topology lemmas from activating during algebra proofs via shared generic anchors like <code>equality</code>.</p>
+<h3 id="4-3-parameters">4.3 Parameters</h3>
+<table><tbody>
+<tr><td>Parameter</td><td>Value</td><td>Rationale</td></tr>
+<tr><td><code>max_depth</code></td><td>3</td><td>Beyond 3 hops, activation is too diluted to be meaningful</td></tr>
+<tr><td><code>decay</code></td><td>0.8</td><td>20% loss per hop — aggressive enough to focus, gentle enough to explore</td></tr>
+<tr><td><code>neighbor_slice</code></td><td>20</td><td>Max link neighbors per node — prevents explosion</td></tr>
+<tr><td><code>anchor_slice</code></td><td>30</td><td>Max anchor co-occurrences per node</td></tr>
+</tbody></table>
+<h3 id="4-4-dynamic-seeds">4.4 Dynamic Seeds</h3>
+<p>Seeds change as the proof progresses:</p>
+<ul>
+<li><strong>Initially</strong>: Just the theorem's goal state entity.</li>
+<li><strong>After each successful tactic</strong>: Add the used lemmas and the new subgoal states as seeds.</li>
+<li><strong>After each failure</strong>: Add the failed tactic/premise to an "avoid" set that dampens their activation.</li>
+</ul>
+<p>This creates a feedback loop: successful proof steps refine the search space, making subsequent steps more likely to find relevant lemmas.</p>
+<hr>
+<hr>
+<p><em>Sources: <code>docs/WAYFINDER_DESIGN.md</code></em></p>
 <h2 id="see-also">See Also</h2>
 <ul>
-<li><a href="../theory-profile/">Theory-Profile</a></li>
+<li><a href="3-Scoring-System">3-Scoring-System</a></li>
+<li><a href="5-Nav-Training-Data">5-Nav-Training-Data</a></li>
 </ul>
       </article>
       <nav class="prev-next" aria-label="Page navigation">
-  <a class="prev" href="../theory-profile/">&larr; Theory Profile</a>
-  <span class="next"></span>
+  <a class="prev" href="../3-scoring-system/">&larr; Scoring System</a>
+  <a class="next" href="../5-nav-training-data/">Navigation Training Data &rarr;</a>
 </nav>
     </main>
   </div>

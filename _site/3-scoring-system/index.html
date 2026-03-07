@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scoring System — Wayfinder</title>
+  <meta name="description" content="Scoring System — Design">
+  <meta name="generator" content="LintGate Wiki Publisher">
+  <link rel="canonical" href="https://rohanvinaik.github.io/Wayfinder/3-scoring-system/">
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+  <header class="site-header">
+    <button class="sidebar-toggle" aria-label="Toggle sidebar">&#9776;</button>
+    <a class="site-title" href="../">Wayfinder</a>
+    <button class="theme-toggle" aria-label="Toggle dark mode" title="Toggle dark mode">&#9790;</button>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" role="navigation" aria-label="Wiki navigation">
+      <div class="sidebar-header">
+        <a href="../">Wayfinder</a>
+      </div>
+      <div class="sidebar-group">
+  <h3>Research</h3>
+  <ul>
+    <li data-page="Abstract"><a href="../abstract/">Abstract</a></li>
+    <li data-page="1-Introduction"><a href="../1-introduction/">Introduction</a></li>
+    <li data-page="2-Theoretical-Framework"><a href="../2-theoretical-framework/">Theoretical Framework</a></li>
+    <li data-page="3-Architecture-Specification"><a href="../3-architecture-specification/">Architecture Specification</a></li>
+    <li data-page="4-Training"><a href="../4-training/">Training</a></li>
+    <li data-page="5-Evaluation"><a href="../5-evaluation/">Evaluation</a></li>
+    <li data-page="6-Related-Work"><a href="../6-related-work/">Related Work</a></li>
+    <li data-page="7-Discussion"><a href="../7-discussion/">Discussion</a></li>
+  </ul>
+</div>
+<div class="sidebar-group">
+  <h3>Design</h3>
+  <ul>
+    <li data-page="1-Design-Thesis"><a href="../1-design-thesis/">Design Thesis</a></li>
+    <li data-page="2-The-Proof-Network"><a href="../2-the-proof-network/">The Proof Network</a></li>
+    <li data-page="3-Scoring-System"><a href="../3-scoring-system/">Scoring System</a></li>
+    <li data-page="4-Spreading-Activation"><a href="../4-spreading-activation/">Spreading Activation</a></li>
+    <li data-page="5-Nav-Training-Data"><a href="../5-nav-training-data/">Navigation Training Data</a></li>
+    <li data-page="6-Ternary-Navigation"><a href="../6-ternary-navigation/">Ternary Navigation</a></li>
+    <li data-page="7-Mutation-Theory"><a href="../7-mutation-theory/">Connection to Mutation Theory</a></li>
+    <li data-page="8-Module-Architecture"><a href="../8-module-architecture/">Module Architecture</a></li>
+    <li data-page="9-Configuration"><a href="../9-configuration/">Configuration</a></li>
+  </ul>
+</div>
+<div class="sidebar-group">
+  <h3>Experiment Plan</h3>
+  <ul>
+    <li data-page="Plan-Overview"><a href="../plan-overview/">Plan Overview</a></li>
+    <li data-page="Phase-0"><a href="../phase-0/">Phase 0: Proof Network Construction</a></li>
+    <li data-page="Phase-1"><a href="../phase-1/">Phase 1: Core Pipeline</a></li>
+    <li data-page="Phase-2"><a href="../phase-2/">Phase 2: Navigation Training</a></li>
+    <li data-page="Phase-3"><a href="../phase-3/">Phase 3: Proof Search Integration</a></li>
+    <li data-page="Phase-4"><a href="../phase-4/">Phase 4: Evaluation and Ablation</a></li>
+    <li data-page="Phase-5"><a href="../phase-5/">Phase 5: Scale and Extend</a></li>
+  </ul>
+</div>
+<div class="sidebar-group">
+  <h3>Theory</h3>
+  <ul>
+    <li data-page="Theory-Profile"><a href="../theory-profile/">Theory Profile</a></li>
+    <li data-page="Theory-Compass"><a href="../theory-compass/">Project Compass</a></li>
+  </ul>
+</div>
+    </nav>
+    <main class="content" role="main">
+      <article>
+        <p><strong>Design</strong> | Chapter 3 | Prerequisites: <a href="../2-the-proof-network/">2-The-Proof-Network</a> | 24 min read | <a href="../home/">Home</a></p>
+<h2 id="3-scoring-system">3. Scoring System</h2>
+<h3 id="3-1-bank-alignment-adapted-from-modelatlas">3.1 Bank Alignment (adapted from ModelAtlas)</h3>
+<p>For each bank where the query specifies a direction:</p>
+<pre><code class="language-python">
+def bank_score(model_signed_pos, query_direction):
+    if query_direction == 0:
+        return 1.0 / (1.0 + abs(model_signed_pos))  # want zero: penalize distance
+    alignment = model_signed_pos * query_direction
+    if alignment &gt; 0:
+        return 1.0      # on the right side
+    elif alignment == 0:
+        return 0.5      # at zero (neutral)
+    else:
+        return 1.0 / (1.0 + abs(alignment))  # wrong side: decay
+</code></pre>
+<p><strong>Scoring composition — configurable mechanism.</strong> The default is multiplicative (<code>bank_alignment = Π bank_score(pos_i, dir_i)</code>), but the system supports alternative composition strategies selected via <code>scoring.mechanism</code> in config:</p>
+<pre><code class="language-python">
+def compose_bank_scores(scores: dict[str, float], confidences: dict[str, float],
+                        mechanism: str) -&gt; float:
+    if mechanism == &quot;multiplicative&quot;:
+        return math.prod(scores.values())
+    elif mechanism == &quot;confidence_weighted&quot;:
+        # Banks with uncertain positions contribute less
+        return math.prod(s ** c for s, c in zip(scores.values(), confidences.values()))
+    elif mechanism == &quot;soft_floor&quot;:
+        epsilon = config.scoring.floor_epsilon  # default 0.1
+        return math.prod(max(s, epsilon) for s in scores.values())
+    elif mechanism == &quot;geometric_mean&quot;:
+        return math.prod(scores.values()) ** (1.0 / len(scores))
+    elif mechanism == &quot;log_additive&quot;:
+        weights = config.scoring.bank_weights  # learned or tuned per bank
+        return math.exp(sum(w * math.log(max(s, 1e-6))
+                            for w, s in zip(weights, scores.values())))
+</code></pre>
+<p><strong>Recommended starting point</strong>: <code>confidence_weighted</code>. The GoalAnalyzer's bank heads output softmax distributions — the max probability serves as a natural confidence estimate. Banks with uncertain positions (max prob ~0.4) automatically contribute less to the final score than banks with confident positions (max prob ~0.95). This degrades gracefully: high confidence → pure multiplicative; low confidence → near-neutral.</p>
+<p><strong>Missing bank penalty</strong>: If an entity lacks a position for a queried bank, score = 0.3 (not zero, but penalized). This is intentional — some entities genuinely don't have a meaningful position on some banks.</p>
+<h3 id="3-2-anchor-relevance-idf-weighted">3.2 Anchor Relevance (IDF-weighted)</h3>
+<p>Three anchor lists:</p>
+<ul>
+<li><strong>require</strong> (hard filter): <code>SELECT entity_id ... HAVING COUNT(DISTINCT anchor_id) = len(require)</code>. Missing any required anchor → entity excluded.</li>
+<li><strong>prefer</strong> (IDF-weighted boost): <code>score = Σ idf(matched) / Σ idf(all_preferred)</code>. Rare anchors count more.</li>
+<li><strong>avoid</strong> (decay): Each avoided anchor present halves the score: <code>0.5^count</code>.</li>
+</ul>
+<h3 id="3-3-seed-similarity-idf-weighted-jaccard">3.3 Seed Similarity (IDF-weighted Jaccard)</h3>
+<p>When the proof context includes already-used lemmas:</p>
+<pre><code>
+seed_similarity = Σ idf(shared_anchors) / Σ idf(union_anchors)
+</code></pre>
+<p>Standard Jaccard treats all anchors equally. IDF weighting means sharing <code>Lyapunov-monotonicity</code> (rare) matters more than sharing <code>equality</code> (ubiquitous).</p>
+<h3 id="3-4-final-score">3.4 Final Score</h3>
+<pre><code>
+final_score = bank_alignment × anchor_relevance × seed_similarity
+</code></pre>
+<p>All three components are in [0, 1]. The product ensures no averaging away bad matches. A lemma that perfectly matches domain but completely fails structure scores 0, not 0.5.</p>
+<hr>
+<hr>
+<p><em>Sources: <code>docs/WAYFINDER_DESIGN.md</code></em></p>
+<h2 id="see-also">See Also</h2>
+<ul>
+<li><a href="2-The-Proof-Network">2-The-Proof-Network</a></li>
+<li><a href="4-Spreading-Activation">4-Spreading-Activation</a></li>
+</ul>
+      </article>
+      <nav class="prev-next" aria-label="Page navigation">
+  <a class="prev" href="../2-the-proof-network/">&larr; The Proof Network</a>
+  <a class="next" href="../4-spreading-activation/">Spreading Activation &rarr;</a>
+</nav>
+    </main>
+  </div>
+  <footer class="site-footer">
+    <p>Generated by <a href="https://github.com/rohanvinaik/lintgate">LintGate</a></p>
+  </footer>
+  <script src="../script.js"></script>
+</body>
+</html>

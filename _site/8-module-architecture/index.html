@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Module Architecture — Wayfinder</title>
+  <meta name="description" content="Module Architecture — Design">
+  <meta name="generator" content="LintGate Wiki Publisher">
+  <link rel="canonical" href="https://rohanvinaik.github.io/Wayfinder/8-module-architecture/">
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+  <header class="site-header">
+    <button class="sidebar-toggle" aria-label="Toggle sidebar">&#9776;</button>
+    <a class="site-title" href="../">Wayfinder</a>
+    <button class="theme-toggle" aria-label="Toggle dark mode" title="Toggle dark mode">&#9790;</button>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" role="navigation" aria-label="Wiki navigation">
+      <div class="sidebar-header">
+        <a href="../">Wayfinder</a>
+      </div>
+      <div class="sidebar-group">
+  <h3>Research</h3>
+  <ul>
+    <li data-page="Abstract"><a href="../abstract/">Abstract</a></li>
+    <li data-page="1-Introduction"><a href="../1-introduction/">Introduction</a></li>
+    <li data-page="2-Theoretical-Framework"><a href="../2-theoretical-framework/">Theoretical Framework</a></li>
+    <li data-page="3-Architecture-Specification"><a href="../3-architecture-specification/">Architecture Specification</a></li>
+    <li data-page="4-Training"><a href="../4-training/">Training</a></li>
+    <li data-page="5-Evaluation"><a href="../5-evaluation/">Evaluation</a></li>
+    <li data-page="6-Related-Work"><a href="../6-related-work/">Related Work</a></li>
+    <li data-page="7-Discussion"><a href="../7-discussion/">Discussion</a></li>
+  </ul>
+</div>
+<div class="sidebar-group">
+  <h3>Design</h3>
+  <ul>
+    <li data-page="1-Design-Thesis"><a href="../1-design-thesis/">Design Thesis</a></li>
+    <li data-page="2-The-Proof-Network"><a href="../2-the-proof-network/">The Proof Network</a></li>
+    <li data-page="3-Scoring-System"><a href="../3-scoring-system/">Scoring System</a></li>
+    <li data-page="4-Spreading-Activation"><a href="../4-spreading-activation/">Spreading Activation</a></li>
+    <li data-page="5-Nav-Training-Data"><a href="../5-nav-training-data/">Navigation Training Data</a></li>
+    <li data-page="6-Ternary-Navigation"><a href="../6-ternary-navigation/">Ternary Navigation</a></li>
+    <li data-page="7-Mutation-Theory"><a href="../7-mutation-theory/">Connection to Mutation Theory</a></li>
+    <li data-page="8-Module-Architecture"><a href="../8-module-architecture/">Module Architecture</a></li>
+    <li data-page="9-Configuration"><a href="../9-configuration/">Configuration</a></li>
+  </ul>
+</div>
+<div class="sidebar-group">
+  <h3>Experiment Plan</h3>
+  <ul>
+    <li data-page="Plan-Overview"><a href="../plan-overview/">Plan Overview</a></li>
+    <li data-page="Phase-0"><a href="../phase-0/">Phase 0: Proof Network Construction</a></li>
+    <li data-page="Phase-1"><a href="../phase-1/">Phase 1: Core Pipeline</a></li>
+    <li data-page="Phase-2"><a href="../phase-2/">Phase 2: Navigation Training</a></li>
+    <li data-page="Phase-3"><a href="../phase-3/">Phase 3: Proof Search Integration</a></li>
+    <li data-page="Phase-4"><a href="../phase-4/">Phase 4: Evaluation and Ablation</a></li>
+    <li data-page="Phase-5"><a href="../phase-5/">Phase 5: Scale and Extend</a></li>
+  </ul>
+</div>
+<div class="sidebar-group">
+  <h3>Theory</h3>
+  <ul>
+    <li data-page="Theory-Profile"><a href="../theory-profile/">Theory Profile</a></li>
+    <li data-page="Theory-Compass"><a href="../theory-compass/">Project Compass</a></li>
+  </ul>
+</div>
+    </nav>
+    <main class="content" role="main">
+      <article>
+        <p><strong>Design</strong> | Chapter 8 | Prerequisites: <a href="../1-design-thesis/">1-Design-Thesis</a> | 24 min read | <a href="../home/">Home</a></p>
+<h2 id="8-module-architecture">8. Module Architecture</h2>
+<p>All modules are implemented. The codebase consists of 28 source files and 8 scripts.</p>
+<h3 id="8-0-three-lane-verification-architecture">8.0 Three-Lane Verification Architecture</h3>
+<p>Proof verification operates across three lanes at different granularities:</p>
+<table><tbody>
+<tr><td>Lane</td><td>Purpose</td><td>Backend</td><td>Latency</td><td>Metric Category</td></tr>
+<tr><td><strong>A</strong></td><td>Step-wise tactic search (inner loop)</td><td>Pantograph (local)</td><td>~1ms/tactic</td><td><code>raw_success</code></td></tr>
+<tr><td><strong>B</strong></td><td>Proof audit: verify, repair, decompose</td><td>Axle API (cloud)</td><td>~100-200ms/call</td><td><code>axle_assisted_success</code>, <code>axle_repair_only</code></td></tr>
+<tr><td><strong>C</strong></td><td>High-assurance recheck (leaderboard only)</td><td>lean4checker / Comparator / SafeVerify</td><td>seconds</td><td>independent validation</td></tr>
+</tbody></table>
+<p><strong>Lane A</strong> is the core search loop (<code>proof_search.py</code> → <code>lean_interface.py</code>). It applies tactics one at a time within a 600-step budget.</p>
+<p><strong>Lane B</strong> is the <code>ProofAuditor</code> service (<code>proof_auditor.py</code> → Axle API). It operates on complete or near-complete proofs after Lane A finishes. Operations: <code>verify_proof</code> (authoritative check), <code>repair_proofs</code> (close remaining goals with terminal tactics), <code>sorry2lemma</code> (decompose failures into subgoals for retry). Lane B never inflates Lane A metrics — results are tagged with strict <code>SuccessCategory</code>.</p>
+<p><strong>Lane C</strong> is optional and reserved for results submitted to benchmarks/leaderboards. Axle itself notes that <code>verify_proof</code> trusts the Lean environment and is not adversarial-safe (see <a href="https://axle.axiommath.ai/v1/docs/">Axle docs</a>). For high-assurance, use <a href="https://github.com/leanprover/lean4checker">lean4checker</a>, <a href="https://github.com/leanprover/comparator">Comparator</a>, or <a href="https://github.com/GasStationManager/SafeVerify">SafeVerify</a>.</p>
+<p><strong>Cost controls (Lane B):</strong></p>
+<ul>
+<li>Content-hash cache (SHA-256) avoids redundant Axle API calls</li>
+<li>Caller filters to top-N candidates or high critic score before invoking</li>
+<li>Bounded async concurrency (<code>max_concurrency</code> in config)</li>
+<li>Graceful degradation on timeout/429/503 (returns failed <code>AuditResult</code>, search continues)</li>
+</ul>
+<p><strong>Metric separation</strong> prevents inflated claims. Benchmark reports always show:</p>
+<ul>
+<li><code>raw_success</code>: proved by Lane A alone, no Axle involvement</li>
+<li><code>axle_assisted_success</code>: Lane A partial + Axle decompose/repair</li>
+<li><code>axle_repair_only</code>: Axle <code>repair_proofs</code> closed remaining goals</li>
+</ul>
+<p><strong>Scope caveat:</strong> Axle is designed for simple imports/theorems/definitions. Tool count and API surface are evolving (v1.0.0, March 2026). Pin <code>environment</code> aggressively in config; update only with Mathlib version bumps.</p>
+<pre><code>
+src/
+├── encoder.py               GoalEncoder (math-native model, see Research §3.2)
+├── goal_analyzer.py          GoalAnalyzer (features + bank positions + anchor logits)
+├── bridge.py                 InformationBridge (continuous → discrete bottleneck)
+├── proof_navigator.py        ProofNavigator (ternary navigational decoder)
+├── proof_network.py          Proof network database interface
+├── resolution.py             Structured resolution (navigate + spread)
+├── proof_search.py           Lane A: outer search loop with Lean interaction
+├── lean_interface.py         Lane A: Pantograph-based Lean kernel interaction
+├── proof_auditor.py          Lane B: Axle-based verification/repair/decomposition
+├── nav_contracts.py          Navigational data contracts (NavigationalExample, NavOutput, etc.)
+├── ternary_decoder.py        TernaryLinear, ternary_quantize (shared)
+├── domain_gate.py            OOD detection gate
+├── losses.py                 NavigationalLoss (UW-SO adaptive)
+├── lowering.py               Deterministic tactic lowering
+├── contracts.py              Core data contracts (ProofExample, etc.)
+├── data.py                   Dataset loading (NavigationalDataset, etc.)
+├── verification.py           Proof verification
+├── pab_profile.py            PAB profile artifact
+├── pab_metrics.py            PAB metric functions
+├── pab_tracker.py            Checkpoint accumulation
+├── behavioral_fingerprint.py Behavioral signatures
+├── trainer.py                Training loop
+├── trainer_steps.py          Train step mixin
+├── trainer_checks.py         Gradient health, logging
+├── trainer_constants.py      Domain inference
+├── trainer_setup.py          Pipeline construction
+├── trainer_validation.py     Proof validation
+└── evaluate.py               Evaluation harness
+
+scripts/
+├── extract_proof_network.py    Populate proof network from Mathlib
+├── build_nav_training_data.py  Convert proof traces to nav labels
+├── anchor_gap_analysis.py      Iterative anchor gap analysis
+├── tactic_maps.py              Tactic-to-direction mapping tables
+├── train_navigator.py          Training script with curriculum
+├── eval_retrieval.py           Nav vs dense retrieval comparison
+├── eval_spreading.py           Spreading activation evaluation
+└── run_benchmark.py            MiniF2F + Mathlib benchmark runner
+
+configs/
+└── wayfinder.yaml              Full Wayfinder experiment configuration
+
+data/  (generated/downloaded at runtime)
+├── proof_network.db            SQLite semantic network
+├── nav_training.jsonl             Navigational training data
+├── nav_eval.jsonl              Navigational eval data (frozen)
+└── leandojo_mathlib.jsonl      LeanDojo extracted dataset
+</code></pre>
+<h3 id="8-1-navigational-modules">8.1 Navigational Modules</h3>
+<p><strong><code>proof_navigator.py</code></strong>: Replaces <code>ternary_decoder.py</code>'s vocabulary classification heads with 6 navigational direction heads (one per navigable bank). Inherits TernaryLinear for hidden layers. Outputs 6 ternary directions (3^6 = 729 coarse bins) + continuous anchor logits + progress + critic. Configurable via <code>navigable_banks</code> for graceful degradation to 3-bank.</p>
+<p><strong><code>proof_network.py</code></strong>: SQLite interface for the semantic network. Adapted from ModelAtlas's <code>db.py</code>. Schema: entities, entity_positions, anchors, entity_anchors, entity_links, anchor_idf. Core functions: <code>navigate()</code>, <code>spread()</code>, <code>get_anchor_set()</code>, <code>compute_idf()</code>, <code>batch_get_positions()</code>.</p>
+<p><strong><code>resolution.py</code></strong>: Converts ProofNavigator output to concrete tactics and premises. Builds a StructuredQuery from ternary directions + top-k anchors. Calls <code>navigate()</code> on the tactic and premise entity tables. Combines with <code>spread()</code> scores from proof context. Returns ranked (tactic, premise_list) pairs.</p>
+<p><strong><code>proof_search.py</code></strong>: Outer search loop. Manages open goals, proof context, search budget. Calls the neural pipeline once per goal, resolution symbolically, and the Lean kernel for verification. Goal selection uses critic (solvability estimate) and progress (remaining steps). Uses <code>Pipeline</code> dataclass bundling encoder/analyzer/bridge/navigator.</p>
+<p><strong><code>lean_interface.py</code></strong> (Lane A): Wrapper around LeanDojo's Pantograph interaction protocol. Provides <code>try_tactic(goal_state, tactic_text) -> TacticResult</code> with success/failure and new goal states. Supports stub backend for offline testing. Configurable via <code>lean.backend</code> in config.</p>
+<p><strong><code>proof_auditor.py</code></strong> (Lane B): Axle API wrapper for proof verification, repair, and subgoal decomposition. <code>ProofAuditor</code> service with <code>verify()</code>, <code>repair()</code>, <code>decompose()</code>, <code>check()</code>, and <code>extract_theorems()</code>. Content-hash cache, bounded concurrency, graceful degradation on API errors. All results tagged with <code>SuccessCategory</code> (raw/assisted/repair_only). Optional dependency: <code>pip install wayfinder[axle]</code>.</p>
+<p><strong><code>nav_contracts.py</code></strong>: Navigational data contracts including <code>NavigationalExample</code>, <code>NavOutput</code>, <code>StructuredQuery</code>, <code>Candidate</code>, <code>SearchContext</code>, <code>BANK_NAMES</code>.</p>
+<h3 id="8-2-retained-modules">8.2 Retained Modules</h3>
+<p>All modules from the BalancedSashimi port are retained. The GoalAnalyzer is extended (not replaced) with bank and anchor heads. The InformationBridge is unchanged. The TernaryLinear and STE infrastructure is shared between the existing TernaryDecoder and the new ProofNavigator.</p>
+<hr>
+<hr>
+<p><em>Sources: <code>docs/WAYFINDER_DESIGN.md</code></em></p>
+<h2 id="see-also">See Also</h2>
+<ul>
+<li><a href="7-Mutation-Theory">7-Mutation-Theory</a></li>
+<li><a href="9-Configuration">9-Configuration</a></li>
+</ul>
+      </article>
+      <nav class="prev-next" aria-label="Page navigation">
+  <a class="prev" href="../7-mutation-theory/">&larr; Connection to Mutation Theory</a>
+  <a class="next" href="../9-configuration/">Configuration &rarr;</a>
+</nav>
+    </main>
+  </div>
+  <footer class="site-footer">
+    <p>Generated by <a href="https://github.com/rohanvinaik/lintgate">LintGate</a></p>
+  </footer>
+  <script src="../script.js"></script>
+</body>
+</html>

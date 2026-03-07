@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Theoretical Framework — Wayfinder</title>
+  <meta name="description" content="Theoretical Framework — Research">
+  <meta name="generator" content="LintGate Wiki Publisher">
+  <link rel="canonical" href="https://rohanvinaik.github.io/Wayfinder/2-theoretical-framework/">
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+  <header class="site-header">
+    <button class="sidebar-toggle" aria-label="Toggle sidebar">&#9776;</button>
+    <a class="site-title" href="../">Wayfinder</a>
+    <button class="theme-toggle" aria-label="Toggle dark mode" title="Toggle dark mode">&#9790;</button>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" role="navigation" aria-label="Wiki navigation">
+      <div class="sidebar-header">
+        <a href="../">Wayfinder</a>
+      </div>
+      <div class="sidebar-group">
+  <h3>Research</h3>
+  <ul>
+    <li data-page="Abstract"><a href="../abstract/">Abstract</a></li>
+    <li data-page="1-Introduction"><a href="../1-introduction/">Introduction</a></li>
+    <li data-page="2-Theoretical-Framework"><a href="../2-theoretical-framework/">Theoretical Framework</a></li>
+    <li data-page="3-Architecture-Specification"><a href="../3-architecture-specification/">Architecture Specification</a></li>
+    <li data-page="4-Training"><a href="../4-training/">Training</a></li>
+    <li data-page="5-Evaluation"><a href="../5-evaluation/">Evaluation</a></li>
+    <li data-page="6-Related-Work"><a href="../6-related-work/">Related Work</a></li>
+    <li data-page="7-Discussion"><a href="../7-discussion/">Discussion</a></li>
+  </ul>
+</div>
+<div class="sidebar-group">
+  <h3>Design</h3>
+  <ul>
+    <li data-page="1-Design-Thesis"><a href="../1-design-thesis/">Design Thesis</a></li>
+    <li data-page="2-The-Proof-Network"><a href="../2-the-proof-network/">The Proof Network</a></li>
+    <li data-page="3-Scoring-System"><a href="../3-scoring-system/">Scoring System</a></li>
+    <li data-page="4-Spreading-Activation"><a href="../4-spreading-activation/">Spreading Activation</a></li>
+    <li data-page="5-Nav-Training-Data"><a href="../5-nav-training-data/">Navigation Training Data</a></li>
+    <li data-page="6-Ternary-Navigation"><a href="../6-ternary-navigation/">Ternary Navigation</a></li>
+    <li data-page="7-Mutation-Theory"><a href="../7-mutation-theory/">Connection to Mutation Theory</a></li>
+    <li data-page="8-Module-Architecture"><a href="../8-module-architecture/">Module Architecture</a></li>
+    <li data-page="9-Configuration"><a href="../9-configuration/">Configuration</a></li>
+  </ul>
+</div>
+<div class="sidebar-group">
+  <h3>Experiment Plan</h3>
+  <ul>
+    <li data-page="Plan-Overview"><a href="../plan-overview/">Plan Overview</a></li>
+    <li data-page="Phase-0"><a href="../phase-0/">Phase 0: Proof Network Construction</a></li>
+    <li data-page="Phase-1"><a href="../phase-1/">Phase 1: Core Pipeline</a></li>
+    <li data-page="Phase-2"><a href="../phase-2/">Phase 2: Navigation Training</a></li>
+    <li data-page="Phase-3"><a href="../phase-3/">Phase 3: Proof Search Integration</a></li>
+    <li data-page="Phase-4"><a href="../phase-4/">Phase 4: Evaluation and Ablation</a></li>
+    <li data-page="Phase-5"><a href="../phase-5/">Phase 5: Scale and Extend</a></li>
+  </ul>
+</div>
+<div class="sidebar-group">
+  <h3>Theory</h3>
+  <ul>
+    <li data-page="Theory-Profile"><a href="../theory-profile/">Theory Profile</a></li>
+    <li data-page="Theory-Compass"><a href="../theory-compass/">Project Compass</a></li>
+  </ul>
+</div>
+    </nav>
+    <main class="content" role="main">
+      <article>
+        <p><strong>Research</strong> | Chapter 3 | Prerequisites: <a href="../1-introduction/">1-Introduction</a> | 56 min read | <a href="../home/">Home</a></p>
+<h2 id="2-theoretical-framework">2. Theoretical Framework</h2>
+<h3 id="2-1-proof-search-as-spatial-navigation">2.1 Proof Search as Spatial Navigation</h3>
+<p>We propose a fundamental reframing: <strong>proof search is navigation through a structured mathematical space, not sequential token prediction.</strong></p>
+<p>In token prediction, the model outputs a sequence of tactic tokens conditioned on the goal state. Each token is selected from a flat vocabulary via softmax. The model must learn, from training data alone, which tactics are applicable in which situations — the structure of mathematical knowledge is implicit in the weights.</p>
+<p>In navigational search, the model outputs <em>directions</em> in a structured coordinate system. The directions resolve to concrete tactics and premises through deterministic lookup in a semantic network that <em>explicitly encodes</em> the structure of mathematical knowledge. The model's job is narrower: predict which region of mathematical space contains the answer. The symbolic system handles the last mile.</p>
+<p>This reframing has three theoretical consequences:</p>
+<p><strong>Consequence 1: Separation of concerns.</strong> The neural network handles understanding (what kind of mathematical situation is this?) while the symbolic system handles retrieval (given this kind of situation, which specific lemmas and tactics are relevant?). Neither system needs to do the other's job. This is the same separation that makes ModelAtlas work: the LLM decomposes the user's natural language query into structured parameters; ModelAtlas does deterministic math.</p>
+<p><strong>Consequence 2: Auditable search.</strong> Every premise retrieval traces back to specific shared anchors and bank alignments. "This lemma scored 0.87 because it shares the rare anchors <code>monotone-convergence</code> and <code>finset-sum</code> with the current goal, and its DOMAIN bank position aligns with the goal's." Compare to dense retrieval: "the embedding similarity was 0.87" (uninspectable).</p>
+<p><strong>Consequence 3: Amortized computation.</strong> The semantic network is built once from Mathlib's type information, namespace structure, and dependency graph. At query time, navigation is pure arithmetic on precomputed structures. The neural network runs once per proof state to produce coordinates; the search engine can explore thousands of candidate lemmas in the time it takes to run one forward pass.</p>
+<h3 id="2-2-signed-semantic-banks-for-mathematical-entities">2.2 Signed Semantic Banks for Mathematical Entities</h3>
+<p>We define six orthogonal <strong>proof banks</strong> — signed dimensions with zero states placed at the mode of mathematical activity:</p>
+<pre><code>
+Bank           Zero State                  Negative                   Positive
+────────────── ─────────────────────────── ────────────────────────── ─────────────────────────
+STRUCTURE      equality / rewrite goal     arithmetic, decidable      quantified, higher-order
+DOMAIN         general algebra             concrete (ℕ, ℤ, ℚ)        abstract (topology, category)
+DEPTH          2-3 tactic proof            trivial (1 tactic)         deep (10+ tactics)
+AUTOMATION     partially automated         fully auto (omega, simp)   requires manual insight
+CONTEXT        moderate hypotheses (3-5)   no hypotheses              rich context (10+ hyps)
+DECOMPOSITION  single-goal                 atomic (no subgoals)       multi-subgoal
+</code></pre>
+<p><strong>Why these banks are orthogonal:</strong> A theorem can be structurally simple (STRUCTURE=0) but in an abstract domain (DOMAIN=+2); it can be deeply nested (DEPTH=+2) but fully automated (AUTOMATION=-2, e.g., a long <code>simp</code> chain). The banks capture independent dimensions of variation.</p>
+<p><strong>Zero placement rationale:</strong> Zero is "the most common proof goal a working mathematician encounters." The majority of Mathlib lemmas are about algebraic equalities or inequalities, require 2-3 tactics, and use a mix of automation and manual reasoning. Queries resolve near the origin.</p>
+<p><strong>Positioning examples:</strong></p>
+<table><tbody>
+<tr><td>Lemma</td><td>STRUCTURE</td><td>DOMAIN</td><td>DEPTH</td><td>AUTOMATION</td><td>CONTEXT</td><td>DECOMP</td></tr>
+<tr><td><code>Nat.add_comm</code></td><td>(0,0)</td><td>(-1,1)</td><td>(-1,2)</td><td>(-1,2)</td><td>(-1,1)</td><td>(-1,1)</td></tr>
+<tr><td><code>Set.Finite.induction_on</code></td><td>(+1,2)</td><td>(+1,1)</td><td>(+1,1)</td><td>(+1,2)</td><td>(+1,1)</td><td>(+1,2)</td></tr>
+<tr><td><code>MonoidHom.map_mul</code></td><td>(0,0)</td><td>(0,0)</td><td>(-1,1)</td><td>(-1,1)</td><td>(0,0)</td><td>(-1,1)</td></tr>
+<tr><td><code>TopologicalSpace.isOpen_iUnion</code></td><td>(+1,1)</td><td>(+1,2)</td><td>(0,0)</td><td>(+1,1)</td><td>(+1,1)</td><td>(+1,1)</td></tr>
+</tbody></table>
+<p>Bank positions are extracted deterministically from Lean's type information:</p>
+<ul>
+<li><strong>STRUCTURE</strong>: Analyze the goal type — quantifier nesting, dependent types, propositional vs. data.</li>
+<li><strong>DOMAIN</strong>: Namespace hierarchy (<code>Mathlib.Algebra</code> → DOMAIN=0, <code>Mathlib.Topology</code> → DOMAIN=+2).</li>
+<li><strong>DEPTH</strong>: Proof length from ground-truth proofs (when available) or heuristic estimation from type complexity.</li>
+<li><strong>AUTOMATION</strong>: Whether the lemma's proof (or similar lemmas' proofs) use automation tactics.</li>
+<li><strong>CONTEXT</strong>: Number and complexity of hypotheses in the local context.</li>
+<li><strong>DECOMPOSITION</strong>: Whether the proof requires multiple <code>have</code> statements or case splits.</li>
+</ul>
+<h3 id="2-3-anchor-dictionaries-as-mathematical-vocabulary">2.3 Anchor Dictionaries as Mathematical Vocabulary</h3>
+<p>An <strong>anchor</strong> is a semantic label shared across mathematical entities. Anchors create emergent similarity — two lemmas sharing 12 anchors are related without an explicit edge. The anchor dictionary is the semantic vocabulary of the system.</p>
+<p><strong>Proof anchors by bank:</strong></p>
+<table><tbody>
+<tr><td>Bank</td><td>Example Anchors</td></tr>
+<tr><td>STRUCTURE</td><td><code>equality</code>, <code>inequality</code>, <code>membership</code>, <code>universal-quantifier</code>, <code>existential</code>, <code>iff</code>, <code>implication</code>, <code>negation</code>, <code>dependent-type</code></td></tr>
+<tr><td>DOMAIN</td><td><code>nat-arithmetic</code>, <code>group-theory</code>, <code>ring-theory</code>, <code>topology</code>, <code>measure-theory</code>, <code>linear-algebra</code>, <code>order-theory</code>, <code>set-theory</code>, <code>category-theory</code></td></tr>
+<tr><td>DEPTH</td><td><code>one-liner</code>, <code>multi-step</code>, <code>deep-induction</code>, <code>structural-recursion</code></td></tr>
+<tr><td>AUTOMATION</td><td><code>omega-solvable</code>, <code>simp-solvable</code>, <code>decide-solvable</code>, <code>norm_num-solvable</code>, <code>needs-manual-intro</code>, <code>needs-manual-cases</code></td></tr>
+<tr><td>CONTEXT</td><td><code>hypothesis-rich</code>, <code>hypothesis-free</code>, <code>uses-local-def</code>, <code>type-class-instance</code></td></tr>
+<tr><td>DECOMPOSITION</td><td><code>needs-cases</code>, <code>needs-induction</code>, <code>needs-have-chain</code>, <code>single-goal</code>, <code>multi-branch</code></td></tr>
+</tbody></table>
+<p><strong>Cross-cutting anchors</strong> (not bank-specific): <code>monotonicity</code>, <code>commutativity</code>, <code>associativity</code>, <code>distributivity</code>, <code>idempotency</code>, <code>transitivity</code>, <code>injectivity</code>, <code>surjectivity</code>, <code>continuity</code>, <code>compactness</code>, <code>finiteness</code>, <code>convergence</code>, <code>bounded</code>, <code>well-founded</code></p>
+<p><strong>Anchor extraction:</strong></p>
+<ul>
+<li><strong>Tier 1 (deterministic)</strong>: From Lean's type checker — <code>Nat</code> in the type → <code>nat-arithmetic</code>; <code>∀</code> in the goal → <code>universal-quantifier</code>; namespace <code>Mathlib.Topology</code> → <code>topology</code>.</li>
+<li><strong>Tier 2 (pattern matching)</strong>: From proof text — <code>omega</code> in proof → <code>omega-solvable</code>; <code>induction</code> → <code>needs-induction</code>; <code>rw [mul_comm]</code> → <code>commutativity</code>.</li>
+<li><strong>Tier 3 (optional)</strong>: LLM-based annotation for subtle mathematical properties not captured by syntax.</li>
+</ul>
+<p><strong>IDF weighting:</strong> The anchor <code>equality</code> appears on thousands of lemmas. The anchor <code>Lyapunov-monotonicity</code> appears on maybe 5. IDF = <code>log(N / count_lemmas_with_anchor)</code>. When a goal state shares both anchors with a candidate lemma, the IDF weighting correctly focuses on the rare, informative one. This mirrors how human mathematicians search: they key off the unusual, distinctive features of a problem.</p>
+<p><strong>Anchor gap analysis (critical bootstrap step):</strong> The ~300 initial anchors will have blind spots. The system's retrieval ceiling is bounded by anchor expressiveness — if a relevant mathematical property isn't captured by any anchor, it's invisible to <code>navigate()</code>. Known gaps in the initial dictionary include:</p>
+<ul>
+<li><strong>Type coercion anchors</strong>: Many Mathlib proofs struggle with coercion between types (<code>↑n</code>, <code>(n : ℤ)</code>, <code>Nat.cast</code>). This is a major source of proof difficulty and needs dedicated anchors: <code>needs-cast</code>, <code>nat-int-coercion</code>, <code>subtype-coercion</code>, <code>coe-simp</code>.</li>
+<li><strong>Algebraic hierarchy anchors</strong>: The Mathlib typeclass hierarchy (Monoid → Group → Ring → Field) creates proof obligations that are structurally similar but domain-specific. Anchors should track position in the hierarchy: <code>monoid-level</code>, <code>group-level</code>, <code>ring-level</code>, <code>field-level</code>.</li>
+<li>*<em>Proof </em>pattern<em> anchors</em>*: Beyond tactic names, recurring proof patterns need labels: <code>split-and-recombine</code>, <code>contrapositive-argument</code>, <code>epsilon-delta</code>, <code>sequence-limit</code>, <code>diagonal-argument</code>.</li>
+</ul>
+<p><strong>Anchor gap analysis procedure</strong> (executed iteratively in Phase 0-1): 1. For 500 randomly selected proof steps, attempt to resolve the ground-truth tactic and premises via <code>navigate()</code> using only the existing anchor dictionary. 2. For each failure (correct premise not in top-16), examine what anchors <em>would have</em> connected the goal to the premise. These are gap anchors. 3. Cluster the gap anchors by mathematical theme. Add the most frequent clusters as new anchors. 4. Re-run the analysis. Iterate until top-16 recall on the 500-step sample exceeds 70%.</p>
+<p>This iterative refinement is the single highest-leverage activity in Phase 0. The proof network's quality caps the entire system.</p>
+<h3 id="2-4-premise-retrieval-as-structured-navigation">2.4 Premise Retrieval as Structured Navigation</h3>
+<p>With lemmas positioned in banks and connected through anchors, premise retrieval becomes a <code>navigate()</code> query — the same operation ModelAtlas uses to find ML models:</p>
+<pre><code>
+retrieve(goal) =
+    bank_alignment(goal_position, lemma_position)      # Are we in the right region?
+  × anchor_relevance(goal_anchors, lemma_anchors, IDF)  # Do semantic labels match?
+  × seed_similarity(context_lemmas, lemma_anchors, IDF) # Similar to what we&#x27;ve already used?
+</code></pre>
+<p><strong>Three signals, multiplicative:</strong></p>
+<p>1. <strong>Bank alignment.</strong> For each bank where the goal has a position, score the candidate lemma's alignment:</p>
+<ul>
+<li>Same direction: 1.0 (fully aligned)</li>
+<li>At zero: 0.5 (neutral)</li>
+<li>Opposite direction: <code>1 / (1 + |distance|)</code> (decaying penalty)</li>
+<li>Multiplicative across banks — a lemma that matches DOMAIN but opposes STRUCTURE gets penalized.</li>
+</ul>
+<p>2. <strong>Anchor relevance (IDF-weighted).</strong> Three anchor lists:</p>
+<ul>
+<li><strong>require</strong>: Hard filter. The goal has <code>nat-arithmetic</code> and <code>inequality</code> → only lemmas with both anchors survive.</li>
+<li><strong>prefer</strong>: Soft boost. The goal also has <code>monotonicity</code> → lemmas with this anchor get IDF-weighted bonus.</li>
+<li><strong>avoid</strong>: Penalty. The search has already tried <code>omega</code> and failed → penalize <code>omega-solvable</code> lemmas.</li>
+</ul>
+<p>3. <strong>Seed similarity.</strong> If the proof has already successfully applied certain lemmas, find candidates with overlapping anchor sets. IDF-weighted Jaccard between the seed's anchors and the candidate's anchors.</p>
+<p><strong>Why multiplicative scoring matters for premises:</strong> In dense retrieval, a lemma about natural numbers that happens to have similar embedding structure to a topology proof can score highly — the embedding conflates all dimensions. With multiplicative scoring, if the DOMAIN bank doesn't align, the score goes to zero. <code>Nat.add_comm</code> is never relevant to a topology proof, no matter how textually similar the goal states look.</p>
+<p><strong>Scoring mechanism — open design question</strong>: Pure multiplicative scoring (<code>Π bank_score_i</code>) is both the system's precision advantage and its fragility. A zero in any bank kills the total score. When bank positions are noisy (and they will be, especially early), this means a misclassified STRUCTURE position can exclude correct premises that match perfectly on every other dimension.</p>
+<p>Several alternative scoring mechanisms should be evaluated empirically:</p>
+<table><tbody>
+<tr><td>Mechanism</td><td>Formula</td><td>Tradeoff</td></tr>
+<tr><td>Pure multiplicative (ModelAtlas)</td><td><code>Π score_i</code></td><td>Maximum precision, zero tolerance for noise</td></tr>
+<tr><td>Confidence-weighted multiplicative</td><td><code>Π score_i^(confidence_i)</code></td><td>Banks with uncertain positions contribute less; requires per-bank confidence estimation</td></tr>
+<tr><td>Geometric mean</td><td><code>(Π score_i)^(1/k)</code></td><td>Softer than product; a single low score reduces but doesn't kill</td></tr>
+<tr><td>Log-additive with learned weights</td><td><code>Σ w_i · log(score_i)</code></td><td>Equivalent to weighted geometric mean; weights learned per bank</td></tr>
+<tr><td>Soft-floor multiplicative</td><td><code>Π max(score_i, ε)</code></td><td>Floor prevents hard zeros; ε tunable per bank</td></tr>
+<tr><td>Hybrid: multiplicative filter + additive rank</td><td>Filter by hard bank constraints, then rank by additive anchor+seed score</td><td>Separates coarse filtering from fine ranking</td></tr>
+</tbody></table>
+<p>The <strong>confidence-weighted</strong> variant is theoretically most principled: if the GoalAnalyzer's bank head outputs a softmax distribution where the winning class has only 40% probability (uncertain), that bank should influence the final score less than one where the winning class has 95% probability. This naturally degrades to pure multiplicative when confidence is high and to no-bank-influence when confidence is low.</p>
+<p>The right mechanism likely depends on proof network maturity. Early (noisy bank positions): confidence-weighted or soft-floor. Late (refined positions): pure multiplicative. This could be a training schedule parameter.</p>
+<p><strong>Accessible-premises filtering (free lunch from ReProver).</strong> ReProver demonstrated that restricting retrieval to premises accessible via Lean's import structure (~33k of ~130k total) gives a ~2% recall improvement at zero compute cost. Wayfinder's proof network should encode this constraint: each entity stores its import-accessible set, and <code>navigate()</code> pre-filters to accessible premises before scoring. This is a hard filter in SQL (<code>WHERE entity_id IN accessible_set</code>), applied before any bank alignment or anchor scoring. LeanDojo's extraction already provides this accessibility information.</p>
+<p><strong>Performance:</strong> Batch SQL replaces per-lemma neural forward passes. Pre-filter by accessible premises AND required anchors (SQL <code>HAVING</code>), batch-fetch positions and anchor sets, score in Python from in-memory dicts. Four indexed queries instead of 100k dot products.</p>
+<h3 id="2-5-ternary-weights-as-navigational-coordinates">2.5 Ternary Weights as Navigational Coordinates</h3>
+<p>ModelAtlas's bank positions are signed integers. The Balanced Sashimi decoder uses ternary {-1, 0, +1} weights. These are the same conceptual operation: discretizing a continuous space into signed directions relative to a meaningful zero.</p>
+<p>We propose that the ternary decoder does not predict tactic tokens from a vocabulary. Instead, it predicts <strong>navigational directions in proof space:</strong></p>
+<ul>
+<li><strong>STRUCTURE direction</strong> {-1, 0, +1}: Should the next step simplify (toward decidable/arithmetic), maintain (rewrite), or complexify (introduce quantifiers)?</li>
+<li><strong>AUTOMATION direction</strong> {-1, 0, +1}: Should the next step use full automation (omega, simp), mixed, or manual reasoning?</li>
+<li><strong>DECOMPOSITION direction</strong> {-1, 0, +1}: Should the goal be decomposed into subgoals (via <code>have</code>, <code>cases</code>, <code>induction</code>), maintained as-is, or atomized?</li>
+</ul>
+<p>These ternary coordinates, combined with predicted anchor logits, form a <code>StructuredQuery</code> that resolves to concrete tactics and premises through the semantic network:</p>
+<pre><code class="language-python">
+
+
+---
+*Sources: `docs/WAYFINDER_RESEARCH.md`*
+## See Also
+
+- [1-Introduction](1-Introduction)
+- [3-Architecture-Specification](3-Architecture-Specification)
+
+
+</code></pre>
+      </article>
+      <nav class="prev-next" aria-label="Page navigation">
+  <a class="prev" href="../1-introduction/">&larr; Introduction</a>
+  <a class="next" href="../3-architecture-specification/">Architecture Specification &rarr;</a>
+</nav>
+    </main>
+  </div>
+  <footer class="site-footer">
+    <p>Generated by <a href="https://github.com/rohanvinaik/lintgate">LintGate</a></p>
+  </footer>
+  <script src="../script.js"></script>
+</body>
+</html>

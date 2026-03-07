@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Project Compass — Wayfinder</title>
-  <meta name="description" content="Project Compass — Theory">
+  <title>Plan Overview — Wayfinder</title>
+  <meta name="description" content="Plan Overview — Experiment Plan">
   <meta name="generator" content="LintGate Wiki Publisher">
-  <link rel="canonical" href="https://rohanvinaik.github.io/Wayfinder/theory-compass/">
+  <link rel="canonical" href="https://rohanvinaik.github.io/Wayfinder/plan-overview/">
   <link rel="stylesheet" href="../style.css">
 </head>
 <body>
@@ -69,23 +69,34 @@
     </nav>
     <main class="content" role="main">
       <article>
-        <p><strong>Theory</strong> | Chapter 2 | 1 min read | <a href="../home/">Home</a></p>
-<h3 id="problem">Problem</h3>
-<p><strong>Depth</strong>: 3</p>
-<h3 id="solution">Solution</h3>
-<p><strong>Depth</strong>: 1</p>
-<h3 id="implementation">Implementation</h3>
-<p><strong>Depth</strong>: 3</p>
-<h3 id="world">World</h3>
-<p><strong>Depth</strong>: 1</p>
+        <p><strong>Experiment Plan</strong> | Chapter 1 | 28 min read | <a href="../home/">Home</a></p>
+<h2 id="overview">Overview</h2>
+<p>This document specifies the sequence of work, tooling, compute decisions, and stop/go criteria for running the Wayfinder experiments. All source code and scripts are implemented (27 src files, 8 scripts, 1 config). This plan covers data pipeline execution and experimental evaluation.</p>
+<p>This plan produces three categories of results:</p>
+<ul>
+<li><strong>Stream 1 (Navigation)</strong>: Does structured semantic navigation — bank positions, IDF-weighted anchors, spreading activation — outperform dense embedding retrieval for premise selection and proof search?</li>
+</ul>
+<ul>
+<li><strong>Stream 2 (Architecture)</strong>: Does a ternary navigational decoder that produces directional coordinates, resolved through a semantic network, outperform tactic-token classification?</li>
+</ul>
+<ul>
+<li><strong>Stream 3 (Process Evaluation)</strong>: Does PAB's trajectory evaluation reveal information about the navigational learning process that endpoint metrics cannot?</li>
+</ul>
+<p>Every phase states what it validates in each stream. The experimental pipeline is designed so that a single set of experiments tests all three claims. Results are recorded in <code>docs/EXPERIMENT_RESULTS.md</code>.</p>
+<p><strong>Time horizon:</strong> 6-10 weeks for Phase 0-4. Phase 5+ contingent on results.</p>
+<p><strong>Compute budget:</strong> Apple Silicon (M-series Mac) as primary target. The architecture is designed for efficiency: small learnable navigational components (~400K trainable params) and symbolic search (SQLite). Encoder selection (Phase 0.6) will determine whether the encoder is frozen, fine-tuned, or aggressively pruned from a larger model — this is the main variable in compute requirements. A pruned math-native model (70-350M effective params) may require brief cloud GPU time for the pruning/fine-tuning step but runs locally thereafter.</p>
+<hr>
+<hr>
+<p><em>Sources: <code>docs/WAYFINDER_PLAN.md</code></em></p>
 <h2 id="see-also">See Also</h2>
 <ul>
-<li><a href="../theory-profile/">Theory-Profile</a></li>
+<li><a href="9-Configuration">9-Configuration</a></li>
+<li><a href="../phase-0/">Phase-0</a></li>
 </ul>
       </article>
       <nav class="prev-next" aria-label="Page navigation">
-  <a class="prev" href="../theory-profile/">&larr; Theory Profile</a>
-  <span class="next"></span>
+  <span class="prev"></span>
+  <a class="next" href="../phase-0/">Phase 0: Proof Network Construction &rarr;</a>
 </nav>
     </main>
   </div>

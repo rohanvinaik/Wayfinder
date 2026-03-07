@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Project Compass — Wayfinder</title>
-  <meta name="description" content="Project Compass — Theory">
+  <title>Design Thesis — Wayfinder</title>
+  <meta name="description" content="Design Thesis — Design">
   <meta name="generator" content="LintGate Wiki Publisher">
-  <link rel="canonical" href="https://rohanvinaik.github.io/Wayfinder/theory-compass/">
+  <link rel="canonical" href="https://rohanvinaik.github.io/Wayfinder/1-design-thesis/">
   <link rel="stylesheet" href="../style.css">
 </head>
 <body>
@@ -69,23 +69,23 @@
     </nav>
     <main class="content" role="main">
       <article>
-        <p><strong>Theory</strong> | Chapter 2 | 1 min read | <a href="../home/">Home</a></p>
-<h3 id="problem">Problem</h3>
-<p><strong>Depth</strong>: 3</p>
-<h3 id="solution">Solution</h3>
-<p><strong>Depth</strong>: 1</p>
-<h3 id="implementation">Implementation</h3>
-<p><strong>Depth</strong>: 3</p>
-<h3 id="world">World</h3>
-<p><strong>Depth</strong>: 1</p>
+        <p><strong>Design</strong> | Chapter 1 | 24 min read | <a href="../home/">Home</a></p>
+<h2 id="1-design-thesis">1. Design Thesis</h2>
+<p><strong>Navigation, not prediction.</strong> The central design decision in Wayfinder is that proof search should be <em>spatial navigation through structured mathematical space</em> rather than <em>sequential token prediction</em>. This has a concrete architectural consequence: the neural network runs once per proof state to produce navigational coordinates, and all subsequent operations — premise retrieval, tactic resolution, search prioritization — are deterministic symbolic operations on a precomputed semantic network.</p>
+<p>This design is directly adapted from ModelAtlas (Vinaik, 2025), which demonstrated that structured navigation over signed semantic coordinates outperforms both flat database queries and dense embedding retrieval for finding ML models on HuggingFace. We apply the same paradigm to mathematical entities: lemmas, tactics, and proof states are positioned in a structured coordinate system; retrieval is multiplicative bank alignment × IDF-weighted anchor relevance × seed similarity.</p>
+<p>The thesis is falsifiable. If dense retrieval consistently outperforms structured navigation for premise selection (Phase 2.2 of the plan), the navigational paradigm is wrong for this domain. If tactic classification outperforms navigational coordinates (Phase 4.4 ablation), the ternary decoder design is wrong. Both negative results would be informative.</p>
+<hr>
+<hr>
+<p><em>Sources: <code>docs/WAYFINDER_DESIGN.md</code></em></p>
 <h2 id="see-also">See Also</h2>
 <ul>
-<li><a href="../theory-profile/">Theory-Profile</a></li>
+<li><a href="7-Discussion">7-Discussion</a></li>
+<li><a href="2-The-Proof-Network">2-The-Proof-Network</a></li>
 </ul>
       </article>
       <nav class="prev-next" aria-label="Page navigation">
-  <a class="prev" href="../theory-profile/">&larr; Theory Profile</a>
-  <span class="next"></span>
+  <span class="prev"></span>
+  <a class="next" href="../2-the-proof-network/">The Proof Network &rarr;</a>
 </nav>
     </main>
   </div>

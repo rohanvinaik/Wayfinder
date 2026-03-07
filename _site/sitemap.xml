@@ -1,10 +1,30 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url><loc>https://rohanvinaik.github.io/Wayfinder/</loc></url>
-  <url><loc>https://rohanvinaik.github.io/Wayfinder/research/</loc></url>
-  <url><loc>https://rohanvinaik.github.io/Wayfinder/design/</loc></url>
-  <url><loc>https://rohanvinaik.github.io/Wayfinder/experiment-plan/</loc></url>
-  <url><loc>https://rohanvinaik.github.io/Wayfinder/experiment-results/</loc></url>
+  <url><loc>https://rohanvinaik.github.io/Wayfinder/abstract/</loc></url>
+  <url><loc>https://rohanvinaik.github.io/Wayfinder/1-introduction/</loc></url>
+  <url><loc>https://rohanvinaik.github.io/Wayfinder/2-theoretical-framework/</loc></url>
+  <url><loc>https://rohanvinaik.github.io/Wayfinder/3-architecture-specification/</loc></url>
+  <url><loc>https://rohanvinaik.github.io/Wayfinder/4-training/</loc></url>
+  <url><loc>https://rohanvinaik.github.io/Wayfinder/5-evaluation/</loc></url>
+  <url><loc>https://rohanvinaik.github.io/Wayfinder/6-related-work/</loc></url>
+  <url><loc>https://rohanvinaik.github.io/Wayfinder/7-discussion/</loc></url>
+  <url><loc>https://rohanvinaik.github.io/Wayfinder/1-design-thesis/</loc></url>
+  <url><loc>https://rohanvinaik.github.io/Wayfinder/2-the-proof-network/</loc></url>
+  <url><loc>https://rohanvinaik.github.io/Wayfinder/3-scoring-system/</loc></url>
+  <url><loc>https://rohanvinaik.github.io/Wayfinder/4-spreading-activation/</loc></url>
+  <url><loc>https://rohanvinaik.github.io/Wayfinder/5-nav-training-data/</loc></url>
+  <url><loc>https://rohanvinaik.github.io/Wayfinder/6-ternary-navigation/</loc></url>
+  <url><loc>https://rohanvinaik.github.io/Wayfinder/7-mutation-theory/</loc></url>
+  <url><loc>https://rohanvinaik.github.io/Wayfinder/8-module-architecture/</loc></url>
+  <url><loc>https://rohanvinaik.github.io/Wayfinder/9-configuration/</loc></url>
+  <url><loc>https://rohanvinaik.github.io/Wayfinder/plan-overview/</loc></url>
+  <url><loc>https://rohanvinaik.github.io/Wayfinder/phase-0/</loc></url>
+  <url><loc>https://rohanvinaik.github.io/Wayfinder/phase-1/</loc></url>
+  <url><loc>https://rohanvinaik.github.io/Wayfinder/phase-2/</loc></url>
+  <url><loc>https://rohanvinaik.github.io/Wayfinder/phase-3/</loc></url>
+  <url><loc>https://rohanvinaik.github.io/Wayfinder/phase-4/</loc></url>
+  <url><loc>https://rohanvinaik.github.io/Wayfinder/phase-5/</loc></url>
   <url><loc>https://rohanvinaik.github.io/Wayfinder/theory-profile/</loc></url>
   <url><loc>https://rohanvinaik.github.io/Wayfinder/theory-compass/</loc></url>
 </urlset>

@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Navigation Training Data — Wayfinder</title>
+  <meta name="description" content="Navigation Training Data — Design">
+  <meta name="generator" content="LintGate Wiki Publisher">
+  <link rel="canonical" href="https://rohanvinaik.github.io/Wayfinder/5-nav-training-data/">
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+  <header class="site-header">
+    <button class="sidebar-toggle" aria-label="Toggle sidebar">&#9776;</button>
+    <a class="site-title" href="../">Wayfinder</a>
+    <button class="theme-toggle" aria-label="Toggle dark mode" title="Toggle dark mode">&#9790;</button>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" role="navigation" aria-label="Wiki navigation">
+      <div class="sidebar-header">
+        <a href="../">Wayfinder</a>
+      </div>
+      <div class="sidebar-group">
+  <h3>Research</h3>
+  <ul>
+    <li data-page="Abstract"><a href="../abstract/">Abstract</a></li>
+    <li data-page="1-Introduction"><a href="../1-introduction/">Introduction</a></li>
+    <li data-page="2-Theoretical-Framework"><a href="../2-theoretical-framework/">Theoretical Framework</a></li>
+    <li data-page="3-Architecture-Specification"><a href="../3-architecture-specification/">Architecture Specification</a></li>
+    <li data-page="4-Training"><a href="../4-training/">Training</a></li>
+    <li data-page="5-Evaluation"><a href="../5-evaluation/">Evaluation</a></li>
+    <li data-page="6-Related-Work"><a href="../6-related-work/">Related Work</a></li>
+    <li data-page="7-Discussion"><a href="../7-discussion/">Discussion</a></li>
+  </ul>
+</div>
+<div class="sidebar-group">
+  <h3>Design</h3>
+  <ul>
+    <li data-page="1-Design-Thesis"><a href="../1-design-thesis/">Design Thesis</a></li>
+    <li data-page="2-The-Proof-Network"><a href="../2-the-proof-network/">The Proof Network</a></li>
+    <li data-page="3-Scoring-System"><a href="../3-scoring-system/">Scoring System</a></li>
+    <li data-page="4-Spreading-Activation"><a href="../4-spreading-activation/">Spreading Activation</a></li>
+    <li data-page="5-Nav-Training-Data"><a href="../5-nav-training-data/">Navigation Training Data</a></li>
+    <li data-page="6-Ternary-Navigation"><a href="../6-ternary-navigation/">Ternary Navigation</a></li>
+    <li data-page="7-Mutation-Theory"><a href="../7-mutation-theory/">Connection to Mutation Theory</a></li>
+    <li data-page="8-Module-Architecture"><a href="../8-module-architecture/">Module Architecture</a></li>
+    <li data-page="9-Configuration"><a href="../9-configuration/">Configuration</a></li>
+  </ul>
+</div>
+<div class="sidebar-group">
+  <h3>Experiment Plan</h3>
+  <ul>
+    <li data-page="Plan-Overview"><a href="../plan-overview/">Plan Overview</a></li>
+    <li data-page="Phase-0"><a href="../phase-0/">Phase 0: Proof Network Construction</a></li>
+    <li data-page="Phase-1"><a href="../phase-1/">Phase 1: Core Pipeline</a></li>
+    <li data-page="Phase-2"><a href="../phase-2/">Phase 2: Navigation Training</a></li>
+    <li data-page="Phase-3"><a href="../phase-3/">Phase 3: Proof Search Integration</a></li>
+    <li data-page="Phase-4"><a href="../phase-4/">Phase 4: Evaluation and Ablation</a></li>
+    <li data-page="Phase-5"><a href="../phase-5/">Phase 5: Scale and Extend</a></li>
+  </ul>
+</div>
+<div class="sidebar-group">
+  <h3>Theory</h3>
+  <ul>
+    <li data-page="Theory-Profile"><a href="../theory-profile/">Theory Profile</a></li>
+    <li data-page="Theory-Compass"><a href="../theory-compass/">Project Compass</a></li>
+  </ul>
+</div>
+    </nav>
+    <main class="content" role="main">
+      <article>
+        <p><strong>Design</strong> | Chapter 5 | Prerequisites: <a href="../2-the-proof-network/">2-The-Proof-Network</a> | 24 min read | <a href="../home/">Home</a></p>
+<h2 id="5-navigational-training-data-format">5. Navigational Training Data Format</h2>
+<p>Each training example maps a proof step to navigational labels:</p>
+<pre><code class="language-json">
+{
+  &quot;goal_state&quot;: &quot;⊢ ∀ x : ℕ, 0 + x = x&quot;,
+  &quot;theorem_id&quot;: &quot;Nat.zero_add&quot;,
+  &quot;step_index&quot;: 0,
+  &quot;total_steps&quot;: 1,
+
+  &quot;nav_labels&quot;: {
+    &quot;structure&quot;: -1,
+    &quot;automation&quot;: -1,
+    &quot;decompose&quot;: -1
+  },
+
+  &quot;anchor_labels&quot;: [
+    &quot;nat-arithmetic&quot;, &quot;equality&quot;, &quot;universal-quantifier&quot;,
+    &quot;omega-solvable&quot;, &quot;one-liner&quot;
+  ],
+
+  &quot;ground_truth&quot;: {
+    &quot;tactic&quot;: &quot;omega&quot;,
+    &quot;premises&quot;: [],
+    &quot;remaining_steps&quot;: 0,
+    &quot;solvable&quot;: true
+  },
+
+  &quot;bank_positions&quot;: {
+    &quot;STRUCTURE&quot;: [0, 0],
+    &quot;DOMAIN&quot;: [-1, 1],
+    &quot;DEPTH&quot;: [-1, 2],
+    &quot;AUTOMATION&quot;: [-1, 2],
+    &quot;CONTEXT&quot;: [-1, 1],
+    &quot;DECOMPOSITION&quot;: [-1, 1]
+  }
+}
+</code></pre>
+<h3 id="5-1-tactic-to-direction-mapping-6-bank">5.1 Tactic-to-Direction Mapping (6-Bank)</h3>
+<p>The v1 design navigated 3 banks (STRUCTURE, AUTOMATION, DECOMPOSE), giving only 27 direction vectors. Several distinct tactics collapsed to the same coordinates (e.g., <code>intro</code> and <code>apply</code> both at (0, +1, 0)). The expanded 6-bank mapping adds DOMAIN, DEPTH, and CONTEXT directions, giving 729 possible vectors and disambiguating nearly all common tactics.</p>
+<table><tbody>
+<tr><td>Tactic Category</td><td>STRUCT</td><td>AUTO</td><td>DECOMP</td><td>DOMAIN</td><td>DEPTH</td><td>CONTEXT</td><td>Representative Tactics</td></tr>
+<tr><td>Decision procedures</td><td>-1</td><td>-1</td><td>-1</td><td>-1</td><td>-1</td><td>0</td><td><code>omega</code>, <code>decide</code>, <code>norm_num</code></td></tr>
+<tr><td>Simplification</td><td>-1</td><td>-1</td><td>0</td><td>0</td><td>-1</td><td>0</td><td><code>simp</code>, <code>simp_all</code>, <code>ring</code>, <code>field_simp</code></td></tr>
+<tr><td>Rewriting</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td><code>rw</code>, <code>conv</code>, <code>unfold</code></td></tr>
+<tr><td>Linear arithmetic</td><td>-1</td><td>-1</td><td>-1</td><td>-1</td><td>-1</td><td>+1</td><td><code>linarith</code>, <code>positivity</code> (uses hyps)</td></tr>
+<tr><td>Introduction</td><td>0</td><td>+1</td><td>0</td><td>0</td><td>0</td><td>+1</td><td><code>intro</code>, <code>rintro</code> (creates hyps)</td></tr>
+<tr><td>Elimination</td><td>+1</td><td>+1</td><td>+1</td><td>0</td><td>+1</td><td>+1</td><td><code>cases</code>, <code>rcases</code>, <code>obtain</code></td></tr>
+<tr><td>Induction</td><td>+1</td><td>+1</td><td>+1</td><td>0</td><td>+1</td><td>0</td><td><code>induction</code>, <code>induction'</code></td></tr>
+<tr><td>Application</td><td>0</td><td>+1</td><td>0</td><td>0</td><td>0</td><td>0</td><td><code>apply</code>, <code>exact</code>, <code>refine</code></td></tr>
+<tr><td>Subgoal creation</td><td>0</td><td>+1</td><td>+1</td><td>0</td><td>+1</td><td>+1</td><td><code>have</code>, <code>suffices</code>, <code>calc</code></td></tr>
+<tr><td>Assumption</td><td>-1</td><td>-1</td><td>-1</td><td>0</td><td>-1</td><td>-1</td><td><code>assumption</code>, <code>exact?</code>, <code>trivial</code></td></tr>
+<tr><td>Contradiction</td><td>+1</td><td>+1</td><td>0</td><td>0</td><td>0</td><td>+1</td><td><code>contradiction</code>, <code>exfalso</code> (uses hyps)</td></tr>
+<tr><td>Automation with hints</td><td>-1</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td><td><code>aesop</code>, <code>tauto</code>, <code>push_neg</code></td></tr>
+<tr><td>Type coercion</td><td>0</td><td>-1</td><td>0</td><td>-1</td><td>-1</td><td>0</td><td><code>norm_cast</code>, <code>push_cast</code></td></tr>
+</tbody></table>
+<p><strong>Key disambiguations from 6-bank expansion:</strong></p>
+<ul>
+<li><code>intro</code> (CONTEXT=+1, creates hypotheses) vs <code>apply</code> (CONTEXT=0, consumes the goal)</li>
+<li><code>cases</code> (CONTEXT=+1, adds hypotheses per case) vs <code>induction</code> (CONTEXT=0, structural)</li>
+<li><code>linarith</code> (CONTEXT=+1, uses hypotheses) vs <code>omega</code> (CONTEXT=0, self-contained)</li>
+<li><code>assumption</code> (CONTEXT=-1, discharges from context) vs other closers</li>
+</ul>
+<p><strong>Bank semantics:</strong></p>
+<ul>
+<li><strong>STRUCTURE -1</strong> = reduces structural complexity (decides, simplifies)</li>
+<li><strong>STRUCTURE +1</strong> = increases structural complexity (introduces cases, subgoals)</li>
+<li><strong>AUTOMATION -1</strong> = requires no human insight</li>
+<li><strong>AUTOMATION +1</strong> = requires choosing what to apply/introduce</li>
+<li><strong>DECOMPOSE +1</strong> = creates new subgoals</li>
+<li><strong>DOMAIN -1</strong> = concrete/computational domain (naturals, integers)</li>
+<li><strong>DOMAIN +1</strong> = abstract/structural domain (topology, categories)</li>
+<li><strong>DEPTH -1</strong> = shallow step (proof gets shorter)</li>
+<li><strong>DEPTH +1</strong> = deep step (proof branches or lengthens)</li>
+<li><strong>CONTEXT -1</strong> = reduces or ignores context (discharges, clears)</li>
+<li><strong>CONTEXT +1</strong> = enriches or uses context (introduces, applies hypotheses)</li>
+</ul>
+<p><strong>Graceful degradation</strong>: The system supports a <code>navigable_banks</code> config parameter. Setting <code>navigable_banks: [STRUCTURE, AUTOMATION, DECOMPOSITION]</code> reverts to 3-bank navigation if the full 6-bank version proves too hard to learn.</p>
+<hr>
+<hr>
+<p><em>Sources: <code>docs/WAYFINDER_DESIGN.md</code></em></p>
+<h2 id="see-also">See Also</h2>
+<ul>
+<li><a href="4-Spreading-Activation">4-Spreading-Activation</a></li>
+<li><a href="6-Ternary-Navigation">6-Ternary-Navigation</a></li>
+</ul>
+      </article>
+      <nav class="prev-next" aria-label="Page navigation">
+  <a class="prev" href="../4-spreading-activation/">&larr; Spreading Activation</a>
+  <a class="next" href="../6-ternary-navigation/">Ternary Navigation &rarr;</a>
+</nav>
+    </main>
+  </div>
+  <footer class="site-footer">
+    <p>Generated by <a href="https://github.com/rohanvinaik/lintgate">LintGate</a></p>
+  </footer>
+  <script src="../script.js"></script>
+</body>
+</html>

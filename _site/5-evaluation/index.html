@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Project Compass — Wayfinder</title>
-  <meta name="description" content="Project Compass — Theory">
+  <title>Evaluation — Wayfinder</title>
+  <meta name="description" content="Evaluation — Research">
   <meta name="generator" content="LintGate Wiki Publisher">
-  <link rel="canonical" href="https://rohanvinaik.github.io/Wayfinder/theory-compass/">
+  <link rel="canonical" href="https://rohanvinaik.github.io/Wayfinder/5-evaluation/">
   <link rel="stylesheet" href="../style.css">
 </head>
 <body>
@@ -69,23 +69,48 @@
     </nav>
     <main class="content" role="main">
       <article>
-        <p><strong>Theory</strong> | Chapter 2 | 1 min read | <a href="../home/">Home</a></p>
-<h3 id="problem">Problem</h3>
-<p><strong>Depth</strong>: 3</p>
-<h3 id="solution">Solution</h3>
-<p><strong>Depth</strong>: 1</p>
-<h3 id="implementation">Implementation</h3>
-<p><strong>Depth</strong>: 3</p>
-<h3 id="world">World</h3>
-<p><strong>Depth</strong>: 1</p>
+        <p><strong>Research</strong> | Chapter 6 | Prerequisites: <a href="../4-training/">4-Training</a> | 56 min read | <a href="../home/">Home</a></p>
+<h2 id="5-evaluation">5. Evaluation</h2>
+<h3 id="5-1-endpoint-metrics">5.1 Endpoint Metrics</h3>
+<table><tbody>
+<tr><td>Metric</td><td>Benchmark</td><td>Comparison</td></tr>
+<tr><td>Theorem proved rate</td><td>MiniF2F-test (488 problems)</td><td>ReProver, DeepSeek-Prover-V2, HTPS</td></tr>
+<tr><td>Theorem proved rate</td><td>Mathlib test split (~10k)</td><td>ReProver</td></tr>
+<tr><td>Premise retrieval recall@k</td><td>Mathlib (ground-truth premises)</td><td>ReProver's retriever</td></tr>
+<tr><td>Proof search nodes expanded</td><td>MiniF2F</td><td>All baselines</td></tr>
+<tr><td>Wall-clock time per proof</td><td>MiniF2F</td><td>All baselines</td></tr>
+</tbody></table>
+<h3 id="5-2-trajectory-metrics-pab">5.2 Trajectory Metrics (PAB)</h3>
+<table><tbody>
+<tr><td>Metric</td><td>What it measures</td></tr>
+<tr><td>Navigational consistency</td><td>Do similar goals produce similar directions?</td></tr>
+<tr><td>Crystallization curve</td><td>How quickly do ternary weights commit?</td></tr>
+<tr><td>Progress prediction accuracy</td><td>Does the model learn to estimate remaining steps?</td></tr>
+<tr><td>Domain progression order</td><td>Which Mathlib namespaces are learned first?</td></tr>
+<tr><td>Bank-wise accuracy</td><td>Which navigational dimensions are learned first?</td></tr>
+</tbody></table>
+<h3 id="5-3-ablation-studies">5.3 Ablation Studies</h3>
+<table><tbody>
+<tr><td>Variant</td><td>What it tests</td></tr>
+<tr><td>Dense retrieval (no proof network)</td><td>Is navigational retrieval better than embedding similarity?</td></tr>
+<tr><td>Tactic classification (no navigation)</td><td>Are directional coordinates better than vocabulary indices?</td></tr>
+<tr><td>No spreading activation</td><td>Does spreading activation improve search?</td></tr>
+<tr><td>No progress head</td><td>Does progress prediction improve goal selection?</td></tr>
+<tr><td>Continuous decoder (no ternary)</td><td>Are ternary weights beneficial for navigation?</td></tr>
+<tr><td>No IDF weighting</td><td>Does IDF improve premise retrieval?</td></tr>
+</tbody></table>
+<hr>
+<hr>
+<p><em>Sources: <code>docs/WAYFINDER_RESEARCH.md</code></em></p>
 <h2 id="see-also">See Also</h2>
 <ul>
-<li><a href="../theory-profile/">Theory-Profile</a></li>
+<li><a href="4-Training">4-Training</a></li>
+<li><a href="6-Related-Work">6-Related-Work</a></li>
 </ul>
       </article>
       <nav class="prev-next" aria-label="Page navigation">
-  <a class="prev" href="../theory-profile/">&larr; Theory Profile</a>
-  <span class="next"></span>
+  <a class="prev" href="../4-training/">&larr; Training</a>
+  <a class="next" href="../6-related-work/">Related Work &rarr;</a>
 </nav>
     </main>
   </div>

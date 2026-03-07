@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Phase 4: Evaluation and Ablation — Wayfinder</title>
+  <meta name="description" content="Phase 4: Evaluation and Ablation — Experiment Plan">
+  <meta name="generator" content="LintGate Wiki Publisher">
+  <link rel="canonical" href="https://rohanvinaik.github.io/Wayfinder/phase-4/">
+  <link rel="stylesheet" href="../style.css">
+</head>
+<body>
+  <header class="site-header">
+    <button class="sidebar-toggle" aria-label="Toggle sidebar">&#9776;</button>
+    <a class="site-title" href="../">Wayfinder</a>
+    <button class="theme-toggle" aria-label="Toggle dark mode" title="Toggle dark mode">&#9790;</button>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" role="navigation" aria-label="Wiki navigation">
+      <div class="sidebar-header">
+        <a href="../">Wayfinder</a>
+      </div>
+      <div class="sidebar-group">
+  <h3>Research</h3>
+  <ul>
+    <li data-page="Abstract"><a href="../abstract/">Abstract</a></li>
+    <li data-page="1-Introduction"><a href="../1-introduction/">Introduction</a></li>
+    <li data-page="2-Theoretical-Framework"><a href="../2-theoretical-framework/">Theoretical Framework</a></li>
+    <li data-page="3-Architecture-Specification"><a href="../3-architecture-specification/">Architecture Specification</a></li>
+    <li data-page="4-Training"><a href="../4-training/">Training</a></li>
+    <li data-page="5-Evaluation"><a href="../5-evaluation/">Evaluation</a></li>
+    <li data-page="6-Related-Work"><a href="../6-related-work/">Related Work</a></li>
+    <li data-page="7-Discussion"><a href="../7-discussion/">Discussion</a></li>
+  </ul>
+</div>
+<div class="sidebar-group">
+  <h3>Design</h3>
+  <ul>
+    <li data-page="1-Design-Thesis"><a href="../1-design-thesis/">Design Thesis</a></li>
+    <li data-page="2-The-Proof-Network"><a href="../2-the-proof-network/">The Proof Network</a></li>
+    <li data-page="3-Scoring-System"><a href="../3-scoring-system/">Scoring System</a></li>
+    <li data-page="4-Spreading-Activation"><a href="../4-spreading-activation/">Spreading Activation</a></li>
+    <li data-page="5-Nav-Training-Data"><a href="../5-nav-training-data/">Navigation Training Data</a></li>
+    <li data-page="6-Ternary-Navigation"><a href="../6-ternary-navigation/">Ternary Navigation</a></li>
+    <li data-page="7-Mutation-Theory"><a href="../7-mutation-theory/">Connection to Mutation Theory</a></li>
+    <li data-page="8-Module-Architecture"><a href="../8-module-architecture/">Module Architecture</a></li>
+    <li data-page="9-Configuration"><a href="../9-configuration/">Configuration</a></li>
+  </ul>
+</div>
+<div class="sidebar-group">
+  <h3>Experiment Plan</h3>
+  <ul>
+    <li data-page="Plan-Overview"><a href="../plan-overview/">Plan Overview</a></li>
+    <li data-page="Phase-0"><a href="../phase-0/">Phase 0: Proof Network Construction</a></li>
+    <li data-page="Phase-1"><a href="../phase-1/">Phase 1: Core Pipeline</a></li>
+    <li data-page="Phase-2"><a href="../phase-2/">Phase 2: Navigation Training</a></li>
+    <li data-page="Phase-3"><a href="../phase-3/">Phase 3: Proof Search Integration</a></li>
+    <li data-page="Phase-4"><a href="../phase-4/">Phase 4: Evaluation and Ablation</a></li>
+    <li data-page="Phase-5"><a href="../phase-5/">Phase 5: Scale and Extend</a></li>
+  </ul>
+</div>
+<div class="sidebar-group">
+  <h3>Theory</h3>
+  <ul>
+    <li data-page="Theory-Profile"><a href="../theory-profile/">Theory Profile</a></li>
+    <li data-page="Theory-Compass"><a href="../theory-compass/">Project Compass</a></li>
+  </ul>
+</div>
+    </nav>
+    <main class="content" role="main">
+      <article>
+        <p><strong>Experiment Plan</strong> | Chapter 6 | Prerequisites: <a href="../phase-3/">Phase-3</a> | 28 min read | <a href="../home/">Home</a></p>
+<h2 id="phase-4-evaluation-and-ablation-week-7-9">Phase 4: Evaluation and Ablation (Week 7-9)</h2>
+<p><em>Goal: Deep analysis of results across all three streams.</em></p>
+<h3 id="4-1-stream-1-analysis-navigation-vs-dense-retrieval">4.1 Stream 1 Analysis: Navigation vs. Dense Retrieval</h3>
+<p><strong>Questions to answer</strong>:</p>
+<ul>
+<li>Where does navigational retrieval outperform dense retrieval? (Which domains, which proof types?)</li>
+<li>Where does it underperform? (Is the deficit in bank positions, anchors, or IDF weighting?)</li>
+<li>What is the compute profile? (Neural forward passes saved per proof)</li>
+<li>Does the multiplicative scoring prevent good matches that additive scoring would find?</li>
+</ul>
+<h3 id="4-2-stream-2-analysis-navigational-decoder-vs-token-classification">4.2 Stream 2 Analysis: Navigational Decoder vs. Token Classification</h3>
+<p><strong>Questions to answer</strong>:</p>
+<ul>
+<li>Do navigational coordinates generalize to unseen theorem types better than vocabulary indices?</li>
+<li>Does the ternary decoder's crystallization pattern reveal structured learning?</li>
+<li>Which navigational bank is learned first? Does the order match architectural expectations?</li>
+<li>Does the anchor prediction quality correlate with proof success?</li>
+</ul>
+<h3 id="4-3-stream-3-analysis-pab-trajectory-evaluation">4.3 Stream 3 Analysis: PAB Trajectory Evaluation</h3>
+<p><strong>Questions to answer</strong>:</p>
+<ul>
+<li>Does navigational accuracy trajectory predict final proof success better than loss trajectory?</li>
+<li>Does crystallization rate predict navigational consistency?</li>
+<li>Does progress prediction accuracy improve monotonically? Does it plateau?</li>
+<li>Does PAB detect failure modes that endpoint metrics miss?</li>
+</ul>
+<h3 id="4-4-ablation-matrix">4.4 Ablation Matrix</h3>
+<p>Run full evaluation for each ablation variant from Phase 2:</p>
+<table><tbody>
+<tr><td>Variant</td><td>MiniF2F</td><td>Mathlib</td><td>Retrieval R@16</td><td>FP/proof</td><td>Notes</td></tr>
+<tr><td>Full Wayfinder</td><td>—</td><td>—</td><td>—</td><td>—</td><td>Primary</td></tr>
+<tr><td>Dense retrieval (no proof network)</td><td>—</td><td>—</td><td>—</td><td>—</td><td>Navigation thesis</td></tr>
+<tr><td>Tactic classification (no navigation)</td><td>—</td><td>—</td><td>—</td><td>—</td><td>Architecture thesis</td></tr>
+<tr><td>No spreading activation</td><td>—</td><td>—</td><td>—</td><td>—</td><td>Spreading thesis</td></tr>
+<tr><td>No progress head</td><td>—</td><td>—</td><td>—</td><td>—</td><td>Progress thesis</td></tr>
+<tr><td>Continuous decoder (no ternary)</td><td>—</td><td>—</td><td>—</td><td>—</td><td>Ternary thesis</td></tr>
+<tr><td>No IDF weighting</td><td>—</td><td>—</td><td>—</td><td>—</td><td>IDF thesis</td></tr>
+<tr><td>No bank alignment (anchors only)</td><td>—</td><td>—</td><td>—</td><td>—</td><td>Bank thesis</td></tr>
+<tr><td>Binary critic (BCE, not soft MSE)</td><td>—</td><td>—</td><td>—</td><td>—</td><td>HTPS soft-target thesis</td></tr>
+<tr><td>No proof history input</td><td>—</td><td>—</td><td>—</td><td>—</td><td>LeanProgress history thesis</td></tr>
+<tr><td>No hammer delegation</td><td>—</td><td>—</td><td>—</td><td>—</td><td>Hammer complementarity thesis</td></tr>
+<tr><td>No accessible-premises filter</td><td>—</td><td>—</td><td>—</td><td>—</td><td>ReProver filtering thesis</td></tr>
+<tr><td>3-bank navigation (original design)</td><td>—</td><td>—</td><td>—</td><td>—</td><td>6-bank expansion thesis</td></tr>
+</tbody></table>
+<h3 id="4-5-write-up">4.5 Write-up</h3>
+<p><strong>Deliverables</strong>:</p>
+<ul>
+<li>Updated <code>WAYFINDER_RESEARCH.md</code> with experimental results</li>
+<li><code>docs/EXPERIMENT_RESULTS.md</code> — raw results ledger</li>
+<li>PAB profile comparisons across all variants</li>
+<li>Failure analysis with navigational interpretation</li>
+</ul>
+<hr>
+<hr>
+<p><em>Sources: <code>docs/WAYFINDER_PLAN.md</code></em></p>
+<h2 id="see-also">See Also</h2>
+<ul>
+<li><a href="../phase-3/">Phase-3</a></li>
+<li><a href="../phase-5/">Phase-5</a></li>
+</ul>
+      </article>
+      <nav class="prev-next" aria-label="Page navigation">
+  <a class="prev" href="../phase-3/">&larr; Phase 3: Proof Search Integration</a>
+  <a class="next" href="../phase-5/">Phase 5: Scale and Extend &rarr;</a>
+</nav>
+    </main>
+  </div>
+  <footer class="site-footer">
+    <p>Generated by <a href="https://github.com/rohanvinaik/lintgate">LintGate</a></p>
+  </footer>
+  <script src="../script.js"></script>
+</body>
+</html>
