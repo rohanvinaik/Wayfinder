@@ -40,14 +40,48 @@ class TestCheckProofStructural(unittest.TestCase):
         result = check_proof_structural("intro h\nsorry")
         self.assertTrue(result["has_sorry"])
         self.assertEqual(result["tactic_count"], 2)
+        self.assertEqual(result["tactics"], ["intro h", "sorry"])
 
-    def test_detects_automation(self):
-        result = check_proof_structural("simp\nomega")
-        self.assertTrue(result["uses_automation"])
+    def test_no_sorry(self):
+        result = check_proof_structural("intro h\nexact h")
+        self.assertFalse(result["has_sorry"])
+
+    def test_detects_each_automation_tactic(self):
+        for tactic in ["simp", "omega", "linarith", "norm_num", "decide", "aesop", "tauto"]:
+            result = check_proof_structural(tactic)
+            self.assertTrue(
+                result["uses_automation"],
+                f"{tactic} should be detected as automation",
+            )
+            self.assertEqual(result["tactic_count"], 1)
+
+    def test_non_automation_tactic(self):
+        result = check_proof_structural("intro h\nexact h\napply foo")
+        self.assertFalse(result["uses_automation"])
+        self.assertEqual(result["tactic_count"], 3)
+        self.assertEqual(result["tactics"], ["intro h", "exact h", "apply foo"])
 
     def test_empty_proof(self):
         result = check_proof_structural("")
         self.assertEqual(result["tactic_count"], 0)
+        self.assertFalse(result["has_sorry"])
+        self.assertFalse(result["uses_automation"])
+        self.assertEqual(result["tactics"], [])
+
+    def test_whitespace_only(self):
+        result = check_proof_structural("   \n  \n  ")
+        self.assertEqual(result["tactic_count"], 0)
+        self.assertEqual(result["tactics"], [])
+
+    def test_mixed_automation_and_manual(self):
+        result = check_proof_structural("intro h\nsimp\nexact h")
+        self.assertTrue(result["uses_automation"])
+        self.assertEqual(result["tactic_count"], 3)
+        self.assertFalse(result["has_sorry"])
+
+    def test_sorry_not_substring(self):
+        # "sorry_lemma" should NOT trigger has_sorry (exact match on "sorry")
+        result = check_proof_structural("sorry_lemma")
         self.assertFalse(result["has_sorry"])
 
 

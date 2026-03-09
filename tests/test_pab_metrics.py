@@ -94,9 +94,7 @@ class TestComputeCrystallization(unittest.TestCase):
         self.assertEqual(compute_crystallization(np.array([1, -1]), None), 0.0)
 
     def test_length_mismatch(self):
-        self.assertEqual(
-            compute_crystallization(np.array([1, -1]), np.array([1])), 0.0
-        )
+        self.assertEqual(compute_crystallization(np.array([1, -1]), np.array([1])), 0.0)
 
     def test_identical_signs(self):
         signs = np.array([1, -1, 0, 1])
@@ -134,13 +132,40 @@ class TestClassifyDomain(unittest.TestCase):
 
 class TestIsOscillating(unittest.TestCase):
     def test_too_short(self):
-        self.assertFalse(is_oscillating([1.0, 2.0]))
+        self.assertEqual(is_oscillating([1.0, 2.0]), False)
 
-    def test_monotonic(self):
-        self.assertFalse(is_oscillating([1.0, 2.0, 3.0, 4.0, 5.0]))
+    def test_monotonic_increasing(self):
+        # Strictly increasing = 0 reversals
+        self.assertEqual(is_oscillating([1.0, 2.0, 3.0, 4.0, 5.0]), False)
+
+    def test_monotonic_decreasing(self):
+        # Strictly decreasing = 0 reversals
+        self.assertEqual(is_oscillating([5.0, 4.0, 3.0, 2.0, 1.0]), False)
 
     def test_oscillating(self):
-        self.assertTrue(is_oscillating([1, 3, 1, 3, 1, 3]))
+        # [1,3,1,3,1,3] has 4 reversals >= default min_reversals=3
+        self.assertEqual(is_oscillating([1, 3, 1, 3, 1, 3]), True)
+
+    def test_exactly_at_threshold(self):
+        # [1,3,1,3,1] has exactly 3 reversals == min_reversals=3
+        self.assertEqual(is_oscillating([1, 3, 1, 3, 1]), True)
+
+    def test_below_threshold(self):
+        # [1,3,1,3] has 2 reversals < default min_reversals=3
+        self.assertEqual(is_oscillating([1, 3, 1, 3]), False)
+
+    def test_custom_min_reversals(self):
+        # [1,3,1,3] has 2 reversals — True with min_reversals=2, False with 3
+        self.assertEqual(is_oscillating([1, 3, 1, 3], min_reversals=2), True)
+        self.assertEqual(is_oscillating([1, 3, 1, 3], min_reversals=3), False)
+
+    def test_flat_segments_no_reversal(self):
+        # Equal consecutive values: product of deltas = 0, not < 0
+        self.assertEqual(is_oscillating([1.0, 1.0, 1.0, 1.0, 1.0]), False)
+
+    def test_single_reversal(self):
+        # V-shape: only 1 reversal
+        self.assertEqual(is_oscillating([5.0, 3.0, 1.0, 3.0, 5.0]), False)
 
 
 class TestMonotonicTrend(unittest.TestCase):
@@ -167,9 +192,7 @@ class TestFindTierConvergence(unittest.TestCase):
         self.assertEqual(find_tier_convergence([0.5, 0.7, 0.85, 0.9], 0.8), 2)
 
     def test_with_checkpoints(self):
-        result = find_tier_convergence(
-            [0.5, 0.85, 0.9], 0.8, checkpoints=[100, 200, 300]
-        )
+        result = find_tier_convergence([0.5, 0.85, 0.9], 0.8, checkpoints=[100, 200, 300])
         self.assertEqual(result, 200)
 
     def test_immediate(self):

@@ -191,18 +191,10 @@ def _count_hypotheses(goal_state: str) -> int:
     return count
 
 
-def extract_entity(theorem: dict) -> dict:
-    """Extract a proof network entity record from a LeanDojo theorem entry."""
-    theorem_id = theorem.get("theorem_id", theorem.get("full_name", ""))
-    theorem_type = theorem.get("theorem_statement", theorem.get("type", ""))
-    tactics_raw = theorem.get("tactics", [])
-    premises = theorem.get("premises", [])
-    goal_states = theorem.get("goal_states", [])
-    namespace = theorem.get("namespace", _infer_namespace(theorem_id))
-    file_path = theorem.get("file_path", "")
-
-    tactic_names = [t for t in (_extract_tactic_name(s) for s in tactics_raw) if t]
-
+def _compute_all_positions(
+    theorem_type: str, tactic_names: list[str], namespace: str, goal_states: list[str]
+) -> tuple[dict, list[str], int]:
+    """Compute all 6-bank positions. Returns (positions, domain_anchors, hyp_count)."""
     struct_sign, struct_depth = _compute_structure_position(theorem_type, tactic_names)
     domain_sign, domain_anchors = _classify_domain(namespace)
     depth_sign, depth_depth = _compute_depth_position(len(tactic_names))
@@ -219,28 +211,45 @@ def extract_entity(theorem: dict) -> dict:
         "context": {"sign": ctx_sign, "depth": ctx_depth},
         "decomposition": {"sign": decomp_sign, "depth": decomp_depth},
     }
+    return positions, domain_anchors, hyp_count
 
+
+def _collect_anchors(
+    domain_anchors: list[str], theorem_type: str, tactic_names: list[str]
+) -> list[str]:
+    """Collect and deduplicate all anchors for an entity."""
     anchors: list[str] = list(domain_anchors)
     anchors.extend(_extract_type_anchors(theorem_type))
     for tname in set(tactic_names):
         anchors.extend(TACTIC_ANCHORS.get(tname, []))
-    anchors = sorted(set(anchors))
+    return sorted(set(anchors))
 
-    tactic_directions = [
-        {"tactic": t, "directions": TACTIC_DIRECTIONS.get(t, DEFAULT_DIRECTION)}
-        for t in tactic_names
-    ]
+
+def extract_entity(theorem: dict) -> dict:
+    """Extract a proof network entity record from a LeanDojo theorem entry."""
+    theorem_id = theorem.get("theorem_id", theorem.get("full_name", ""))
+    theorem_type = theorem.get("theorem_statement", theorem.get("type", ""))
+    goal_states = theorem.get("goal_states", [])
+    namespace = theorem.get("namespace", _infer_namespace(theorem_id))
+
+    tactic_names = [t for t in (_extract_tactic_name(s) for s in theorem.get("tactics", [])) if t]
+    positions, domain_anchors, hyp_count = _compute_all_positions(
+        theorem_type, tactic_names, namespace, goal_states
+    )
 
     return {
         "theorem_id": theorem_id,
         "entity_type": "lemma",
         "namespace": namespace,
-        "file_path": file_path,
+        "file_path": theorem.get("file_path", ""),
         "positions": positions,
-        "anchors": anchors,
-        "premises": premises,
+        "anchors": _collect_anchors(domain_anchors, theorem_type, tactic_names),
+        "premises": theorem.get("premises", []),
         "tactic_names": tactic_names,
-        "tactic_directions": tactic_directions,
+        "tactic_directions": [
+            {"tactic": t, "directions": TACTIC_DIRECTIONS.get(t, DEFAULT_DIRECTION)}
+            for t in tactic_names
+        ],
         "goal_states": goal_states,
         "proof_length": len(tactic_names),
         "hypothesis_count": hyp_count,
@@ -264,6 +273,15 @@ def _build_skip_set(output_path: Path) -> set[str]:
     return skip_ids
 
 
+def _iter_shard_lines(input_path: Path, shard_idx: int, shard_total: int):
+    """Yield parsed JSON dicts for lines belonging to this shard."""
+    with open(input_path) as fin:
+        for line_num, raw_line in enumerate(fin):
+            stripped = raw_line.strip()
+            if stripped and line_num % shard_total == shard_idx:
+                yield json.loads(stripped)
+
+
 def _process_theorems(
     input_path: Path,
     output_path: Path,
@@ -273,30 +291,21 @@ def _process_theorems(
     append: bool,
 ) -> tuple[int, int, set[str]]:
     """Process theorems from input JSONL, write entity records to output."""
-    mode = "a" if append else "w"
     processed = 0
     skipped = 0
     unmapped: set[str] = set()
 
-    with open(input_path) as fin, open(output_path, mode) as fout:
-        for line_num, line in enumerate(fin):
-            line = line.strip()
-            if not line:
-                continue
-            if line_num % shard_total != shard_idx:
-                continue
-
-            theorem = json.loads(line)
+    with open(output_path, "a" if append else "w") as fout:
+        for theorem in _iter_shard_lines(input_path, shard_idx, shard_total):
             tid = theorem.get("theorem_id", theorem.get("full_name", ""))
             if tid in skip_ids:
                 skipped += 1
                 continue
 
             entity = extract_entity(theorem)
-            for tname in entity["tactic_names"]:
-                if tname not in TACTIC_DIRECTIONS:
-                    unmapped.add(tname)
-
+            unmapped.update(
+                t for t in entity["tactic_names"] if t not in TACTIC_DIRECTIONS
+            )
             fout.write(json.dumps(entity) + "\n")
             processed += 1
             if processed % 5000 == 0:

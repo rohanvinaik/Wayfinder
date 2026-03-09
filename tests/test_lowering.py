@@ -110,9 +110,7 @@ class TestLowerProofToLean(unittest.TestCase):
     def test_induction_with_names(self):
         ex = self._make_example(
             ["BOS", "induction", "EOS"],
-            blocks=[
-                Tier2Block(tactic_index=1, tactic_name="induction", tokens=["n", "ih"])
-            ],
+            blocks=[Tier2Block(tactic_index=1, tactic_name="induction", tokens=["n", "ih"])],
         )
         result = lower_proof_to_lean(ex)
         self.assertIn("induction n with ih", result)

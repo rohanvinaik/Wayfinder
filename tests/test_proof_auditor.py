@@ -227,9 +227,7 @@ class TestVerify(unittest.TestCase):
 
     def test_verify_with_permitted_sorries(self):
         auditor, _ = _make_auditor_with_mock_client()
-        result = asyncio.run(
-            auditor.verify("stmt", "proof", permitted_sorries=["helper"])
-        )
+        result = asyncio.run(auditor.verify("stmt", "proof", permitted_sorries=["helper"]))
         self.assertTrue(result.success)
 
     def test_verify_uses_cache(self):
@@ -259,9 +257,7 @@ class TestRepair(unittest.TestCase):
     def test_repair_with_errors(self):
         auditor, client = _make_auditor_with_mock_client()
         client.repair_proofs = AsyncMock(
-            return_value=_FakeRepairResult(
-                lean_messages=_FakeMessages(errors=["error 1"])
-            )
+            return_value=_FakeRepairResult(lean_messages=_FakeMessages(errors=["error 1"]))
         )
         result = asyncio.run(auditor.repair("bad content"))
         self.assertFalse(result.success)

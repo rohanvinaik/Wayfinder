@@ -89,7 +89,7 @@ def get_seed_entities(conn: sqlite3.Connection, premises_used: list[str]) -> lis
         return []
     placeholders = ",".join("?" * len(premises_used))
     rows = conn.execute(
-        f"SELECT id FROM entities WHERE name IN ({placeholders})",
+        f"SELECT id FROM entities WHERE name IN ({placeholders})",  # nosec B608
         premises_used,
     ).fetchall()
     return [r[0] for r in rows]
@@ -132,45 +132,27 @@ def compute_recall(retrieved: list[str], ground_truth: list[str], k: int) -> flo
     return hits / len(gt_set)
 
 
-def evaluate(
-    config: dict,
-    checkpoint_path: Path,
-    samples: int,
-    device: str,
-) -> dict:
-    """Run spreading activation evaluation."""
-    modules = load_modules(checkpoint_path, config, device)
-
-    eval_path = Path(config["data"].get("nav_eval", "data/nav_eval.jsonl"))
-    all_examples = load_nav_examples_jsonl(eval_path)
-
-    # Filter to multi-step proofs where spreading is meaningful
-    multi_step = [e for e in all_examples if e.step_index > 0 and e.proof_history]
-    if len(multi_step) > samples:
-        indices = np.random.choice(len(multi_step), samples, replace=False)
-        multi_step = [multi_step[int(i)] for i in indices]
-    print(f"Evaluating spreading on {len(multi_step)} multi-step examples")
-
-    db_path = config["data"]["proof_network_db"]
-    conn = sqlite3.connect(db_path)
-
-    ks = [4, 8, 16]
+def _compare_spreading(
+    examples: list,
+    modules: dict,
+    conn: sqlite3.Connection,
+    ks: list[int],
+) -> tuple[dict[int, list[float]], dict[int, list[float]], list[float], list[float]]:
+    """Run spreading vs no-spreading retrieval on all examples."""
     no_spread_recalls: dict[int, list[float]] = {k: [] for k in ks}
     with_spread_recalls: dict[int, list[float]] = {k: [] for k in ks}
     no_spread_times: list[float] = []
     with_spread_times: list[float] = []
 
-    for i, ex in enumerate(multi_step):
+    for i, ex in enumerate(examples):
         gt = ex.ground_truth_premises
         if not gt:
             continue
 
-        # Without spreading (empty seeds)
         t0 = time.perf_counter()
         no_spread = retrieve_premises(ex, modules, conn, seed_ids=[], limit=16)
         no_spread_times.append(time.perf_counter() - t0)
 
-        # With spreading (seeds from proof history)
         seeds = get_seed_entities(conn, ex.proof_history[:5])
         t0 = time.perf_counter()
         with_spread = retrieve_premises(ex, modules, conn, seed_ids=seeds, limit=16)
@@ -184,17 +166,28 @@ def evaluate(
             r16_ns = float(np.mean(no_spread_recalls[16]))
             r16_ws = float(np.mean(with_spread_recalls[16]))
             print(
-                f"    {i + 1}/{len(multi_step)}: "
+                f"    {i + 1}/{len(examples)}: "
                 f"no_spread recall@16={r16_ns:.3f}, "
                 f"with_spread recall@16={r16_ws:.3f}"
             )
 
-    conn.close()
+    return no_spread_recalls, with_spread_recalls, no_spread_times, with_spread_times
 
+
+def _build_spreading_report(
+    no_spread_recalls: dict[int, list[float]],
+    with_spread_recalls: dict[int, list[float]],
+    no_spread_times: list[float],
+    with_spread_times: list[float],
+    ks: list[int],
+) -> dict:
+    """Build and print the spreading evaluation report."""
     report = {
-        "samples": len(no_spread_recalls[4]),
+        "samples": len(no_spread_recalls[ks[0]]),
         "multi_step_only": True,
-        "no_spreading": {f"recall@{k}": round(float(np.mean(no_spread_recalls[k])), 4) for k in ks},
+        "no_spreading": {
+            f"recall@{k}": round(float(np.mean(no_spread_recalls[k])), 4) for k in ks
+        },
         "with_spreading": {
             f"recall@{k}": round(float(np.mean(with_spread_recalls[k])), 4) for k in ks
         },
@@ -221,8 +214,36 @@ def evaluate(
         f"  Timing: no_spread={report['timing']['no_spread_avg_ms']:.1f}ms"
         f" with_spread={report['timing']['with_spread_avg_ms']:.1f}ms"
     )
-
     return report
+
+
+def evaluate(
+    config: dict,
+    checkpoint_path: Path,
+    samples: int,
+    device: str,
+) -> dict:
+    """Run spreading activation evaluation."""
+    modules = load_modules(checkpoint_path, config, device)
+
+    eval_path = Path(config["data"].get("nav_eval", "data/nav_eval.jsonl"))
+    all_examples = load_nav_examples_jsonl(eval_path)
+
+    multi_step = [e for e in all_examples if e.step_index > 0 and e.proof_history]
+    if len(multi_step) > samples:
+        indices = np.random.choice(len(multi_step), samples, replace=False)
+        multi_step = [multi_step[int(i)] for i in indices]
+    print(f"Evaluating spreading on {len(multi_step)} multi-step examples")
+
+    conn = sqlite3.connect(config["data"]["proof_network_db"])
+    ks = [4, 8, 16]
+
+    ns_recalls, ws_recalls, ns_times, ws_times = _compare_spreading(
+        multi_step, modules, conn, ks
+    )
+    conn.close()
+
+    return _build_spreading_report(ns_recalls, ws_recalls, ns_times, ws_times, ks)
 
 
 def main() -> None:

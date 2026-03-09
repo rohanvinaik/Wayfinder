@@ -124,6 +124,67 @@ def build_perfect_query(step: dict) -> dict:
     }
 
 
+def _score_candidates_by_bank(
+    conn: sqlite3.Connection, directions: dict, limit: int
+) -> list[tuple]:
+    """Score entities by bank alignment and return ranked candidates."""
+    clauses = []
+    params: list = []
+    for bank, sign in directions.items():
+        clauses.append(
+            "SELECT entity_id, "
+            "CASE WHEN sign = ? THEN 1.0 WHEN sign = 0 THEN 0.5 ELSE 0.1 END AS score "
+            "FROM entity_positions WHERE bank = ?"
+        )
+        params.extend([sign, bank])
+
+    if not clauses:
+        return []
+
+    union_sql = " UNION ALL ".join(clauses)
+    sql = f"""
+        SELECT entity_id, SUM(score) as total_score
+        FROM ({union_sql})
+        GROUP BY entity_id
+        ORDER BY total_score DESC
+        LIMIT ?
+    """  # nosec B608 — parameterized via ? placeholders
+    params.append(limit * 4)
+    return conn.execute(sql, params).fetchall()
+
+
+def _compute_anchor_boost(
+    conn: sqlite3.Connection, anchor_labels: list[str], candidate_ids: list[int]
+) -> dict[int, int]:
+    """Compute anchor overlap boost for candidate entities."""
+    if not anchor_labels:
+        return {}
+    ph_anchors = ",".join("?" * len(anchor_labels))
+    ph_ids = ",".join("?" * len(candidate_ids))
+    sql = f"""
+        SELECT ea.entity_id, COUNT(*) as shared
+        FROM entity_anchors ea
+        JOIN anchors a ON a.id = ea.anchor_id
+        WHERE a.label IN ({ph_anchors})
+        AND ea.entity_id IN ({ph_ids})
+        GROUP BY ea.entity_id
+    """  # nosec B608 — parameterized via ? placeholders
+    rows = conn.execute(sql, [*anchor_labels, *candidate_ids]).fetchall()
+    return {r[0]: r[1] for r in rows}
+
+
+def _resolve_entity_names(
+    conn: sqlite3.Connection, entity_ids: list[int]
+) -> dict[int, str]:
+    """Map entity IDs to names."""
+    ph = ",".join("?" * len(entity_ids))
+    rows = conn.execute(
+        f"SELECT id, name FROM entities WHERE id IN ({ph})",  # nosec B608
+        entity_ids,
+    ).fetchall()
+    return {r[0]: r[1] for r in rows}
+
+
 def navigate_with_query(db_path: str, query: dict, limit: int = 16) -> list[str]:
     """Execute a navigational query against the proof network.
 
@@ -133,70 +194,25 @@ def navigate_with_query(db_path: str, query: dict, limit: int = 16) -> list[str]
     conn = sqlite3.connect(db_path)
 
     directions = query["bank_directions"]
-    anchor_labels = query.get("anchors", [])
+    candidates = _score_candidates_by_bank(conn, directions, limit)
 
-    # Score by bank alignment
-    bank_clauses = []
-    bank_params: list = []
-    for bank, sign in directions.items():
-        bank_clauses.append(
-            "SELECT entity_id, "
-            "CASE WHEN sign = ? THEN 1.0 WHEN sign = 0 THEN 0.5 ELSE 0.1 END AS score "
-            "FROM entity_positions WHERE bank = ?"
-        )
-        bank_params.extend([sign, bank])
-
-    if not bank_clauses:
+    if not candidates:
         conn.close()
         return []
 
-    union_sql = " UNION ALL ".join(bank_clauses)
-    scored_sql = f"""
-        SELECT entity_id, SUM(score) as total_score
-        FROM ({union_sql})
-        GROUP BY entity_id
-        ORDER BY total_score DESC
-        LIMIT ?
-    """
-    bank_params.append(limit * 4)
-
-    candidates = conn.execute(scored_sql, bank_params).fetchall()
     candidate_ids = [c[0] for c in candidates]
+    anchor_boost = _compute_anchor_boost(
+        conn, query.get("anchors", []), candidate_ids
+    )
 
-    if not candidate_ids:
-        conn.close()
-        return []
-
-    # Boost by shared anchors
-    if anchor_labels:
-        placeholders = ",".join("?" * len(anchor_labels))
-        anchor_sql = f"""
-            SELECT ea.entity_id, COUNT(*) as shared
-            FROM entity_anchors ea
-            JOIN anchors a ON a.id = ea.anchor_id
-            WHERE a.label IN ({placeholders})
-            AND ea.entity_id IN ({",".join("?" * len(candidate_ids))})
-            GROUP BY ea.entity_id
-        """
-        anchor_rows = conn.execute(anchor_sql, [*anchor_labels, *candidate_ids]).fetchall()
-        anchor_boost = {r[0]: r[1] for r in anchor_rows}
-    else:
-        anchor_boost = {}
-
-    scored = []
-    for eid, bank_score in candidates:
-        boost = anchor_boost.get(eid, 0) * 0.5
-        scored.append((eid, bank_score + boost))
-
+    scored = [
+        (eid, bank_score + anchor_boost.get(eid, 0) * 0.5)
+        for eid, bank_score in candidates
+    ]
     scored.sort(key=lambda x: x[1], reverse=True)
     top_ids = [s[0] for s in scored[:limit]]
 
-    placeholders = ",".join("?" * len(top_ids))
-    names = conn.execute(
-        f"SELECT id, name FROM entities WHERE id IN ({placeholders})",
-        top_ids,
-    ).fetchall()
-    name_map = {r[0]: r[1] for r in names}
+    name_map = _resolve_entity_names(conn, top_ids)
     conn.close()
 
     return [name_map.get(eid, "") for eid in top_ids]
@@ -253,30 +269,8 @@ def analyze_step(db_path: str, step: dict) -> GapRecord:
     )
 
 
-def run_analysis(db_path: str, sample_size: int, output_path: str) -> dict:
-    """Run full gap analysis and write results."""
-    print(f"Loading {sample_size} proof steps from {db_path}...")
-    steps = load_proof_steps(db_path, sample_size)
-    print(f"  Loaded {len(steps)} steps")
-
-    records: list[GapRecord] = []
-    for i, step in enumerate(steps):
-        if not step["premises"]:
-            continue
-        record = analyze_step(db_path, step)
-        records.append(record)
-        if (i + 1) % 50 == 0:
-            avg_recall = sum(r.recall_at_16 for r in records) / len(records)
-            print(f"  Analyzed {i + 1}/{len(steps)}, avg recall@16: {avg_recall:.3f}")
-
-    # Write results
-    out_path = Path(output_path)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(out_path, "w") as f:
-        for record in records:
-            f.write(json.dumps(record.to_dict()) + "\n")
-
-    # Summary
+def _summarize_records(records: list[GapRecord], output_path: str) -> dict:
+    """Compute and print gap analysis summary statistics."""
     if not records:
         print("No records with premises found.")
         return {"status": "empty", "records": 0}
@@ -285,11 +279,10 @@ def run_analysis(db_path: str, sample_size: int, output_path: str) -> dict:
     perfect = sum(1 for r in records if r.recall_at_16 == 1.0)
     zero = sum(1 for r in records if r.recall_at_16 == 0.0)
 
-    all_gaps = []
+    all_gaps: list[str] = []
     for r in records:
         all_gaps.extend(r.gap_anchors)
-    gap_counter = Counter(all_gaps)
-    top_gaps = gap_counter.most_common(20)
+    top_gaps = Counter(all_gaps).most_common(20)
 
     print("\n=== Gap Analysis Summary ===")
     print(f"  Samples analyzed: {len(records)}")
@@ -309,8 +302,33 @@ def run_analysis(db_path: str, sample_size: int, output_path: str) -> dict:
         "zero_recall_count": zero,
         "gate_passed": avg_recall >= 0.70,
         "top_gap_anchors": [{"anchor": a, "count": c} for a, c in top_gaps],
-        "output_path": str(out_path),
+        "output_path": output_path,
     }
+
+
+def run_analysis(db_path: str, sample_size: int, output_path: str) -> dict:
+    """Run full gap analysis and write results."""
+    print(f"Loading {sample_size} proof steps from {db_path}...")
+    steps = load_proof_steps(db_path, sample_size)
+    print(f"  Loaded {len(steps)} steps")
+
+    records: list[GapRecord] = []
+    for i, step in enumerate(steps):
+        if not step["premises"]:
+            continue
+        record = analyze_step(db_path, step)
+        records.append(record)
+        if (i + 1) % 50 == 0:
+            avg_recall = sum(r.recall_at_16 for r in records) / len(records)
+            print(f"  Analyzed {i + 1}/{len(steps)}, avg recall@16: {avg_recall:.3f}")
+
+    out_path = Path(output_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(out_path, "w") as f:
+        for record in records:
+            f.write(json.dumps(record.to_dict()) + "\n")
+
+    return _summarize_records(records, str(out_path))
 
 
 def main() -> None:

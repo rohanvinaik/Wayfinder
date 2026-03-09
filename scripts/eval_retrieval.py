@@ -138,6 +138,102 @@ def compute_recall_at_k(retrieved: list[str], ground_truth: list[str], k: int) -
     return hits / len(gt_set)
 
 
+def _encode_all_premises(
+    conn: sqlite3.Connection, modules: dict
+) -> tuple[torch.Tensor, list[str]]:
+    """Pre-compute premise embeddings for dense baseline."""
+    print("  Computing premise embeddings for dense baseline...")
+    rows = conn.execute("SELECT name FROM entities WHERE type = 'lemma'").fetchall()
+    names = [r[0] for r in rows]
+
+    if not names:
+        return torch.zeros(0, 256), names
+
+    batch_size = 64
+    batched = []
+    for i in range(0, len(names), batch_size):
+        with torch.no_grad():
+            emb = modules["encoder"].encode(names[i : i + batch_size])
+            feat, _, _ = modules["analyzer"](emb)
+            batched.append(feat)
+    return torch.cat(batched, dim=0), names
+
+
+def _compare_retrieval(
+    examples: list,
+    modules: dict,
+    conn: sqlite3.Connection,
+    premise_emb: torch.Tensor,
+    premise_names: list[str],
+    ks: list[int],
+) -> tuple[dict[int, list[float]], dict[int, list[float]], list[float], list[float]]:
+    """Run nav vs dense retrieval on all examples, collecting recall and timing."""
+    nav_recalls: dict[int, list[float]] = {k: [] for k in ks}
+    dense_recalls: dict[int, list[float]] = {k: [] for k in ks}
+    nav_times: list[float] = []
+    dense_times: list[float] = []
+
+    print("  Running retrieval comparison...")
+    for i, ex in enumerate(examples):
+        gt = ex.ground_truth_premises
+        if not gt:
+            continue
+
+        t0 = time.perf_counter()
+        nav_prem = nav_retrieve(ex, modules, conn, limit=16)
+        nav_times.append(time.perf_counter() - t0)
+
+        t0 = time.perf_counter()
+        if len(premise_names) > 0:
+            dense_prem = dense_retrieve(ex, modules, premise_emb, premise_names, limit=16)
+        else:
+            dense_prem = []
+        dense_times.append(time.perf_counter() - t0)
+
+        for k in ks:
+            nav_recalls[k].append(compute_recall_at_k(nav_prem, gt, k))
+            dense_recalls[k].append(compute_recall_at_k(dense_prem, gt, k))
+
+        if (i + 1) % 100 == 0:
+            print(f"    {i + 1}/{len(examples)} done")
+
+    return nav_recalls, dense_recalls, nav_times, dense_times
+
+
+def _build_report(
+    nav_recalls: dict[int, list[float]],
+    dense_recalls: dict[int, list[float]],
+    nav_times: list[float],
+    dense_times: list[float],
+    ks: list[int],
+) -> dict:
+    """Build and print the comparison report."""
+    report = {
+        "samples": len(nav_recalls[ks[0]]),
+        "nav_retrieval": {f"recall@{k}": round(float(np.mean(nav_recalls[k])), 4) for k in ks},
+        "dense_retrieval": {f"recall@{k}": round(float(np.mean(dense_recalls[k])), 4) for k in ks},
+        "timing": {
+            "nav_avg_ms": round(float(np.mean(nav_times)) * 1000, 2),
+            "dense_avg_ms": round(float(np.mean(dense_times)) * 1000, 2),
+            "speedup": round(
+                float(np.mean(dense_times)) / max(float(np.mean(nav_times)), 1e-9), 2
+            ),
+        },
+    }
+
+    print("\n=== Retrieval Comparison ===")
+    for k in ks:
+        nr = report["nav_retrieval"][f"recall@{k}"]
+        dr = report["dense_retrieval"][f"recall@{k}"]
+        print(f"  recall@{k}: nav={nr:.4f} dense={dr:.4f} delta={nr - dr:+.4f}")
+    print(
+        f"  Timing: nav={report['timing']['nav_avg_ms']:.1f}ms"
+        f" dense={report['timing']['dense_avg_ms']:.1f}ms"
+        f" speedup={report['timing']['speedup']:.1f}x"
+    )
+    return report
+
+
 def evaluate(
     config: dict,
     checkpoint_path: Path,
@@ -156,91 +252,16 @@ def evaluate(
         examples = [examples[int(i)] for i in indices]
     print(f"Evaluating on {len(examples)} examples")
 
-    db_path = config["data"]["proof_network_db"]
-    conn = sqlite3.connect(db_path)
-
+    conn = sqlite3.connect(config["data"]["proof_network_db"])
     ks = [1, 4, 8, 16]
-    nav_recalls: dict[int, list[float]] = {k: [] for k in ks}
-    dense_recalls: dict[int, list[float]] = {k: [] for k in ks}
 
-    # Pre-compute premise embeddings for dense baseline
-    print("  Computing premise embeddings for dense baseline...")
-    premise_names: list[str] = []
-    rows = conn.execute("SELECT name FROM entities WHERE type = 'lemma'").fetchall()
-    premise_names = [r[0] for r in rows]
-
-    if premise_names:
-        batch_size = 64
-        all_embeddings = []
-        for i in range(0, len(premise_names), batch_size):
-            batch = premise_names[i : i + batch_size]
-            with torch.no_grad():
-                emb = modules["encoder"].encode(batch)
-                feat, _, _ = modules["analyzer"](emb)
-                all_embeddings.append(feat)
-        all_premise_emb = torch.cat(all_embeddings, dim=0)
-    else:
-        all_premise_emb = torch.zeros(0, 256)
-
-    nav_times: list[float] = []
-    dense_times: list[float] = []
-
-    print("  Running retrieval comparison...")
-    for i, ex in enumerate(examples):
-        gt = ex.ground_truth_premises
-        if not gt:
-            continue
-
-        # Nav retrieval
-        t0 = time.perf_counter()
-        nav_prem = nav_retrieve(ex, modules, conn, limit=16)
-        nav_times.append(time.perf_counter() - t0)
-
-        # Dense retrieval
-        t0 = time.perf_counter()
-        if len(premise_names) > 0:
-            dense_prem = dense_retrieve(ex, modules, all_premise_emb, premise_names, limit=16)
-        else:
-            dense_prem = []
-        dense_times.append(time.perf_counter() - t0)
-
-        for k in ks:
-            nav_recalls[k].append(compute_recall_at_k(nav_prem, gt, k))
-            dense_recalls[k].append(compute_recall_at_k(dense_prem, gt, k))
-
-        if (i + 1) % 100 == 0:
-            print(f"    {i + 1}/{len(examples)} done")
-
+    premise_emb, premise_names = _encode_all_premises(conn, modules)
+    nav_recalls, dense_recalls, nav_times, dense_times = _compare_retrieval(
+        examples, modules, conn, premise_emb, premise_names, ks
+    )
     conn.close()
 
-    report = {
-        "samples": len(nav_recalls[1]),
-        "nav_retrieval": {f"recall@{k}": round(float(np.mean(nav_recalls[k])), 4) for k in ks},
-        "dense_retrieval": {f"recall@{k}": round(float(np.mean(dense_recalls[k])), 4) for k in ks},
-        "timing": {
-            "nav_avg_ms": round(float(np.mean(nav_times)) * 1000, 2),
-            "dense_avg_ms": round(float(np.mean(dense_times)) * 1000, 2),
-            "speedup": round(
-                float(np.mean(dense_times)) / max(float(np.mean(nav_times)), 1e-9),
-                2,
-            ),
-        },
-    }
-
-    # Print summary
-    print("\n=== Retrieval Comparison ===")
-    for k in ks:
-        nr = report["nav_retrieval"][f"recall@{k}"]
-        dr = report["dense_retrieval"][f"recall@{k}"]
-        delta = nr - dr
-        print(f"  recall@{k}: nav={nr:.4f} dense={dr:.4f} delta={delta:+.4f}")
-    print(
-        f"  Timing: nav={report['timing']['nav_avg_ms']:.1f}ms"
-        f" dense={report['timing']['dense_avg_ms']:.1f}ms"
-        f" speedup={report['timing']['speedup']:.1f}x"
-    )
-
-    return report
+    return _build_report(nav_recalls, dense_recalls, nav_times, dense_times, ks)
 
 
 def main() -> None:

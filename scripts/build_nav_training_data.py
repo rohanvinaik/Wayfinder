@@ -34,65 +34,61 @@ from scripts.tactic_maps import DEFAULT_DIRECTION, TACTIC_ANCHORS, TACTIC_DIRECT
 # ---------------------------------------------------------------------------
 
 
+def _resolve_step_directions(entity: dict, step_idx: int, tactic: str) -> dict:
+    """Resolve the 6-bank direction vector for a single proof step."""
+    tactic_dirs = entity.get("tactic_directions", [])
+    if step_idx < len(tactic_dirs):
+        return tactic_dirs[step_idx].get("directions", DEFAULT_DIRECTION)
+    return TACTIC_DIRECTIONS.get(tactic, DEFAULT_DIRECTION)
+
+
+def _resolve_step_anchors(anchors: list[str], tactic: str) -> list[str]:
+    """Merge theorem-level and tactic-specific anchors."""
+    merged = set(anchors)
+    merged.update(TACTIC_ANCHORS.get(tactic, []))
+    return sorted(merged)
+
+
+def _encode_bank_positions(positions: dict) -> dict:
+    """Convert positions dict to [sign, depth] training format."""
+    return {
+        bank: [info.get("sign", 0), info.get("depth", 0)]
+        for bank, info in positions.items()
+    }
+
+
 def _build_nav_examples(entity: dict) -> list[dict]:
     """Convert one entity record into NavigationalExample dicts, one per step."""
-    theorem_id = entity["theorem_id"]
     goal_states = entity.get("goal_states", [])
     tactic_names = entity.get("tactic_names", [])
-    tactic_directions = entity.get("tactic_directions", [])
-    premises = entity.get("premises", [])
-    anchors = entity.get("anchors", [])
-    positions = entity.get("positions", {})
-    total_steps = len(tactic_names)
-
     if not goal_states or not tactic_names:
         return []
+
+    total_steps = len(tactic_names)
+    premises = entity.get("premises", [])
+    anchors = entity.get("anchors", [])
+    bank_positions = _encode_bank_positions(entity.get("positions", {}))
 
     examples: list[dict] = []
     proof_history: list[str] = []
 
     for step_idx in range(min(total_steps, len(goal_states))):
-        goal_state = goal_states[step_idx]
         tactic = tactic_names[step_idx] if step_idx < len(tactic_names) else ""
-
-        # Direction vector for this step's tactic
-        if step_idx < len(tactic_directions):
-            directions = tactic_directions[step_idx].get("directions", DEFAULT_DIRECTION)
-        else:
-            directions = TACTIC_DIRECTIONS.get(tactic, DEFAULT_DIRECTION)
-
-        # Anchor labels: theorem anchors + tactic-specific anchors
-        step_anchors = list(anchors)
-        step_anchors.extend(TACTIC_ANCHORS.get(tactic, []))
-        step_anchors = sorted(set(step_anchors))
-
-        # Bank positions for training (sign * depth for each bank)
-        bank_positions = {}
-        for bank_name, pos_info in positions.items():
-            sign = pos_info.get("sign", 0)
-            depth = pos_info.get("depth", 0)
-            bank_positions[bank_name] = [sign, depth]
-
-        remaining_steps = total_steps - step_idx - 1
-
-        example = {
-            "goal_state": goal_state,
-            "theorem_id": theorem_id,
+        examples.append({
+            "goal_state": goal_states[step_idx],
+            "theorem_id": entity["theorem_id"],
             "step_index": step_idx,
             "total_steps": total_steps,
-            "nav_directions": directions,
-            "anchor_labels": step_anchors,
+            "nav_directions": _resolve_step_directions(entity, step_idx, tactic),
+            "anchor_labels": _resolve_step_anchors(anchors, tactic),
             "ground_truth_tactic": tactic,
             "ground_truth_premises": premises,
-            "remaining_steps": remaining_steps,
+            "remaining_steps": total_steps - step_idx - 1,
             "solvable": True,
             "proof_history": list(proof_history),
             "bank_positions": bank_positions,
-        }
-        examples.append(example)
-
-        # Add current goal to history for subsequent steps
-        proof_history.append(goal_state)
+        })
+        proof_history.append(goal_states[step_idx])
 
     return examples
 
@@ -114,6 +110,21 @@ def _build_skip_set(output_path: Path) -> set[str]:
     return seen
 
 
+def _iter_shard_entities(input_path: Path, shard_idx: int, shard_total: int):
+    """Yield parsed entity dicts for lines belonging to this shard."""
+    with open(input_path) as fin:
+        for line_num, raw_line in enumerate(fin):
+            stripped = raw_line.strip()
+            if stripped and line_num % shard_total == shard_idx:
+                yield json.loads(stripped)
+
+
+def _write_examples(fout, examples: list[dict]) -> None:
+    """Write a batch of examples as JSONL lines."""
+    for ex in examples:
+        fout.write(json.dumps(ex) + "\n")
+
+
 def _process_entities(
     input_path: Path,
     output_path: Path,
@@ -126,23 +137,14 @@ def _process_entities(
 
     Returns (theorems_processed, theorems_skipped, examples_written).
     """
-    mode = "a" if append else "w"
     processed = 0
     skipped = 0
     examples_written = 0
     unmapped = 0
 
-    with open(input_path) as fin, open(output_path, mode) as fout:
-        for line_num, line in enumerate(fin):
-            line = line.strip()
-            if not line:
-                continue
-            if line_num % shard_total != shard_idx:
-                continue
-
-            entity = json.loads(line)
-            tid = entity.get("theorem_id", "")
-            if tid in skip_ids:
+    with open(output_path, "a" if append else "w") as fout:
+        for entity in _iter_shard_entities(input_path, shard_idx, shard_total):
+            if entity.get("theorem_id", "") in skip_ids:
                 skipped += 1
                 continue
 
@@ -151,10 +153,8 @@ def _process_entities(
                 unmapped += 1
                 continue
 
-            for ex in examples:
-                fout.write(json.dumps(ex) + "\n")
-                examples_written += 1
-
+            _write_examples(fout, examples)
+            examples_written += len(examples)
             processed += 1
             if processed % 5000 == 0:
                 print(f"Processed {processed} theorems, {examples_written} examples...")

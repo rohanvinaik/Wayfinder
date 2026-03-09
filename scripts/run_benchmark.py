@@ -15,7 +15,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import asyncio
 import json
 import sqlite3
 import time
@@ -25,6 +24,7 @@ import numpy as np
 import torch
 import yaml
 
+from scripts.benchmark_lane_b import run_lane_b
 from src.bridge import InformationBridge
 from src.encoder import GoalEncoder
 from src.goal_analyzer import GoalAnalyzer
@@ -84,6 +84,25 @@ def load_modules(checkpoint_path: Path, config: dict, device: str) -> dict:
     return {"encoder": encoder, "analyzer": analyzer, "bridge": bridge, "navigator": navigator}
 
 
+def _load_theorems_from_file(path: Path, source_key: str) -> list[dict]:
+    """Load theorem entries from a single JSONL file."""
+    theorems: list[dict] = []
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            d = json.loads(line)
+            theorems.append(
+                {
+                    "theorem_id": d.get("theorem_id", d.get("name", "")),
+                    "goal_state": d.get("goal_state", d.get("statement", "")),
+                    "source": source_key,
+                }
+            )
+    return theorems
+
+
 def load_benchmark_theorems(config: dict, limit: int | None) -> list[dict]:
     """Load benchmark theorems from configured paths."""
     theorems: list[dict] = []
@@ -96,20 +115,7 @@ def load_benchmark_theorems(config: dict, limit: int | None) -> list[dict]:
         if not path.exists():
             print(f"  Warning: {path} not found, skipping")
             continue
-
-        with open(path) as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                d = json.loads(line)
-                theorems.append(
-                    {
-                        "theorem_id": d.get("theorem_id", d.get("name", "")),
-                        "goal_state": d.get("goal_state", d.get("statement", "")),
-                        "source": key,
-                    }
-                )
+        theorems.extend(_load_theorems_from_file(path, key))
 
     if limit and len(theorems) > limit:
         indices = np.random.choice(len(theorems), limit, replace=False)
@@ -118,13 +124,8 @@ def load_benchmark_theorems(config: dict, limit: int | None) -> list[dict]:
     return theorems
 
 
-def run_benchmark(
-    config: dict,
-    checkpoint_path: Path,
-    device: str,
-    limit: int | None,
-) -> dict:
-    """Run proof search on benchmark theorems."""
+def _build_search_components(config: dict, checkpoint_path: Path, device: str) -> tuple:
+    """Build pipeline, search config, lean kernel, and db connection."""
     modules = load_modules(checkpoint_path, config, device)
     pipeline = Pipeline(
         encoder=modules["encoder"],
@@ -154,19 +155,22 @@ def run_benchmark(
         hammer_timeout=search_cfg.get("hammer_timeout", 60),
     )
     lean = LeanKernel(lean_cfg)
+    conn = sqlite3.connect(config["data"]["proof_network_db"])
 
-    db_path = config["data"]["proof_network_db"]
-    conn = sqlite3.connect(db_path)
+    return pipeline, cfg, lean, lean_cfg, conn
 
-    theorems = load_benchmark_theorems(config, limit)
-    print(f"Running benchmark on {len(theorems)} theorems")
-    print(f"  Budget: {cfg.budget}, Hammer: {cfg.hammer_delegation}")
-    print(f"  Lean backend: {lean_cfg.backend}")
 
+def _run_search_loop(
+    theorems: list[dict],
+    pipeline: Pipeline,
+    conn: sqlite3.Connection,
+    lean: LeanKernel,
+    cfg: SearchConfig,
+) -> tuple[list[dict], int, int]:
+    """Run proof search on all theorems. Returns (results, raw_proved, total_attempts)."""
     results: list[dict] = []
     raw_proved = 0
     total_attempts = 0
-    start = time.time()
 
     for i, thm in enumerate(theorems):
         t0 = time.perf_counter()
@@ -180,18 +184,19 @@ def run_benchmark(
         )
         elapsed = time.perf_counter() - t0
 
-        entry = {
-            "theorem_id": thm["theorem_id"],
-            "source": thm["source"],
-            "success": result.success,
-            "success_category": "raw_success" if result.success else "failed",
-            "attempts": result.attempts,
-            "goals_closed": result.goals_closed,
-            "goals_remaining": result.goals_remaining,
-            "tactics_used": result.tactics_used,
-            "time_s": round(elapsed, 3),
-        }
-        results.append(entry)
+        results.append(
+            {
+                "theorem_id": thm["theorem_id"],
+                "source": thm["source"],
+                "success": result.success,
+                "success_category": "raw_success" if result.success else "failed",
+                "attempts": result.attempts,
+                "goals_closed": result.goals_closed,
+                "goals_remaining": result.goals_remaining,
+                "tactics_used": result.tactics_used,
+                "time_s": round(elapsed, 3),
+            }
+        )
 
         if result.success:
             raw_proved += 1
@@ -204,18 +209,36 @@ def run_benchmark(
                 f"({100 * rate:.1f}%) avg_attempts={total_attempts / (i + 1):.0f}"
             )
 
+    return results, raw_proved, total_attempts
+
+
+def run_benchmark(
+    config: dict,
+    checkpoint_path: Path,
+    device: str,
+    limit: int | None,
+) -> dict:
+    """Run proof search on benchmark theorems."""
+    pipeline, cfg, lean, lean_cfg, conn = _build_search_components(config, checkpoint_path, device)
+
+    theorems = load_benchmark_theorems(config, limit)
+    print(f"Running benchmark on {len(theorems)} theorems")
+    print(f"  Budget: {cfg.budget}, Hammer: {cfg.hammer_delegation}")
+    print(f"  Lean backend: {lean_cfg.backend}")
+
+    start = time.time()
+    results, raw_proved, total_attempts = _run_search_loop(theorems, pipeline, conn, lean, cfg)
     conn.close()
     total_time = time.time() - start
 
-    # --- Metric separation ---
-    n = len(theorems)
+    n = len(results)
     report = {
         "benchmark": {
             "total_theorems": n,
             "raw_success": raw_proved,
             "raw_success_rate": round(raw_proved / max(n, 1), 4),
-            "axle_assisted_success": 0,  # Populated by Lane B post-processing
-            "axle_repair_only": 0,  # Populated by Lane B post-processing
+            "axle_assisted_success": 0,
+            "axle_repair_only": 0,
             "failed": n - raw_proved,
         },
         "efficiency": {
@@ -240,82 +263,12 @@ def run_benchmark(
         },
     }
 
-    # --- Lane B post-processing (Axle verification/repair) ---
     axle_cfg = config.get("axle", {})
     if axle_cfg.get("enabled", False):
-        report = _run_lane_b(report, axle_cfg)
+        report = run_lane_b(report, axle_cfg)
 
     _print_summary(report)
     return report
-
-
-def _run_lane_b(report: dict, axle_cfg: dict) -> dict:
-    """Run Lane B (Axle) post-processing on benchmark results."""
-    try:
-        from src.proof_auditor import AuditorConfig, ProofAuditor, SuccessCategory
-    except ImportError:
-        print("  Warning: axiom-axle not installed, skipping Lane B")
-        return report
-
-    auditor_config = AuditorConfig(
-        environment=axle_cfg.get("environment", "lean-4.28.0"),
-        timeout_seconds=axle_cfg.get("timeout_seconds", 120),
-        ignore_imports=axle_cfg.get("ignore_imports", False),
-        cache_enabled=axle_cfg.get("cache_enabled", True),
-        max_concurrency=axle_cfg.get("max_concurrency", 10),
-        repair_terminal_tactics=axle_cfg.get(
-            "repair_terminal_tactics", ["grind", "aesop", "simp", "omega", "decide"]
-        ),
-    )
-
-    async def _lane_b() -> None:
-        async with ProofAuditor(auditor_config) as auditor:
-            failed = [r for r in report["details"] if not r["success"]]
-            print(f"\n--- Lane B: Axle post-processing on {len(failed)} failed theorems ---")
-
-            axle_repair_count = 0
-            for entry in failed:
-                # Attempt repair on failed theorems that had partial progress
-                if entry["goals_closed"] == 0:
-                    continue
-
-                # Build a sorry-laden proof from the tactics used
-                # (This is a simplified version; full implementation would
-                # reconstruct the actual Lean file with sorries for open goals)
-                result = await auditor.repair(
-                    content=_build_sorry_proof(entry),
-                )
-                if result.success:
-                    entry["success"] = True
-                    entry["success_category"] = SuccessCategory.AXLE_REPAIR_ONLY.value
-                    axle_repair_count += 1
-
-            report["benchmark"]["axle_repair_only"] = axle_repair_count
-            total_success = report["benchmark"]["raw_success"] + axle_repair_count
-            report["benchmark"]["failed"] = report["benchmark"]["total_theorems"] - total_success
-
-            cache = auditor.cache_stats()
-            report["axle"] = {
-                "repair_attempted": len([r for r in failed if r["goals_closed"] > 0]),
-                "repair_succeeded": axle_repair_count,
-                "cache_entries": cache["entries"],
-            }
-            print(f"  Axle repair: {axle_repair_count} additional theorems proved")
-
-    asyncio.run(_lane_b())
-    return report
-
-
-def _build_sorry_proof(entry: dict) -> str:
-    """Build a minimal Lean proof attempt with sorries for open goals.
-
-    This constructs a proof stub from the benchmark entry's tactics.
-    The actual Lean file reconstruction depends on the theorem format.
-    """
-    theorem_id = entry.get("theorem_id", "unknown")
-    tactics = entry.get("tactics_used", [])
-    tactic_block = "\n  ".join(tactics) if tactics else "sorry"
-    return f"import Mathlib\n\ntheorem {theorem_id} := by\n  {tactic_block}\n  sorry\n"
 
 
 def _group_by_source(results: list[dict]) -> dict:
