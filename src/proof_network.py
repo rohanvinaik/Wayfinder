@@ -367,12 +367,10 @@ def _get_candidates(
     if query.require_anchors:
         placeholders = ",".join("?" * len(query.require_anchors))
         rows = conn.execute(
-            f"""
-            SELECT entity_id FROM entity_anchors
-            WHERE anchor_id IN ({placeholders})
-            GROUP BY entity_id
-            HAVING COUNT(DISTINCT anchor_id) = ?
-            """,
+            f"SELECT entity_id FROM entity_anchors "  # nosec B608
+            f"WHERE anchor_id IN ({placeholders}) "
+            f"GROUP BY entity_id "
+            f"HAVING COUNT(DISTINCT anchor_id) = ?",
             [*query.require_anchors, len(query.require_anchors)],
         ).fetchall()
         required_set = {r[0] for r in rows}
@@ -389,11 +387,10 @@ def _batch_get_positions(
         return {}
     placeholders = ",".join("?" * len(entity_ids))
     rows = conn.execute(
-        f"""
-        SELECT entity_id, bank, sign * depth
+        f"""SELECT entity_id, bank, sign * depth
         FROM entity_positions
         WHERE entity_id IN ({placeholders})
-        """,
+        """,  # nosec B608
         entity_ids,
     ).fetchall()
     result: dict[int, dict[str, int]] = defaultdict(dict)
@@ -408,7 +405,7 @@ def _batch_get_anchor_sets(conn: sqlite3.Connection, entity_ids: list[int]) -> d
         return {}
     placeholders = ",".join("?" * len(entity_ids))
     rows = conn.execute(
-        f"SELECT entity_id, anchor_id FROM entity_anchors WHERE entity_id IN ({placeholders})",
+        f"SELECT entity_id, anchor_id FROM entity_anchors WHERE entity_id IN ({placeholders})",  # nosec B608
         entity_ids,
     ).fetchall()
     result: dict[int, set[int]] = defaultdict(set)
@@ -423,7 +420,7 @@ def _batch_get_names(conn: sqlite3.Connection, entity_ids: list[int]) -> dict[in
         return {}
     placeholders = ",".join("?" * len(entity_ids))
     rows = conn.execute(
-        f"SELECT id, name FROM entities WHERE id IN ({placeholders})",
+        f"SELECT id, name FROM entities WHERE id IN ({placeholders})",  # nosec B608
         entity_ids,
     ).fetchall()
     return dict(rows)

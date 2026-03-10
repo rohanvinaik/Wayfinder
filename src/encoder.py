@@ -104,8 +104,9 @@ class GoalEncoder(nn.Module):
 
     def _encode_t5(self, goal_states: list[str]) -> torch.Tensor:
         """Encode using T5/ByT5 encoder with mean pooling."""
-        assert self._tokenizer is not None
-        assert self._model is not None
+        if self._tokenizer is None or self._model is None:
+            msg = "Encoder not initialized — call _init_t5() first"
+            raise RuntimeError(msg)
 
         tokens = self._tokenizer(
             goal_states,
@@ -135,7 +136,9 @@ class GoalEncoder(nn.Module):
 
     def _encode_st(self, goal_states: list[str]) -> torch.Tensor:
         """Encode using SentenceTransformer."""
-        assert self._model is not None
+        if self._model is None:
+            msg = "Encoder not initialized — call _init_st() first"
+            raise RuntimeError(msg)
         with torch.no_grad():
             embeddings = self._model.encode(goal_states, convert_to_tensor=True)
         return embeddings.to(self.device)

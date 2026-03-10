@@ -82,7 +82,8 @@ def build_pab_tracker(config: dict, run_id: str) -> PABTracker | None:
     pab_cfg = config.get("pab", {})
     if not pab_cfg.get("enabled", False):
         return None
-    config_hash = hashlib.md5(json.dumps(config, sort_keys=True).encode()).hexdigest()[:12]
+    config_bytes = json.dumps(config, sort_keys=True).encode()
+    config_hash = hashlib.md5(config_bytes, usedforsecurity=False).hexdigest()[:12]
     return PABTracker(
         experiment_id=run_id,
         config_hash=config_hash,

@@ -12,7 +12,7 @@ from src.trainer_constants import _REPAIR_SEVERITY, infer_domain
 if TYPE_CHECKING:
     import torch
 
-_UNK_TOKEN = "<UNK>"
+_UNK_TOKEN = "<UNK>"  # nosec B105
 
 
 def compute_batch_metrics(
