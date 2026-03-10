@@ -4,8 +4,8 @@ import unittest
 
 from src.nav_contracts import (
     BANK_NAMES,
-    NavOutput,
     NavigationalExample,
+    NavOutput,
     ScoredEntity,
     StructuredQuery,
     TacticResult,
