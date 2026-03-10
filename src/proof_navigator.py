@@ -113,9 +113,9 @@ class ProofNavigator(nn.Module):
         confidences: dict[str, float] = {}
         for bank, logits in dir_logits.items():
             probs = torch.softmax(logits[0], dim=-1)
-            idx = probs.argmax().item()
+            idx = int(probs.argmax().item())
             directions[bank] = direction_map[idx]
-            confidences[bank] = probs[idx].item()
+            confidences[bank] = float(probs[idx].item())
 
         anchor_probs = torch.sigmoid(anchor_logits[0])
         anchor_scores = {

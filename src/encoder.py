@@ -14,6 +14,8 @@ a learned linear projection is added to normalize the output.
 
 from __future__ import annotations
 
+from typing import Any
+
 import torch
 import torch.nn as nn
 
@@ -50,8 +52,8 @@ class GoalEncoder(nn.Module):
         self._output_dim = output_dim
         self.frozen = frozen
         self.device = device
-        self._model = None
-        self._tokenizer = None
+        self._model: Any = None
+        self._tokenizer: Any = None
         self._is_t5 = _is_t5_model(model_name)
         self._native_dim: int | None = None
         self._projection: nn.Linear | None = None
