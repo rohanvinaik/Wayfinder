@@ -250,7 +250,7 @@ class BalancedSashimiTrainer(TrainerStepsMixin):
     def _collect_decoder_weight_signs(self) -> np.ndarray | None:
         return collect_decoder_weight_signs(self.pipeline.decoder)
 
-    def log_ternary_distribution(self, step: int) -> dict[str, dict[str, float]]:
+    def log_ternary_distribution(self, _step: int) -> dict[str, dict[str, float]]:
         return log_ternary_distribution(self.pipeline.decoder)
 
     def save_checkpoint(self, step: int) -> Path:
@@ -380,6 +380,7 @@ class BalancedSashimiTrainer(TrainerStepsMixin):
             batch_size=bs,
             shuffle=True,
             collate_fn=lambda batch: batch,
+            num_workers=0,
         )
 
         epoch = 0

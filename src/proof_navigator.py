@@ -16,8 +16,7 @@ import torch.nn as nn
 from src.nav_contracts import BANK_NAMES, NavOutput
 from src.ternary_decoder import TernaryLinear
 
-_ALL_BANKS = BANK_NAMES
-_DEFAULT_BANKS = list(_ALL_BANKS)
+_DEFAULT_BANKS = list(BANK_NAMES)
 
 
 class ProofNavigator(nn.Module):

@@ -20,7 +20,7 @@ _ValidationResult = namedtuple(
 
 def validate_single_proof(example: Any, verifier: ProofVerifier | None = None) -> _ValidationResult:
     """Lower a ProofExample to Lean and run structural + optional kernel checks."""
-    ok, err = roundtrip_validate(example)
+    ok, _ = roundtrip_validate(example)
     if not ok:
         return _ValidationResult(
             lowered=False,

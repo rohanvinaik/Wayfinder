@@ -75,7 +75,7 @@ class LeanKernel:
     # Stub backend (Phase 1)
     # ------------------------------------------------------------------
 
-    def _stub_try_tactic(self, goal_state: str, tactic: str) -> TacticResult:
+    def _stub_try_tactic(self, _goal_state: str, tactic: str) -> TacticResult:
         """Stub: always fails. For development/testing without Lean."""
         return TacticResult(
             success=False,
@@ -85,7 +85,9 @@ class LeanKernel:
             error_message="stub backend: no Lean kernel connected",
         )
 
-    def _stub_try_hammer(self, goal_state: str, premises: list[str], timeout: int) -> TacticResult:
+    def _stub_try_hammer(
+        self, _goal_state: str, premises: list[str], _timeout: int
+    ) -> TacticResult:
         """Stub: always fails."""
         return TacticResult(
             success=False,

@@ -64,7 +64,7 @@ class GoalEncoder(nn.Module):
         if self._native_dim is not None:
             return self._native_dim
         # Fallback before model is loaded
-        return self._output_dim or 384
+        return 384
 
     def _load_model(self) -> None:
         if self._is_t5:

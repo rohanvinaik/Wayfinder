@@ -15,7 +15,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-def ternary_quantize(weights: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
+def ternary_quantize(weights: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:  # noqa: ARG001
     """Quantize continuous weights to {-1, 0, +1}.
 
     Uses threshold-based quantization with per-channel scaling.

@@ -359,7 +359,11 @@ def train(config: dict, run_id: str, device: str, seed: int, dry_run: bool) -> d
                 continue
 
         loader = DataLoader(
-            state["dataset"], batch_size=batch_size, shuffle=True, collate_fn=lambda b: b
+            state["dataset"],
+            batch_size=batch_size,
+            shuffle=True,
+            collate_fn=lambda b: b,
+            num_workers=0,
         )
         result = _run_epoch(loader, ctx, state, dry_run)
         if result is not None:

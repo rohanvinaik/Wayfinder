@@ -100,7 +100,7 @@ class ProofAuditor:
         self._client: Any = None  # AxleClient, lazy import
         self._cache: dict[str, AuditResult] = {}
 
-    async def connect(self) -> None:
+    def connect(self) -> None:
         """Initialize the Axle client. Call before any audit operations."""
         try:
             from axle import AxleClient
@@ -120,7 +120,7 @@ class ProofAuditor:
             self._client = None
 
     async def __aenter__(self) -> ProofAuditor:
-        await self.connect()
+        self.connect()
         return self
 
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:

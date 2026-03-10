@@ -118,7 +118,8 @@ def load_benchmark_theorems(config: dict, limit: int | None) -> list[dict]:
         theorems.extend(_load_theorems_from_file(path, key))
 
     if limit and len(theorems) > limit:
-        indices = np.random.choice(len(theorems), limit, replace=False)
+        rng = np.random.default_rng()
+        indices = rng.choice(len(theorems), limit, replace=False)
         theorems = [theorems[int(i)] for i in indices]
 
     return theorems

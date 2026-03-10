@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sqlite3
 from collections import Counter
 from dataclasses import dataclass
@@ -173,9 +174,7 @@ def _compute_anchor_boost(
     return {r[0]: r[1] for r in rows}
 
 
-def _resolve_entity_names(
-    conn: sqlite3.Connection, entity_ids: list[int]
-) -> dict[int, str]:
+def _resolve_entity_names(conn: sqlite3.Connection, entity_ids: list[int]) -> dict[int, str]:
     """Map entity IDs to names."""
     ph = ",".join("?" * len(entity_ids))
     rows = conn.execute(
@@ -201,14 +200,9 @@ def navigate_with_query(db_path: str, query: dict, limit: int = 16) -> list[str]
         return []
 
     candidate_ids = [c[0] for c in candidates]
-    anchor_boost = _compute_anchor_boost(
-        conn, query.get("anchors", []), candidate_ids
-    )
+    anchor_boost = _compute_anchor_boost(conn, query.get("anchors", []), candidate_ids)
 
-    scored = [
-        (eid, bank_score + anchor_boost.get(eid, 0) * 0.5)
-        for eid, bank_score in candidates
-    ]
+    scored = [(eid, bank_score + anchor_boost.get(eid, 0) * 0.5) for eid, bank_score in candidates]
     scored.sort(key=lambda x: x[1], reverse=True)
     top_ids = [s[0] for s in scored[:limit]]
 
@@ -276,8 +270,8 @@ def _summarize_records(records: list[GapRecord], output_path: str) -> dict:
         return {"status": "empty", "records": 0}
 
     avg_recall = sum(r.recall_at_16 for r in records) / len(records)
-    perfect = sum(1 for r in records if r.recall_at_16 == 1.0)
-    zero = sum(1 for r in records if r.recall_at_16 == 0.0)
+    perfect = sum(1 for r in records if math.isclose(r.recall_at_16, 1.0))
+    zero = sum(1 for r in records if math.isclose(r.recall_at_16, 0.0))
 
     all_gaps: list[str] = []
     for r in records:

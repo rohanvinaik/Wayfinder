@@ -51,10 +51,7 @@ def _resolve_step_anchors(anchors: list[str], tactic: str) -> list[str]:
 
 def _encode_bank_positions(positions: dict) -> dict:
     """Convert positions dict to [sign, depth] training format."""
-    return {
-        bank: [info.get("sign", 0), info.get("depth", 0)]
-        for bank, info in positions.items()
-    }
+    return {bank: [info.get("sign", 0), info.get("depth", 0)] for bank, info in positions.items()}
 
 
 def _build_nav_examples(entity: dict) -> list[dict]:
@@ -74,20 +71,22 @@ def _build_nav_examples(entity: dict) -> list[dict]:
 
     for step_idx in range(min(total_steps, len(goal_states))):
         tactic = tactic_names[step_idx] if step_idx < len(tactic_names) else ""
-        examples.append({
-            "goal_state": goal_states[step_idx],
-            "theorem_id": entity["theorem_id"],
-            "step_index": step_idx,
-            "total_steps": total_steps,
-            "nav_directions": _resolve_step_directions(entity, step_idx, tactic),
-            "anchor_labels": _resolve_step_anchors(anchors, tactic),
-            "ground_truth_tactic": tactic,
-            "ground_truth_premises": premises,
-            "remaining_steps": total_steps - step_idx - 1,
-            "solvable": True,
-            "proof_history": list(proof_history),
-            "bank_positions": bank_positions,
-        })
+        examples.append(
+            {
+                "goal_state": goal_states[step_idx],
+                "theorem_id": entity["theorem_id"],
+                "step_index": step_idx,
+                "total_steps": total_steps,
+                "nav_directions": _resolve_step_directions(entity, step_idx, tactic),
+                "anchor_labels": _resolve_step_anchors(anchors, tactic),
+                "ground_truth_tactic": tactic,
+                "ground_truth_premises": premises,
+                "remaining_steps": total_steps - step_idx - 1,
+                "solvable": True,
+                "proof_history": list(proof_history),
+                "bank_positions": bank_positions,
+            }
+        )
         proof_history.append(goal_states[step_idx])
 
     return examples

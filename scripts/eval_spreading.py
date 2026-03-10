@@ -185,9 +185,7 @@ def _build_spreading_report(
     report = {
         "samples": len(no_spread_recalls[ks[0]]),
         "multi_step_only": True,
-        "no_spreading": {
-            f"recall@{k}": round(float(np.mean(no_spread_recalls[k])), 4) for k in ks
-        },
+        "no_spreading": {f"recall@{k}": round(float(np.mean(no_spread_recalls[k])), 4) for k in ks},
         "with_spreading": {
             f"recall@{k}": round(float(np.mean(with_spread_recalls[k])), 4) for k in ks
         },
@@ -231,16 +229,15 @@ def evaluate(
 
     multi_step = [e for e in all_examples if e.step_index > 0 and e.proof_history]
     if len(multi_step) > samples:
-        indices = np.random.choice(len(multi_step), samples, replace=False)
+        rng = np.random.default_rng()
+        indices = rng.choice(len(multi_step), samples, replace=False)
         multi_step = [multi_step[int(i)] for i in indices]
     print(f"Evaluating spreading on {len(multi_step)} multi-step examples")
 
     conn = sqlite3.connect(config["data"]["proof_network_db"])
     ks = [4, 8, 16]
 
-    ns_recalls, ws_recalls, ns_times, ws_times = _compare_spreading(
-        multi_step, modules, conn, ks
-    )
+    ns_recalls, ws_recalls, ns_times, ws_times = _compare_spreading(multi_step, modules, conn, ks)
     conn.close()
 
     return _build_spreading_report(ns_recalls, ws_recalls, ns_times, ws_times, ks)

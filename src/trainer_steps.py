@@ -12,6 +12,8 @@ from src.trainer_constants import _REPAIR_SEVERITY, infer_domain
 if TYPE_CHECKING:
     import torch
 
+_UNK_TOKEN = "<UNK>"
+
 
 class TrainerStepsMixin:
     """Mixin providing train_step, domain gate step, and batch-building helpers.
@@ -41,7 +43,7 @@ class TrainerStepsMixin:
         """Extract first tactic token target for an example."""
         tokens = getattr(example, "tier1_tokens", [])
         if not tokens:
-            return "<UNK>"
+            return _UNK_TOKEN
         # Skip BOS if present
         return tokens[1] if len(tokens) > 1 else tokens[0]
 
@@ -49,7 +51,7 @@ class TrainerStepsMixin:
         """Build tier1 target indices from batch examples."""
         import torch
 
-        unk_idx = self.vocabs.tier1.get("<UNK>", 1)
+        unk_idx = self.vocabs.tier1.get(_UNK_TOKEN, 1)
         targets = []
         for ex in batch:
             token = self._tier1_token(ex)
@@ -62,7 +64,7 @@ class TrainerStepsMixin:
         """Build goal-indexed negative targets and repair weights."""
         prompt_to_negatives: dict[str, list[int]] = defaultdict(list)
         prompt_to_repair_weight: dict[str, float] = {}
-        unk_idx = self.vocabs.tier1.get("<UNK>", 1)
+        unk_idx = self.vocabs.tier1.get(_UNK_TOKEN, 1)
 
         for entry in getattr(neg_dataset, "entries", []):
             goal = (entry.goal_state or "").strip()
@@ -84,7 +86,6 @@ class TrainerStepsMixin:
     def _sample_negative_index(self, positive_index: int) -> int:
         """Sample a random tier1 index different from positive_index."""
         vocab_size = max(2, len(self.vocabs.tier1))
-        candidate = positive_index
         for _ in range(4):
             candidate = int(self._rng.integers(0, vocab_size))
             if candidate != positive_index:
@@ -141,7 +142,7 @@ class TrainerStepsMixin:
         for i, ex in enumerate(batch):
             domain = infer_domain(ex)
             domain_correct[domain].append(float(correct[i]))
-            tactic_token = idx2token.get(int(targets[i]), "<UNK>")
+            tactic_token = idx2token.get(int(targets[i]), _UNK_TOKEN)
             tactic_correct[tactic_token].append(float(correct[i]))
 
         prev_tiers = self._tracking["tier_accuracies"]

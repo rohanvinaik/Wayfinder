@@ -303,9 +303,7 @@ def _process_theorems(
                 continue
 
             entity = extract_entity(theorem)
-            unmapped.update(
-                t for t in entity["tactic_names"] if t not in TACTIC_DIRECTIONS
-            )
+            unmapped.update(t for t in entity["tactic_names"] if t not in TACTIC_DIRECTIONS)
             fout.write(json.dumps(entity) + "\n")
             processed += 1
             if processed % 5000 == 0:

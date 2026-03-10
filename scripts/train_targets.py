@@ -56,12 +56,13 @@ def compute_nav_accuracy(
     modules: dict,
     dataset,
     banks: list[str],
-    device: str,
+    _device: str,
     max_samples: int = 200,
 ) -> dict[str, float]:
     """Compute per-bank direction accuracy on a subset."""
+    rng = np.random.default_rng()
     n = min(len(dataset), max_samples)
-    indices = np.random.choice(len(dataset), n, replace=False)
+    indices = rng.choice(len(dataset), n, replace=False)
     examples = [dataset[int(i)] for i in indices]
 
     goal_states = [ex.goal_state for ex in examples]

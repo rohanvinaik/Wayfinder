@@ -138,9 +138,7 @@ def compute_recall_at_k(retrieved: list[str], ground_truth: list[str], k: int) -
     return hits / len(gt_set)
 
 
-def _encode_all_premises(
-    conn: sqlite3.Connection, modules: dict
-) -> tuple[torch.Tensor, list[str]]:
+def _encode_all_premises(conn: sqlite3.Connection, modules: dict) -> tuple[torch.Tensor, list[str]]:
     """Pre-compute premise embeddings for dense baseline."""
     print("  Computing premise embeddings for dense baseline...")
     rows = conn.execute("SELECT name FROM entities WHERE type = 'lemma'").fetchall()
@@ -215,9 +213,7 @@ def _build_report(
         "timing": {
             "nav_avg_ms": round(float(np.mean(nav_times)) * 1000, 2),
             "dense_avg_ms": round(float(np.mean(dense_times)) * 1000, 2),
-            "speedup": round(
-                float(np.mean(dense_times)) / max(float(np.mean(nav_times)), 1e-9), 2
-            ),
+            "speedup": round(float(np.mean(dense_times)) / max(float(np.mean(nav_times)), 1e-9), 2),
         },
     }
 
@@ -248,7 +244,8 @@ def evaluate(
     eval_path = Path(config["data"].get("nav_eval", "data/nav_eval.jsonl"))
     examples = load_nav_examples_jsonl(eval_path)
     if len(examples) > samples:
-        indices = np.random.choice(len(examples), samples, replace=False)
+        rng = np.random.default_rng()
+        indices = rng.choice(len(examples), samples, replace=False)
         examples = [examples[int(i)] for i in indices]
     print(f"Evaluating on {len(examples)} examples")
 

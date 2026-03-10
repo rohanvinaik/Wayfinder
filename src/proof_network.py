@@ -410,13 +410,13 @@ def _batch_get_names(conn: sqlite3.Connection, entity_ids: list[int]) -> dict[in
         f"SELECT id, name FROM entities WHERE id IN ({placeholders})",
         entity_ids,
     ).fetchall()
-    return {eid: name for eid, name in rows}
+    return dict(rows)
 
 
 def _get_idf_cache(conn: sqlite3.Connection) -> dict[int, float]:
     """Load the full IDF table into memory."""
     rows = conn.execute("SELECT anchor_id, idf_value FROM anchor_idf").fetchall()
-    return {aid: idf for aid, idf in rows}
+    return dict(rows)
 
 
 def _get_link_neighbors(
