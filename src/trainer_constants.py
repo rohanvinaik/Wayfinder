@@ -53,8 +53,8 @@ def infer_domain(example: Any) -> str:
     tactics = getattr(example, "tier1_tokens", [])
     if tactics:
         for tactic in tactics:
-            domain = _TACTIC_DOMAIN_HINTS.get(tactic)
-            if domain:
-                return domain
+            tactic_domain = _TACTIC_DOMAIN_HINTS.get(tactic)
+            if tactic_domain:
+                return tactic_domain
 
     return _DEFAULT_DOMAIN

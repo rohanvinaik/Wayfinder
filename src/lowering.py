@@ -9,6 +9,8 @@ No ML involved — purely deterministic template expansion.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from src.contracts import ProofExample, Tier2Block
 
 # Tactics that take a premise argument directly
@@ -118,7 +120,7 @@ def _lower_have(block: Tier2Block | None, term_map: dict, index: int) -> str:
     return "have h := by"
 
 
-_TACTIC_HANDLERS: dict[str, callable] = {
+_TACTIC_HANDLERS: dict[str, Callable] = {
     "intro": _lower_intro,
     "cases": _lower_cases,
     "induction": _lower_induction,

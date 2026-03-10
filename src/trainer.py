@@ -176,7 +176,7 @@ class BalancedSashimiTrainer(TrainerStepsMixin):
     def _trainable_params(self, composite_loss=None) -> list:
         """Collect generation-side trainable parameters (excluding domain gate)."""
         loss = composite_loss if composite_loss is not None else self.infra.composite_loss
-        params = []
+        params: list[Any] = []
         for module in [
             self.pipeline.goal_analyzer,
             self.pipeline.bridge,

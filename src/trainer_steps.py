@@ -54,9 +54,9 @@ class TrainerStepsMixin:
     pipeline: Any
     vocabs: Any
     infra: Any
-    config: dict
-    device: str
-    step: int
+    config: Any
+    device: Any
+    step: Any
     _rng: Any
     _ood: Any
     _tracking: dict[str, Any]

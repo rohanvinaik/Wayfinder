@@ -11,6 +11,8 @@ NavigationalLoss for Wayfinder 6-bank navigational training.
 
 from __future__ import annotations
 
+from typing import Any
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -43,7 +45,7 @@ class CompositeLoss(nn.Module):
         repair_weights: torch.Tensor | None = None,
         negative_targets: torch.Tensor | None = None,
         margin: float | None = None,
-    ) -> dict[str, torch.Tensor]:
+    ) -> dict[str, Any]:
         L_ce = F.cross_entropy(logits, targets)
 
         margin_value = self.margin if margin is None else float(margin)
@@ -128,7 +130,7 @@ class NavigationalLoss(nn.Module):
         progress_target: torch.Tensor | None = None,
         critic_pred: torch.Tensor | None = None,
         critic_target: torch.Tensor | None = None,
-    ) -> dict[str, torch.Tensor]:
+    ) -> dict[str, Any]:
         device = next(iter(direction_logits.values())).device
 
         # L_nav: sum of per-bank cross-entropy
