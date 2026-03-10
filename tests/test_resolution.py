@@ -48,7 +48,6 @@ def _make_scored_entity(entity_id=1, name="simp", final_score=0.9):
 
 
 class TestDataclasses(unittest.TestCase):
-
     def test_search_context_defaults(self):
         ctx = SearchContext()
         self.assertIsNone(ctx.accessible_theorem_id)
@@ -79,7 +78,6 @@ class TestDataclasses(unittest.TestCase):
 
 
 class TestBuildQuery(unittest.TestCase):
-
     def test_basic_directions_and_confidences(self):
         nav = _make_nav_output()
         q = build_query(nav)
@@ -128,7 +126,6 @@ class TestBuildQuery(unittest.TestCase):
 
 
 class TestCombineCandidates(unittest.TestCase):
-
     def test_empty_tactics_returns_empty(self):
         self.assertEqual(_combine_candidates([], [], {}), [])
 
@@ -189,7 +186,6 @@ class TestCombineCandidates(unittest.TestCase):
 
 
 class TestResolve(unittest.TestCase):
-
     @patch("src.resolution.spread")
     @patch("src.resolution.navigate")
     def test_basic_resolve(self, mock_navigate, mock_spread):

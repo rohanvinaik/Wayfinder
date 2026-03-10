@@ -7,7 +7,6 @@ from src.evaluate import _target_tier1_token
 
 
 class TestTargetTier1Token(unittest.TestCase):
-
     def test_empty_tokens_returns_unk(self):
         ex = SimpleNamespace(tier1_tokens=[])
         self.assertEqual(_target_tier1_token(ex), "<UNK>")

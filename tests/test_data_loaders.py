@@ -35,8 +35,14 @@ def _make_nav_example(
         theorem_id=theorem_id,
         step_index=step_index,
         total_steps=total_steps,
-        nav_directions={"structure": 1, "domain": 0, "depth": -1,
-                        "automation": 0, "context": 1, "decomposition": -1},
+        nav_directions={
+            "structure": 1,
+            "domain": 0,
+            "depth": -1,
+            "automation": 0,
+            "context": 1,
+            "decomposition": -1,
+        },
         anchor_labels=["Nat.add_comm", "Nat.succ"],
         ground_truth_tactic="ring",
         ground_truth_premises=["Nat.add_comm"],
@@ -49,9 +55,7 @@ def _make_nav_example(
 def _write_jsonl(records: list[dict], *, blank_lines: list[int] | None = None) -> Path:
     """Write dicts as JSONL to a temp file, optionally inserting blank lines."""
     blank_set = set(blank_lines or [])
-    tmp = tempfile.NamedTemporaryFile(
-        suffix=".jsonl", delete=False, mode="w"
-    )
+    tmp = tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False, mode="w")
     for i, rec in enumerate(records):
         if i in blank_set:
             tmp.write("\n")
@@ -124,6 +128,11 @@ class TestLoadOODPromptsJsonl(unittest.TestCase):
         path = _write_jsonl([p.to_dict()])
         prompts = load_ood_prompts_jsonl(path)
         self.assertIsInstance(prompts[0], OODPrompt)
+        # Verify the loaded prompt preserves the original field values
+        self.assertEqual(prompts[0].prompt, "Prove add_comm")
+        self.assertEqual(prompts[0].label, "in_domain")
+        self.assertEqual(prompts[0].category, "lean_goal")
+        self.assertEqual(prompts[0].source, "leandojo")
 
 
 # ===================================================================
@@ -181,12 +190,24 @@ class TestLoadNavExamplesJsonl(unittest.TestCase):
         self.assertIn("line 1", str(ctx.exception))
 
     def test_nav_directions_exact_values(self):
-        dirs = {"structure": -1, "domain": 1, "depth": 0,
-                "automation": 1, "context": -1, "decomposition": 0}
+        dirs = {
+            "structure": -1,
+            "domain": 1,
+            "depth": 0,
+            "automation": 1,
+            "context": -1,
+            "decomposition": 0,
+        }
         e = NavigationalExample(
-            goal_state="g", theorem_id="t", step_index=2, total_steps=4,
-            nav_directions=dirs, anchor_labels=[], ground_truth_tactic="simp",
-            ground_truth_premises=[], remaining_steps=2,
+            goal_state="g",
+            theorem_id="t",
+            step_index=2,
+            total_steps=4,
+            nav_directions=dirs,
+            anchor_labels=[],
+            ground_truth_tactic="simp",
+            ground_truth_premises=[],
+            remaining_steps=2,
         )
         path = _write_jsonl([e.to_dict()])
         loaded = load_nav_examples_jsonl(path)[0]
@@ -204,6 +225,12 @@ class TestLoadNavExamplesJsonl(unittest.TestCase):
         path = _write_jsonl([e.to_dict()])
         examples = load_nav_examples_jsonl(path)
         self.assertIsInstance(examples[0], NavigationalExample)
+        # Verify the loaded example preserves original field values
+        self.assertEqual(examples[0].theorem_id, "thm.alpha")
+        self.assertEqual(examples[0].goal_state, "a + b = b + a")
+        self.assertEqual(examples[0].step_index, 0)
+        self.assertEqual(examples[0].total_steps, 3)
+        self.assertEqual(examples[0].ground_truth_tactic, "ring")
 
 
 if __name__ == "__main__":

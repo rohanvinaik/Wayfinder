@@ -7,7 +7,6 @@ from src.nav_contracts import TacticResult
 
 
 class TestLeanConfig(unittest.TestCase):
-
     def test_defaults(self):
         cfg = LeanConfig()
         self.assertEqual(cfg.backend, "stub")
@@ -23,7 +22,6 @@ class TestLeanConfig(unittest.TestCase):
 
 
 class TestLeanKernelInit(unittest.TestCase):
-
     def test_default_config(self):
         kernel = LeanKernel()
         self.assertEqual(kernel.config.backend, "stub")
@@ -35,7 +33,6 @@ class TestLeanKernelInit(unittest.TestCase):
 
 
 class TestTryTactic(unittest.TestCase):
-
     def test_stub_always_fails(self):
         kernel = LeanKernel()
         result = kernel.try_tactic("⊢ True", "trivial")
@@ -65,7 +62,6 @@ class TestTryTactic(unittest.TestCase):
 
 
 class TestTryHammer(unittest.TestCase):
-
     def test_stub_always_fails(self):
         kernel = LeanKernel()
         result = kernel.try_hammer("⊢ 1 + 1 = 2", ["Nat.add_comm"])
@@ -88,6 +84,12 @@ class TestTryHammer(unittest.TestCase):
         # Stub doesn't use timeout, but verify it doesn't crash
         result = kernel.try_hammer("⊢ P", [], timeout=5)
         self.assertFalse(result.success)
+        # Verify the stub still returns a well-formed TacticResult
+        self.assertIsInstance(result, TacticResult)
+        self.assertIn("stub", result.error_message)
+        self.assertEqual(result.premises, [])
+        self.assertEqual(result.new_goals, [])
+        self.assertIn("0", result.tactic)  # "aesop (premises: 0)"
 
     def test_unknown_backend_raises(self):
         cfg = LeanConfig(backend="nonexistent")

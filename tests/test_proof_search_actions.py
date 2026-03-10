@@ -53,7 +53,6 @@ def _make_tactic_result(success, tactic="apply", premises=None, new_goals=None):
 
 
 class TestSearchResult(unittest.TestCase):
-
     def test_defaults(self):
         r = SearchResult(success=True, theorem_id="thm1")
         self.assertEqual(r.success, True)
@@ -76,7 +75,6 @@ class TestSearchResult(unittest.TestCase):
 
 
 class TestTryHammer(unittest.TestCase):
-
     @patch("src.proof_search.resolve")
     def test_success_mutates_state(self, mock_resolve):
         """Hammer succeeds: goal popped, closed, tactic recorded, seeds cleared."""
@@ -85,7 +83,10 @@ class TestTryHammer(unittest.TestCase):
 
         lean = MagicMock()
         lean.try_hammer.return_value = _make_tactic_result(
-            success=True, tactic="omega", premises=["lem1"], new_goals=["subgoal1"],
+            success=True,
+            tactic="omega",
+            premises=["lem1"],
+            new_goals=["subgoal1"],
         )
 
         state = _SearchState(open_goals=["goal_A", "goal_B"])
@@ -179,7 +180,6 @@ class TestTryHammer(unittest.TestCase):
 
 
 class TestTryCandidates(unittest.TestCase):
-
     @patch("src.proof_search.resolve")
     def test_first_candidate_succeeds(self, mock_resolve):
         """First candidate succeeds: state updated, returns True."""
@@ -190,14 +190,24 @@ class TestTryCandidates(unittest.TestCase):
 
         lean = MagicMock()
         lean.try_tactic.return_value = _make_tactic_result(
-            success=True, tactic="exact h", new_goals=[],
+            success=True,
+            tactic="exact h",
+            new_goals=[],
         )
 
         state = _SearchState(open_goals=["goal_X", "goal_Y"])
         nav = _make_nav_output()
 
         result = _try_candidates(
-            "goal_X", 0, nav, state, MagicMock(), lean, SearchContext(), None, 8,
+            "goal_X",
+            0,
+            nav,
+            state,
+            MagicMock(),
+            lean,
+            SearchContext(),
+            None,
+            8,
         )
 
         self.assertEqual(result, True)
@@ -223,7 +233,15 @@ class TestTryCandidates(unittest.TestCase):
         nav = _make_nav_output()
 
         result = _try_candidates(
-            "g1", 0, nav, state, MagicMock(), lean, SearchContext(), None, 8,
+            "g1",
+            0,
+            nav,
+            state,
+            MagicMock(),
+            lean,
+            SearchContext(),
+            None,
+            8,
         )
 
         self.assertEqual(result, False)
@@ -234,9 +252,7 @@ class TestTryCandidates(unittest.TestCase):
     @patch("src.proof_search.resolve")
     def test_respects_max_candidates(self, mock_resolve):
         """Only max_candidates candidates are tried even if more are available."""
-        mock_resolve.return_value = [
-            _make_candidate(tactic=f"t{i}") for i in range(10)
-        ]
+        mock_resolve.return_value = [_make_candidate(tactic=f"t{i}") for i in range(10)]
 
         lean = MagicMock()
         lean.try_tactic.return_value = _make_tactic_result(success=False, tactic="t")
@@ -267,7 +283,15 @@ class TestTryCandidates(unittest.TestCase):
         nav = _make_nav_output()
 
         result = _try_candidates(
-            "g1", 0, nav, state, MagicMock(), lean, SearchContext(), None, 8,
+            "g1",
+            0,
+            nav,
+            state,
+            MagicMock(),
+            lean,
+            SearchContext(),
+            None,
+            8,
         )
 
         self.assertEqual(result, True)
@@ -283,7 +307,9 @@ class TestTryCandidates(unittest.TestCase):
 
         lean = MagicMock()
         lean.try_tactic.return_value = _make_tactic_result(
-            success=True, tactic="cases", new_goals=["case1", "case2"],
+            success=True,
+            tactic="cases",
+            new_goals=["case1", "case2"],
         )
 
         state = _SearchState(open_goals=["g"])
@@ -304,7 +330,15 @@ class TestTryCandidates(unittest.TestCase):
         nav = _make_nav_output()
 
         result = _try_candidates(
-            "g", 0, nav, state, MagicMock(), lean, SearchContext(), None, 8,
+            "g",
+            0,
+            nav,
+            state,
+            MagicMock(),
+            lean,
+            SearchContext(),
+            None,
+            8,
         )
 
         self.assertEqual(result, False)

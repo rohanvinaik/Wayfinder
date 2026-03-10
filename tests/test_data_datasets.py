@@ -67,8 +67,14 @@ def _make_nav_example(
         theorem_id=theorem_id,
         step_index=step_index,
         total_steps=total_steps,
-        nav_directions={"structure": 1, "domain": 0, "depth": -1,
-                        "automation": 0, "context": 1, "decomposition": -1},
+        nav_directions={
+            "structure": 1,
+            "domain": 0,
+            "depth": -1,
+            "automation": 0,
+            "context": 1,
+            "decomposition": -1,
+        },
         anchor_labels=["Nat.add_comm", "Nat.succ"],
         ground_truth_tactic="ring",
         ground_truth_premises=["Nat.add_comm"],
@@ -81,9 +87,7 @@ def _make_nav_example(
 def _write_jsonl(records: list[dict], *, blank_lines: list[int] | None = None) -> Path:
     """Write dicts as JSONL to a temp file, optionally inserting blank lines."""
     blank_set = set(blank_lines or [])
-    tmp = tempfile.NamedTemporaryFile(
-        suffix=".jsonl", delete=False, mode="w"
-    )
+    tmp = tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False, mode="w")
     for i, rec in enumerate(records):
         if i in blank_set:
             tmp.write("\n")
@@ -105,8 +109,9 @@ class TestOODPromptDataset(unittest.TestCase):
 
     def _make_dataset(self, n: int = 3) -> tuple[OODPromptDataset, list[OODPrompt]]:
         prompts = [
-            _make_ood_prompt(f"prompt_{i}", "in_domain" if i % 2 == 0 else "ood",
-                             f"cat_{i}", f"src_{i}")
+            _make_ood_prompt(
+                f"prompt_{i}", "in_domain" if i % 2 == 0 else "ood", f"cat_{i}", f"src_{i}"
+            )
             for i in range(n)
         ]
         path = _write_jsonl([p.to_dict() for p in prompts])
@@ -120,6 +125,7 @@ class TestOODPromptDataset(unittest.TestCase):
         ds, prompts = self._make_dataset(2)
         item = ds[0]
         self.assertIsInstance(item, OODPrompt)
+        self.assertEqual(item.prompt, "prompt_0")
 
     def test_getitem_correct_fields(self):
         ds, prompts = self._make_dataset(2)
@@ -135,6 +141,12 @@ class TestOODPromptDataset(unittest.TestCase):
     def test_path_attribute(self):
         ds, _ = self._make_dataset(1)
         self.assertIsInstance(ds.path, Path)
+        self.assertTrue(ds.path.exists())
+        # Path should end with .jsonl suffix
+        self.assertEqual(ds.path.suffix, ".jsonl")
+        # Dataset loaded 1 record, confirming path was used correctly
+        self.assertEqual(len(ds), 1)
+        self.assertEqual(ds[0].prompt, "prompt_0")
 
     def test_empty_file(self):
         tmp = tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False, mode="w")
@@ -174,6 +186,7 @@ class TestNegativeBankDataset(unittest.TestCase):
     def test_getitem_returns_negative_bank_entry(self):
         ds, _ = self._make_dataset(1)
         self.assertIsInstance(ds[0], NegativeBankEntry)
+        self.assertEqual(ds[0].theorem_id, "thm.0")
 
     def test_getitem_correct_fields(self):
         ds, entries = self._make_dataset(2)
@@ -197,6 +210,8 @@ class TestNegativeBankDataset(unittest.TestCase):
     def test_negative_is_none_when_absent(self):
         ds, _ = self._make_dataset(1, with_negative=False)
         self.assertIsNone(ds[0].negative)
+        self.assertIsNotNone(ds[0].positive)
+        self.assertEqual(ds[0].positive.theorem_id, "thm.0")
 
     def test_empty_file(self):
         tmp = tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False, mode="w")
@@ -207,6 +222,12 @@ class TestNegativeBankDataset(unittest.TestCase):
     def test_path_attribute(self):
         ds, _ = self._make_dataset(1)
         self.assertIsInstance(ds.path, Path)
+        self.assertTrue(ds.path.exists())
+        # Path should end with .jsonl suffix
+        self.assertEqual(ds.path.suffix, ".jsonl")
+        # Dataset loaded 1 record, confirming path was used correctly
+        self.assertEqual(len(ds), 1)
+        self.assertEqual(ds[0].theorem_id, "thm.0")
 
 
 # ===================================================================
@@ -261,6 +282,7 @@ class TestNavigationalDataset(unittest.TestCase):
         path = self._write_nav_file()
         ds = NavigationalDataset(path)
         self.assertIsInstance(ds[0], NavigationalExample)
+        self.assertEqual(ds[0].theorem_id, "short1")
 
     def test_getitem_correct_fields(self):
         path = self._write_nav_file()

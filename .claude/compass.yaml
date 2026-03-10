@@ -10,6 +10,79 @@ axes:
       confidence: 0.5
       provenance: inferred
       origin_facet: core_theory
+    - text: 'README: **Proof search as navigation, not prediction.**'
+      source: README.md
+      heading: ''
+      confidence: 0.5
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'anchor_gap_analysis.py: Anchor gap analysis — iterative recall validation
+        for the proof network.'
+      source: docstring:anchor_gap_analysis.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'benchmark_lane_b.py: Lane B (Axle) post-processing for benchmark results.'
+      source: docstring:benchmark_lane_b.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'build_nav_training_data.py: Standalone worker: convert proof steps to
+        NavigationalExample JSONL.'
+      source: docstring:build_nav_training_data.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'eval_retrieval.py: Evaluate navigational retrieval vs dense retrieval
+        baseline.'
+      source: docstring:eval_retrieval.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'eval_spreading.py: Evaluate spreading activation benefit in the proof
+        network.'
+      source: docstring:eval_spreading.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'extract_proof_network.py: Standalone worker: extract proof network entities
+        from LeanDojo JSONL export.'
+      source: docstring:extract_proof_network.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'run_benchmark.py: Benchmark runner — MiniF2F + Mathlib proof search evaluation.'
+      source: docstring:run_benchmark.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'tactic_maps.py: Tactic-to-bank direction mappings, anchor maps, and domain
+        classification.'
+      source: docstring:tactic_maps.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'train_navigator.py: Train the Wayfinder navigational proof search pipeline.'
+      source: docstring:train_navigator.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'train_targets.py: Target tensor builders and evaluation helpers for navigator
+        training.'
+      source: docstring:train_targets.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
     - text: '__init__.py: Balanced Sashimi: hybrid continuous-ternary architecture
         for proof synthesis.'
       source: docstring:__init__.py
@@ -31,7 +104,7 @@ axes:
       confidence: 0.4
       provenance: inferred
       origin_facet: core_theory
-    - text: 'contracts.py: Balanced Sashimi data contracts for proof synthesis.'
+    - text: 'contracts.py: Wayfinder data contracts.'
       source: docstring:contracts.py
       heading: ''
       confidence: 0.4
@@ -50,8 +123,8 @@ axes:
       confidence: 0.4
       provenance: inferred
       origin_facet: core_theory
-    - text: 'encoder.py: Goal-state encoder — frozen sentence-transformer producing
-        semantic embeddings.'
+    - text: 'encoder.py: Goal-state encoder — produces semantic embeddings from Lean
+        goal state text.'
       source: docstring:encoder.py
       heading: ''
       confidence: 0.4
@@ -71,6 +144,12 @@ axes:
       confidence: 0.4
       provenance: inferred
       origin_facet: core_theory
+    - text: 'lean_interface.py: Lean kernel interface — Pantograph-based tactic verification.'
+      source: docstring:lean_interface.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
     - text: 'losses.py: Composite loss with adaptive UW-SO weighting.'
       source: docstring:losses.py
       heading: ''
@@ -80,6 +159,12 @@ axes:
     - text: 'lowering.py: Deterministic lowering — converts ProofExample tier tokens
         to Lean tactic proof text.'
       source: docstring:lowering.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'nav_contracts.py: Wayfinder navigational data contracts.'
+      source: docstring:nav_contracts.py
       heading: ''
       confidence: 0.4
       provenance: inferred
@@ -99,6 +184,40 @@ axes:
       origin_facet: core_theory
     - text: 'pab_tracker.py: PAB training tracker with checkpoint accumulation.'
       source: docstring:pab_tracker.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'proof_auditor.py: Proof auditor — Lane B verification, repair, and decomposition
+        via Axle API.'
+      source: docstring:proof_auditor.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'proof_navigator.py: 6-bank ternary navigational decoder for proof search.'
+      source: docstring:proof_navigator.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'proof_network.py: Proof network — SQLite semantic network of mathematical
+        entities.'
+      source: docstring:proof_network.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'proof_search.py: Proof search — outer loop managing goal selection, neural
+        inference, and verification.'
+      source: docstring:proof_search.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'resolution.py: Resolution — convert navigator output to concrete tactic
+        + premise candidates.'
+      source: docstring:resolution.py
       heading: ''
       confidence: 0.4
       provenance: inferred
@@ -156,8 +275,36 @@ axes:
       confidence: 0.4
       provenance: inferred
       origin_facet: core_theory
+    - text: 'test_anchor_gap_analysis.py: Tests for anchor gap analysis pure functions
+        and DB queries.'
+      source: docstring:test_anchor_gap_analysis.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'test_behavioral_fingerprint.py: Tests for behavioral_fingerprint — pure
+        numerical functions.'
+      source: docstring:test_behavioral_fingerprint.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'test_behavioral_fingerprint_classes.py: Tests for behavioral_fingerprint
+        — drift, stability, dataclass methods, save/load.'
+      source: docstring:test_behavioral_fingerprint_classes.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
     - text: 'test_contracts.py: Tests for data contracts — roundtrip serialization.'
       source: docstring:test_contracts.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'test_data_datasets.py: Tests for data.py dataset classes: OODPromptDataset,
+        NegativeBankDataset, NavigationalDataset.'
+      source: docstring:test_data_datasets.py
       heading: ''
       confidence: 0.4
       provenance: inferred
@@ -168,42 +315,22 @@ axes:
       confidence: 0.4
       provenance: inferred
       origin_facet: core_theory
-    - text: 'test_losses.py: Tests for composite loss and OOD loss.'
-      source: docstring:test_losses.py
+    - text: 'test_data_loaders.py: Tests for data.py JSONL loader functions.'
+      source: docstring:test_data_loaders.py
       heading: ''
       confidence: 0.4
       provenance: inferred
       origin_facet: core_theory
-    - text: 'test_lowering.py: Tests for proof lowering -- ProofExample to Lean tactic
-        syntax.'
-      source: docstring:test_lowering.py
+    - text: 'test_evaluate_helpers.py: Tests for evaluate.py — pure helper functions
+        (torch-free).'
+      source: docstring:test_evaluate_helpers.py
       heading: ''
       confidence: 0.4
       provenance: inferred
       origin_facet: core_theory
-    - text: 'test_pab_tracker.py: Tests for PAB tracker -- accumulation and profile
-        generation.'
-      source: docstring:test_pab_tracker.py
-      heading: ''
-      confidence: 0.4
-      provenance: inferred
-      origin_facet: core_theory
-    - text: 'test_smoke_e2e.py: Smoke test -- verify the full pipeline forward pass
-        works end-to-end.'
-      source: docstring:test_smoke_e2e.py
-      heading: ''
-      confidence: 0.4
-      provenance: inferred
-      origin_facet: core_theory
-    - text: 'test_ternary.py: Tests for ternary quantization -- values in {-1, 0,
-        +1} and STE backward finite.'
-      source: docstring:test_ternary.py
-      heading: ''
-      confidence: 0.4
-      provenance: inferred
-      origin_facet: core_theory
-    - text: 'test_verification.py: Tests for the proof verification module.'
-      source: docstring:test_verification.py
+    - text: 'test_lean_interface.py: Tests for lean_interface — LeanKernel stub backend
+        and config.'
+      source: docstring:test_lean_interface.py
       heading: ''
       confidence: 0.4
       provenance: inferred
@@ -267,6 +394,20 @@ axes:
       confidence: 0.55
       provenance: inferred
       origin_facet: enforceable_rules
+    - text: 'anchor_gap_analysis.py:GapRecord: A single gap analysis result for one
+        proof step.'
+      source: docstring:anchor_gap_analysis.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'train_navigator.py:TrainContext: Bundles all shared training state to
+        reduce argument passing.'
+      source: docstring:train_navigator.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
     - text: 'behavioral_fingerprint.py:BehavioralFingerprint: Behavioral signature
         of a model at a training checkpoint.'
       source: docstring:behavioral_fingerprint.py
@@ -346,6 +487,13 @@ axes:
       confidence: 0.35
       provenance: inferred
       origin_facet: abstractions
+    - text: 'data.py:NavigationalDataset: PyTorch Dataset for Wayfinder navigational
+        training data.'
+      source: docstring:data.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
     - text: 'domain_gate.py:GateDecision: Domain gate classification result.'
       source: docstring:domain_gate.py
       heading: ''
@@ -359,8 +507,7 @@ axes:
       confidence: 0.35
       provenance: inferred
       origin_facet: abstractions
-    - text: 'encoder.py:GoalEncoder: Frozen sentence-transformer encoder for goal
-        state embeddings.'
+    - text: 'encoder.py:GoalEncoder: Encoder for goal state embeddings.'
       source: docstring:encoder.py
       heading: ''
       confidence: 0.35
@@ -380,6 +527,19 @@ axes:
       confidence: 0.35
       provenance: inferred
       origin_facet: abstractions
+    - text: 'lean_interface.py:LeanConfig: Configuration for Lean kernel connection.'
+      source: docstring:lean_interface.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'lean_interface.py:LeanKernel: Interface to the Lean 4 kernel for tactic
+        verification.'
+      source: docstring:lean_interface.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
     - text: 'losses.py:CompositeLoss: Adaptive multi-task loss for Balanced Sashimi
         training.'
       source: docstring:losses.py
@@ -389,6 +549,47 @@ axes:
       origin_facet: abstractions
     - text: 'losses.py:OODLoss: Binary cross-entropy loss for domain gate training.'
       source: docstring:losses.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'losses.py:NavigationalLoss: Adaptive multi-task loss for Wayfinder navigational
+        training.'
+      source: docstring:losses.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'nav_contracts.py:NavigationalExample: A single navigational training/eval
+        example.'
+      source: docstring:nav_contracts.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'nav_contracts.py:StructuredQuery: A navigational query for the proof
+        network.'
+      source: docstring:nav_contracts.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'nav_contracts.py:ScoredEntity: A proof network entity with its retrieval
+        score breakdown.'
+      source: docstring:nav_contracts.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'nav_contracts.py:NavOutput: Output of the ProofNavigator neural network.'
+      source: docstring:nav_contracts.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'nav_contracts.py:TacticResult: Result of applying a tactic to a goal
+        state via the Lean kernel.'
+      source: docstring:nav_contracts.py
       heading: ''
       confidence: 0.35
       provenance: inferred
@@ -464,6 +665,77 @@ axes:
       confidence: 0.35
       provenance: inferred
       origin_facet: abstractions
+    - text: 'proof_auditor.py:SuccessCategory: Metric separation for proof success
+        claims.'
+      source: docstring:proof_auditor.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'proof_auditor.py:AuditResult: Result of a Lane B proof audit operation.'
+      source: docstring:proof_auditor.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'proof_auditor.py:AuditorConfig: Configuration for the ProofAuditor.'
+      source: docstring:proof_auditor.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'proof_auditor.py:ProofAuditor: Lane B: Axle-based proof verification,
+        repair, and decomposition.'
+      source: docstring:proof_auditor.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'proof_navigator.py:ProofNavigator: 6-bank ternary navigational decoder.'
+      source: docstring:proof_navigator.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'proof_search.py:SearchConfig: Configuration for proof search.'
+      source: docstring:proof_search.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'proof_search.py:SearchResult: Result of a proof search attempt.'
+      source: docstring:proof_search.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'proof_search.py:Pipeline: Bundles the neural pipeline components for
+        proof search.'
+      source: docstring:proof_search.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'proof_search.py:_SearchState: Mutable state for a single proof search
+        run.'
+      source: docstring:proof_search.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'resolution.py:SearchContext: Context for proof search resolution.'
+      source: docstring:resolution.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'resolution.py:Candidate: A resolved tactic-premise candidate for the
+        Lean kernel.'
+      source: docstring:resolution.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
     - text: 'ternary_decoder.py:TernaryLinear: Linear layer with ternary weights via
         STE.'
       source: docstring:ternary_decoder.py
@@ -506,6 +778,92 @@ axes:
       confidence: 0.35
       provenance: inferred
       origin_facet: abstractions
+    - text: 'test_anchor_gap_analysis.py:_DBTestCase: Base class that creates a temporary
+        on-disk SQLite DB for tests.'
+      source: docstring:test_anchor_gap_analysis.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'test_behavioral_fingerprint.py:TestComputeActionEntropy: Test Shannon
+        entropy computation over action predictions.'
+      source: docstring:test_behavioral_fingerprint.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'test_behavioral_fingerprint.py:TestComputeActionDistribution: Test normalized
+        frequency distribution computation.'
+      source: docstring:test_behavioral_fingerprint.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'test_behavioral_fingerprint.py:TestComputeVarianceEigenvalues: Test top
+        eigenvalue extraction from output logits.'
+      source: docstring:test_behavioral_fingerprint.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'test_behavioral_fingerprint.py:TestComputeDiscreteness: Test discreteness
+        score from output logits.'
+      source: docstring:test_behavioral_fingerprint.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'test_behavioral_fingerprint_classes.py:TestDistributionDrift: Test Jensen-Shannon
+        divergence between action distributions.'
+      source: docstring:test_behavioral_fingerprint_classes.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'test_behavioral_fingerprint_classes.py:TestFingerprintStability: Test
+        stability metrics across training checkpoints.'
+      source: docstring:test_behavioral_fingerprint_classes.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'test_behavioral_fingerprint_classes.py:TestBehavioralFingerprintDataclass:
+        Test BehavioralFingerprint methods: to_dict, from_dict, save, load, factories.'
+      source: docstring:test_behavioral_fingerprint_classes.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'test_data_datasets.py:TestOODPromptDataset: Tests for OODPromptDataset.'
+      source: docstring:test_data_datasets.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'test_data_datasets.py:TestNegativeBankDataset: Tests for NegativeBankDataset.'
+      source: docstring:test_data_datasets.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'test_data_datasets.py:TestNavigationalDataset: Tests for NavigationalDataset.'
+      source: docstring:test_data_datasets.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'test_data_loaders.py:TestLoadOODPromptsJsonl: Tests for load_ood_prompts_jsonl.'
+      source: docstring:test_data_loaders.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'test_data_loaders.py:TestLoadNavExamplesJsonl: Tests for load_nav_examples_jsonl.'
+      source: docstring:test_data_loaders.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
     summary: Uses unittest
     depth: 3
   world:
@@ -517,20 +875,32 @@ axes:
       confidence: 0.5
       provenance: inferred
       origin_facet: ''
+    - text: CI pipeline detected
+      source: README.md
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: ''
+    - text: Code coverage tracking
+      source: README.md
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: ''
     - text: Has docs/ directory
       source: directory_structure
       heading: ''
       confidence: 0.4
       provenance: inferred
       origin_facet: ''
-    - text: 'Test suite: 8 test file(s)'
+    - text: 'Test suite: 27 test file(s)'
       source: test_patterns
       heading: ''
       confidence: 0.5
       provenance: inferred
       origin_facet: ''
-    summary: 'Test suite: 8 test file(s)'
-    depth: 1
+    summary: 'Test suite: 27 test file(s)'
+    depth: 2
 directives:
 - kind: forbidden
   text: proposed_rules
@@ -549,12 +919,11 @@ gap_report:
     problem: 3
     solution: 1
     implementation: 3
-    world: 1
+    world: 2
   spikiness: 0.3333
   sparse_axes:
   - solution
-  - world
   interview_recommended: true
-forged_at: 1772812143.887886
+forged_at: 1773160463.179032
 frozen: false
 frozen_hash: ''

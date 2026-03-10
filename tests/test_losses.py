@@ -25,6 +25,13 @@ class TestCompositeLoss(unittest.TestCase):
         targets = torch.randint(0, 20, (8,))
         result = loss_fn(logits, targets)
         self.assertTrue(torch.isfinite(result["L_total"]))
+        # L_total should be a scalar tensor
+        self.assertEqual(result["L_total"].dim(), 0)
+        # Without negatives or repair_weights, L_margin and L_repair are zero
+        self.assertAlmostEqual(result["L_margin"].item(), 0.0, places=6)
+        self.assertAlmostEqual(result["L_repair"].item(), 0.0, places=6)
+        # L_ce (cross-entropy) must be positive for random logits
+        self.assertGreater(result["L_ce"].item(), 0.0)
 
     def test_adaptive_weights_are_positive(self):
         loss_fn = CompositeLoss()

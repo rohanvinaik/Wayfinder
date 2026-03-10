@@ -176,40 +176,21 @@ def compose_bank_scores(
 # ---------------------------------------------------------------------------
 
 
-def navigate(
-    conn: sqlite3.Connection,
+def _score_candidates(
+    candidate_ids: list[int],
+    positions: dict[int, dict[str, int]],
+    entity_anchor_sets: dict[int, set[int]],
+    idf_cache: dict[int, float],
+    names: dict[int, str],
     query: StructuredQuery,
-    limit: int = 16,
-    mechanism: str = "confidence_weighted",
-    entity_type: str | None = None,
+    seed_anchors: set[int],
+    mechanism: str,
 ) -> list[ScoredEntity]:
-    """Retrieve entities from the proof network matching a navigational query.
+    """Score and rank candidate entities against a navigational query.
 
-    Steps:
-        1. Pre-filter by accessible premises (if theorem_id given)
-        2. Pre-filter by required anchors (hard filter)
-        3. Batch-fetch positions and anchor sets for candidates
-        4. Score: bank_alignment × anchor_relevance × seed_similarity
-        5. Return top-k by final_score
+    Pure computation — no DB access. Takes pre-fetched data and returns
+    scored entities sorted by final_score descending.
     """
-    # Step 1+2: Build candidate set
-    candidate_ids = _get_candidates(conn, query, entity_type)
-    if not candidate_ids:
-        return []
-
-    # Step 3: Batch-fetch positions and anchors
-    positions = _batch_get_positions(conn, candidate_ids)
-    entity_anchor_sets = _batch_get_anchor_sets(conn, candidate_ids)
-    idf_cache = _get_idf_cache(conn)
-    names = _batch_get_names(conn, candidate_ids)
-
-    # Precompute seed anchor set for seed similarity
-    seed_anchors: set[int] = set()
-    if query.seed_entity_ids:
-        for sid in query.seed_entity_ids:
-            seed_anchors.update(entity_anchor_sets.get(sid, set()))
-
-    # Step 4: Score each candidate
     results: list[ScoredEntity] = []
     for eid in candidate_ids:
         b_score = _compute_bank_score(positions.get(eid, {}), query, mechanism)
@@ -227,8 +208,43 @@ def navigate(
                     seed_score=s_score,
                 )
             )
-
     results.sort(key=lambda e: e.final_score, reverse=True)
+    return results
+
+
+def navigate(
+    conn: sqlite3.Connection,
+    query: StructuredQuery,
+    limit: int = 16,
+    mechanism: str = "confidence_weighted",
+    entity_type: str | None = None,
+) -> list[ScoredEntity]:
+    """Retrieve entities from the proof network matching a navigational query.
+
+    Orchestration: fetches data from DB, delegates scoring to _score_candidates.
+    """
+    # Fetch candidate set from DB
+    candidate_ids = _get_candidates(conn, query, entity_type)
+    if not candidate_ids:
+        return []
+
+    # Batch-fetch all data needed for scoring
+    positions = _batch_get_positions(conn, candidate_ids)
+    entity_anchor_sets = _batch_get_anchor_sets(conn, candidate_ids)
+    idf_cache = _get_idf_cache(conn)
+    names = _batch_get_names(conn, candidate_ids)
+
+    # Precompute seed anchor set
+    seed_anchors: set[int] = set()
+    if query.seed_entity_ids:
+        for sid in query.seed_entity_ids:
+            seed_anchors.update(entity_anchor_sets.get(sid, set()))
+
+    # Pure scoring
+    results = _score_candidates(
+        candidate_ids, positions, entity_anchor_sets, idf_cache, names,
+        query, seed_anchors, mechanism,
+    )
     return results[:limit]
 
 

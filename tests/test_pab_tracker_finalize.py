@@ -21,10 +21,13 @@ class TestBuildDomainData(unittest.TestCase):
         tracker = PABTracker(experiment_id="DOM")
         # Record enough checkpoints with domain data for classify_domain to work
         for i in range(6):
-            tracker.record(CheckpointData(
-                step=(i + 1) * 50, train_loss=2.0 - i * 0.2,
-                domain_accuracies={"algebra": 0.85},
-            ))
+            tracker.record(
+                CheckpointData(
+                    step=(i + 1) * 50,
+                    train_loss=2.0 - i * 0.2,
+                    domain_accuracies={"algebra": 0.85},
+                )
+            )
         profile = tracker.finalize()
         # "algebra" has 6 entries all at 0.85 >= 0.80
         self.assertEqual(profile.domains.domain_classification["algebra"], "early")
@@ -34,10 +37,13 @@ class TestBuildDomainData(unittest.TestCase):
         # First entries below 0.80, last entry at 0.85
         accs = [0.50, 0.55, 0.60, 0.65, 0.70, 0.85]
         for i, a in enumerate(accs):
-            tracker.record(CheckpointData(
-                step=(i + 1) * 50, train_loss=2.0 - i * 0.2,
-                domain_accuracies={"topology": a},
-            ))
+            tracker.record(
+                CheckpointData(
+                    step=(i + 1) * 50,
+                    train_loss=2.0 - i * 0.2,
+                    domain_accuracies={"topology": a},
+                )
+            )
         profile = tracker.finalize()
         # third = 6//3 = 2, accs[:2] = [0.50, 0.55] -> not reached_early
         # reached_ever = True (0.85 >= 0.80)
@@ -47,15 +53,16 @@ class TestBuildDomainData(unittest.TestCase):
     def test_tactic_progression_included_when_domains_present(self):
         tracker = PABTracker(experiment_id="DOM")
         for i in range(4):
-            tracker.record(CheckpointData(
-                step=(i + 1) * 50, train_loss=1.0,
-                domain_accuracies={"algebra": 0.70},
-                tactic_accuracies={"simp": 0.80},
-            ))
+            tracker.record(
+                CheckpointData(
+                    step=(i + 1) * 50,
+                    train_loss=1.0,
+                    domain_accuracies={"algebra": 0.70},
+                    tactic_accuracies={"simp": 0.80},
+                )
+            )
         profile = tracker.finalize()
-        self.assertEqual(
-            profile.domains.tactic_progression["simp"], [0.80] * 4
-        )
+        self.assertEqual(profile.domains.tactic_progression["simp"], [0.80] * 4)
 
 
 class TestFinalizeExactValues(unittest.TestCase):
@@ -63,21 +70,33 @@ class TestFinalizeExactValues(unittest.TestCase):
 
     def test_three_checkpoints_exact_profile(self):
         tracker = PABTracker(experiment_id="EXACT", config_hash="abc123")
-        tracker.record(CheckpointData(
-            step=50, train_loss=2.0, val_loss=2.2,
-            tier_accuracies={"tier1": 0.40, "tier2": 0.30, "tier3": 0.20},
-            loss_components={"ce": 1.5, "margin": 0.3, "repair": 0.2},
-        ))
-        tracker.record(CheckpointData(
-            step=100, train_loss=1.0, val_loss=1.3,
-            tier_accuracies={"tier1": 0.60, "tier2": 0.50, "tier3": 0.35},
-            loss_components={"ce": 0.7, "margin": 0.2, "repair": 0.1},
-        ))
-        tracker.record(CheckpointData(
-            step=150, train_loss=0.5, val_loss=0.8,
-            tier_accuracies={"tier1": 0.75, "tier2": 0.65, "tier3": 0.50},
-            loss_components={"ce": 0.3, "margin": 0.1, "repair": 0.1},
-        ))
+        tracker.record(
+            CheckpointData(
+                step=50,
+                train_loss=2.0,
+                val_loss=2.2,
+                tier_accuracies={"tier1": 0.40, "tier2": 0.30, "tier3": 0.20},
+                loss_components={"ce": 1.5, "margin": 0.3, "repair": 0.2},
+            )
+        )
+        tracker.record(
+            CheckpointData(
+                step=100,
+                train_loss=1.0,
+                val_loss=1.3,
+                tier_accuracies={"tier1": 0.60, "tier2": 0.50, "tier3": 0.35},
+                loss_components={"ce": 0.7, "margin": 0.2, "repair": 0.1},
+            )
+        )
+        tracker.record(
+            CheckpointData(
+                step=150,
+                train_loss=0.5,
+                val_loss=0.8,
+                tier_accuracies={"tier1": 0.75, "tier2": 0.65, "tier3": 0.50},
+                loss_components={"ce": 0.3, "margin": 0.1, "repair": 0.1},
+            )
+        )
         profile = tracker.finalize()
 
         self.assertEqual(profile.experiment_id, "EXACT")
@@ -124,12 +143,8 @@ class TestFinalizeExactValues(unittest.TestCase):
         # stability = [0.0, 0.5, 0.5]
         expected_mean = float(np.mean([0.0, 0.5, 0.5]))
         expected_std = float(np.std([0.0, 0.5, 0.5]))
-        self.assertAlmostEqual(
-            profile.summary.stability_mean, expected_mean, places=5
-        )
-        self.assertAlmostEqual(
-            profile.summary.stability_std, expected_std, places=5
-        )
+        self.assertAlmostEqual(profile.summary.stability_mean, expected_mean, places=5)
+        self.assertAlmostEqual(profile.summary.stability_std, expected_std, places=5)
 
     def test_summary_predictability_final(self):
         tracker = PABTracker(experiment_id="SUM")
@@ -140,9 +155,7 @@ class TestFinalizeExactValues(unittest.TestCase):
         # predictability[-1] = var of loss deltas at step 3
         # deltas = [-1.0, -0.5], var = 0.0625
         expected = float(np.var([-1.0, -0.5]))
-        self.assertAlmostEqual(
-            profile.summary.predictability_final, expected, places=7
-        )
+        self.assertAlmostEqual(profile.summary.predictability_final, expected, places=7)
 
     def test_summary_regime(self):
         tracker = PABTracker(experiment_id="SUM")
@@ -179,18 +192,27 @@ class TestFinalizeExactValues(unittest.TestCase):
 
     def test_summary_tier_convergence_steps(self):
         tracker = PABTracker(experiment_id="SUM")
-        tracker.record(CheckpointData(
-            step=50, train_loss=2.0,
-            tier_accuracies={"tier1": 0.50, "tier2": 0.60, "tier3": 0.30},
-        ))
-        tracker.record(CheckpointData(
-            step=100, train_loss=1.5,
-            tier_accuracies={"tier1": 0.70, "tier2": 0.75, "tier3": 0.45},
-        ))
-        tracker.record(CheckpointData(
-            step=150, train_loss=1.0,
-            tier_accuracies={"tier1": 0.85, "tier2": 0.80, "tier3": 0.60},
-        ))
+        tracker.record(
+            CheckpointData(
+                step=50,
+                train_loss=2.0,
+                tier_accuracies={"tier1": 0.50, "tier2": 0.60, "tier3": 0.30},
+            )
+        )
+        tracker.record(
+            CheckpointData(
+                step=100,
+                train_loss=1.5,
+                tier_accuracies={"tier1": 0.70, "tier2": 0.75, "tier3": 0.45},
+            )
+        )
+        tracker.record(
+            CheckpointData(
+                step=150,
+                train_loss=1.0,
+                tier_accuracies={"tier1": 0.85, "tier2": 0.80, "tier3": 0.60},
+            )
+        )
         profile = tracker.finalize()
         self.assertEqual(profile.summary.tier1_convergence_step, 150)
         self.assertEqual(profile.summary.tier2_convergence_step, 100)
@@ -198,10 +220,13 @@ class TestFinalizeExactValues(unittest.TestCase):
     def test_summary_tier_convergence_never_reached(self):
         tracker = PABTracker(experiment_id="SUM")
         for i in range(3):
-            tracker.record(CheckpointData(
-                step=(i + 1) * 50, train_loss=2.0,
-                tier_accuracies={"tier1": 0.50, "tier2": 0.40, "tier3": 0.30},
-            ))
+            tracker.record(
+                CheckpointData(
+                    step=(i + 1) * 50,
+                    train_loss=2.0,
+                    tier_accuracies={"tier1": 0.50, "tier2": 0.40, "tier3": 0.30},
+                )
+            )
         profile = tracker.finalize()
         self.assertIsNone(profile.summary.tier1_convergence_step)
         self.assertIsNone(profile.summary.tier2_convergence_step)
@@ -229,15 +254,9 @@ class TestComputeSummary(unittest.TestCase):
         signs1 = np.array([1.0, -1.0, 0.0, 1.0])
         signs2 = np.array([1.0, -1.0, 0.0, 1.0])
         signs3 = np.array([1.0, -1.0, 0.0, 1.0])
-        tracker.record(CheckpointData(
-            step=50, train_loss=2.0, decoder_weight_signs=signs1
-        ))
-        tracker.record(CheckpointData(
-            step=100, train_loss=1.5, decoder_weight_signs=signs2
-        ))
-        tracker.record(CheckpointData(
-            step=150, train_loss=1.0, decoder_weight_signs=signs3
-        ))
+        tracker.record(CheckpointData(step=50, train_loss=2.0, decoder_weight_signs=signs1))
+        tracker.record(CheckpointData(step=100, train_loss=1.5, decoder_weight_signs=signs2))
+        tracker.record(CheckpointData(step=150, train_loss=1.0, decoder_weight_signs=signs3))
         profile = tracker.finalize()
         self.assertGreater(profile.summary.crystallization_rate, 0.0)
 
@@ -245,12 +264,8 @@ class TestComputeSummary(unittest.TestCase):
         tracker = PABTracker(experiment_id="FI")
         signs1 = np.array([1.0, -1.0, 0.0])
         signs2 = np.array([1.0, 1.0, 0.0])
-        tracker.record(CheckpointData(
-            step=50, train_loss=2.0, decoder_weight_signs=signs1
-        ))
-        tracker.record(CheckpointData(
-            step=100, train_loss=1.5, decoder_weight_signs=signs2
-        ))
+        tracker.record(CheckpointData(step=50, train_loss=2.0, decoder_weight_signs=signs1))
+        tracker.record(CheckpointData(step=100, train_loss=1.5, decoder_weight_signs=signs2))
         profile = tracker.finalize()
         # Two weight snapshots -> feature_importance_L > 0 (signs differ)
         self.assertGreater(profile.summary.feature_importance_L, 0.0)
@@ -258,17 +273,11 @@ class TestComputeSummary(unittest.TestCase):
     def test_feature_importance_identical_snapshots(self):
         tracker = PABTracker(experiment_id="FI")
         signs = np.array([1.0, -1.0, 0.0])
-        tracker.record(CheckpointData(
-            step=50, train_loss=2.0, decoder_weight_signs=signs
-        ))
-        tracker.record(CheckpointData(
-            step=100, train_loss=1.5, decoder_weight_signs=signs.copy()
-        ))
+        tracker.record(CheckpointData(step=50, train_loss=2.0, decoder_weight_signs=signs))
+        tracker.record(CheckpointData(step=100, train_loss=1.5, decoder_weight_signs=signs.copy()))
         profile = tracker.finalize()
         # Identical snapshots -> feature_importance_L = 0.0
-        self.assertAlmostEqual(
-            profile.summary.feature_importance_L, 0.0, places=7
-        )
+        self.assertAlmostEqual(profile.summary.feature_importance_L, 0.0, places=7)
 
 
 class TestEdgeCases(unittest.TestCase):
@@ -277,10 +286,12 @@ class TestEdgeCases(unittest.TestCase):
     def test_record_many_checkpoints(self):
         tracker = PABTracker(experiment_id="MANY")
         for i in range(100):
-            tracker.record(CheckpointData(
-                step=(i + 1) * 50,
-                train_loss=2.0 * (0.99 ** i),
-            ))
+            tracker.record(
+                CheckpointData(
+                    step=(i + 1) * 50,
+                    train_loss=2.0 * (0.99**i),
+                )
+            )
         profile = tracker.finalize()
         self.assertEqual(len(profile.checkpoints), 100)
         self.assertEqual(len(profile.core.stability), 100)
@@ -292,23 +303,20 @@ class TestEdgeCases(unittest.TestCase):
         tracker.record(CheckpointData(step=150, train_loss=1.0, val_loss=1.1))
         profile = tracker.finalize()
         # gen_gap: [0.2, 0.2 (carry-forward), 0.1]
-        self.assertAlmostEqual(
-            profile.core.generalization_gap[0], 0.2, places=5
-        )
-        self.assertAlmostEqual(
-            profile.core.generalization_gap[1], 0.2, places=5
-        )
-        self.assertAlmostEqual(
-            profile.core.generalization_gap[2], 0.1, places=5
-        )
+        self.assertAlmostEqual(profile.core.generalization_gap[0], 0.2, places=5)
+        self.assertAlmostEqual(profile.core.generalization_gap[1], 0.2, places=5)
+        self.assertAlmostEqual(profile.core.generalization_gap[2], 0.1, places=5)
 
     def test_partial_tier_accuracies(self):
         # Only tier1 provided, tier2/tier3 should default to 0.0
         tracker = PABTracker(experiment_id="PART")
-        tracker.record(CheckpointData(
-            step=50, train_loss=1.0,
-            tier_accuracies={"tier1": 0.80},
-        ))
+        tracker.record(
+            CheckpointData(
+                step=50,
+                train_loss=1.0,
+                tier_accuracies={"tier1": 0.80},
+            )
+        )
         profile = tracker.finalize()
         self.assertEqual(profile.tiers.tier1_accuracy[0], 0.80)
         self.assertEqual(profile.tiers.tier2_accuracy[0], 0.0)
@@ -317,10 +325,13 @@ class TestEdgeCases(unittest.TestCase):
     def test_partial_loss_components(self):
         # Only "ce" provided, margin/repair should default to 0.0
         tracker = PABTracker(experiment_id="PART")
-        tracker.record(CheckpointData(
-            step=50, train_loss=1.0,
-            loss_components={"ce": 0.9},
-        ))
+        tracker.record(
+            CheckpointData(
+                step=50,
+                train_loss=1.0,
+                loss_components={"ce": 0.9},
+            )
+        )
         profile = tracker.finalize()
         self.assertEqual(profile.losses.loss_ce[0], 0.9)
         self.assertEqual(profile.losses.loss_margin[0], 0.0)

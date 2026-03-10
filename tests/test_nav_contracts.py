@@ -13,7 +13,6 @@ from src.nav_contracts import (
 
 
 class TestNavigationalExample(unittest.TestCase):
-
     def _make_example(self, **overrides):
         defaults = dict(
             goal_state="⊢ P → P",
@@ -99,6 +98,12 @@ class TestNavigationalExample(unittest.TestCase):
         }
         loaded = NavigationalExample.from_dict(d)
         self.assertFalse(loaded.solvable)
+        # Verify solvable is exactly the bool False, not just falsy
+        self.assertEqual(loaded.solvable, False)
+        # Other fields should still use their defaults
+        self.assertEqual(loaded.goal_state, "g")
+        self.assertEqual(loaded.theorem_id, "t")
+        self.assertEqual(loaded.nav_directions, {})
 
     def test_proof_history_preserved(self):
         ex = self._make_example(proof_history=["intro h", "exact h"])
@@ -108,12 +113,14 @@ class TestNavigationalExample(unittest.TestCase):
 
 
 class TestScoredEntityAndNavOutput(unittest.TestCase):
-
     def test_scored_entity_to_dict(self):
         se = ScoredEntity(
-            entity_id=42, name="Nat.add_comm",
-            final_score=0.95, bank_score=0.5,
-            anchor_score=0.3, seed_score=0.15,
+            entity_id=42,
+            name="Nat.add_comm",
+            final_score=0.95,
+            bank_score=0.5,
+            anchor_score=0.3,
+            seed_score=0.15,
         )
         d = se.to_dict()
         self.assertEqual(d["entity_id"], 42)
@@ -140,8 +147,10 @@ class TestScoredEntityAndNavOutput(unittest.TestCase):
 
     def test_tactic_result_to_dict(self):
         tr = TacticResult(
-            success=True, tactic="rfl",
-            premises=["h"], new_goals=["g2"],
+            success=True,
+            tactic="rfl",
+            premises=["h"],
+            new_goals=["g2"],
             error_message="",
         )
         d = tr.to_dict()
@@ -158,7 +167,6 @@ class TestScoredEntityAndNavOutput(unittest.TestCase):
 
 
 class TestStructuredQuery(unittest.TestCase):
-
     def test_defaults(self):
         q = StructuredQuery(
             bank_directions={"structure": 1},
@@ -179,7 +187,6 @@ class TestStructuredQuery(unittest.TestCase):
 
 
 class TestBankNames(unittest.TestCase):
-
     def test_bank_names_count(self):
         self.assertEqual(len(BANK_NAMES), 6)
 
@@ -190,6 +197,13 @@ class TestBankNames(unittest.TestCase):
     def test_bank_names_are_strings(self):
         for name in BANK_NAMES:
             self.assertIsInstance(name, str)
+        # Verify each bank name is a specific known value
+        expected = {"structure", "domain", "depth", "automation", "context", "decomposition"}
+        self.assertEqual(set(BANK_NAMES), expected)
+        # Bank names should be lowercase identifiers (no spaces, no uppercase)
+        for name in BANK_NAMES:
+            self.assertEqual(name, name.lower())
+            self.assertNotIn(" ", name)
 
 
 if __name__ == "__main__":

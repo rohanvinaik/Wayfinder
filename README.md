@@ -5,6 +5,8 @@
 [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=rohanvinaik_Wayfinder&metric=coverage)](https://sonarcloud.io/summary/new_code?id=rohanvinaik_Wayfinder)
 [![Maintainability](https://sonarcloud.io/api/project_badges/measure?project=rohanvinaik_Wayfinder&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=rohanvinaik_Wayfinder)
 [![Reliability](https://sonarcloud.io/api/project_badges/measure?project=rohanvinaik_Wayfinder&metric=reliability_rating)](https://sonarcloud.io/summary/new_code?id=rohanvinaik_Wayfinder)
+[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=rohanvinaik_Wayfinder&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=rohanvinaik_Wayfinder)
+[![Security Lite](https://github.com/rohanvinaik/Wayfinder/actions/workflows/security-lite.yml/badge.svg)](https://github.com/rohanvinaik/Wayfinder/actions/workflows/security-lite.yml)
 
 **Proof search as navigation, not prediction.**
 

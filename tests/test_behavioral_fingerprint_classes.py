@@ -156,6 +156,12 @@ class TestBehavioralFingerprintDataclass(unittest.TestCase):
             path = Path(tmpdir) / "sub" / "dir" / "fp.json"
             fp.save(path)
             self.assertTrue(path.exists())
+            # Verify saved content is valid JSON with expected experiment_id
+            with open(path) as f:
+                data = json.load(f)
+            self.assertEqual(data["experiment_id"], "X")
+            # Confirm parent directories were actually created
+            self.assertTrue(path.parent.is_dir())
 
     def test_save_writes_valid_json(self):
         fp = self._make_fingerprint()
@@ -188,7 +194,11 @@ class TestBehavioralFingerprintDataclass(unittest.TestCase):
         predictions = ["a", "b"]
         labels = ["probe_x", "probe_y"]
         fp = BehavioralFingerprint.from_outputs(
-            "E", 50, logits, predictions, probe_labels=labels,
+            "E",
+            50,
+            logits,
+            predictions,
+            probe_labels=labels,
         )
         self.assertEqual(fp.probe_responses, {"probe_x": "a", "probe_y": "b"})
 
@@ -211,7 +221,10 @@ class TestBehavioralFingerprintDataclass(unittest.TestCase):
         predictions = ["a", "b"]
         labels = ["p1", "p2"]
         fp = BehavioralFingerprint.from_text_only(
-            "E", 50, predictions, probe_labels=labels,
+            "E",
+            50,
+            predictions,
+            probe_labels=labels,
         )
         self.assertEqual(fp.probe_responses, {"p1": "a", "p2": "b"})
 

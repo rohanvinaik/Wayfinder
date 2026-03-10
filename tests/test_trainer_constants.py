@@ -13,7 +13,6 @@ from src.trainer_constants import (
 
 
 class TestInferDomain(unittest.TestCase):
-
     def _make_example(self, goal_state="", theorem_statement="", tier1_tokens=None):
         return SimpleNamespace(
             goal_state=goal_state,
@@ -82,12 +81,18 @@ class TestInferDomain(unittest.TestCase):
 
 
 class TestConstants(unittest.TestCase):
-
     def test_domain_keywords_has_all_domains(self):
         expected_domains = {
-            "algebra", "analysis", "topology", "number_theory",
-            "linear_algebra", "order_theory", "set_theory", "logic",
-            "combinatorics", "category_theory",
+            "algebra",
+            "analysis",
+            "topology",
+            "number_theory",
+            "linear_algebra",
+            "order_theory",
+            "set_theory",
+            "logic",
+            "combinatorics",
+            "category_theory",
         }
         self.assertEqual(set(_DOMAIN_KEYWORDS.keys()), expected_domains)
 
@@ -99,7 +104,8 @@ class TestConstants(unittest.TestCase):
     def test_tactic_domain_hints_values_are_valid_domains(self):
         for tactic, domain in _TACTIC_DOMAIN_HINTS.items():
             self.assertIn(
-                domain, _DOMAIN_KEYWORDS,
+                domain,
+                _DOMAIN_KEYWORDS,
                 f"Tactic '{tactic}' maps to unknown domain '{domain}'",
             )
 

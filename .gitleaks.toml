@@ -1,0 +1,11 @@
+title = "Gitleaks baseline configuration"
+
+[extend]
+useDefault = true
+
+# Add project-specific allowlists as needed, for example:
+# [allowlist]
+# description = "Intentional fixture in tests"
+# paths = [
+#   '''tests/test_secret_fixture\.py'''
+# ]

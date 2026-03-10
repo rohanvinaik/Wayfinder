@@ -45,6 +45,8 @@ class TestCheckProofStructural(unittest.TestCase):
     def test_no_sorry(self):
         result = check_proof_structural("intro h\nexact h")
         self.assertFalse(result["has_sorry"])
+        self.assertEqual(result["tactic_count"], 2)
+        self.assertEqual(result["tactics"], ["intro h", "exact h"])
 
     def test_detects_each_automation_tactic(self):
         for tactic in ["simp", "omega", "linarith", "norm_num", "decide", "aesop", "tauto"]:
@@ -83,6 +85,8 @@ class TestCheckProofStructural(unittest.TestCase):
         # "sorry_lemma" should NOT trigger has_sorry (exact match on "sorry")
         result = check_proof_structural("sorry_lemma")
         self.assertFalse(result["has_sorry"])
+        self.assertEqual(result["tactic_count"], 1)
+        self.assertEqual(result["tactics"], ["sorry_lemma"])
 
 
 if __name__ == "__main__":

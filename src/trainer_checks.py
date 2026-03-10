@@ -21,8 +21,8 @@ PABMetricsSnapshot = namedtuple(
 PABMetricsSnapshot.__new__.__defaults__ = (None, None, None, None)
 
 
-def check_gradient_health(pipeline: Any) -> bool:
-    """Check all gradients for NaN/Inf. Returns True if healthy."""
+def check_gradient_health(pipeline: Any) -> tuple[bool, str | None]:
+    """Check all gradients for NaN/Inf. Returns (healthy, warning_message)."""
     import torch
 
     for name, module in [
@@ -33,9 +33,8 @@ def check_gradient_health(pipeline: Any) -> bool:
     ]:
         for pname, p in module.named_parameters():
             if p.grad is not None and (torch.isnan(p.grad).any() or torch.isinf(p.grad).any()):
-                print(f"  WARNING: NaN/Inf gradient in {name}.{pname}")
-                return False
-    return True
+                return False, f"NaN/Inf gradient in {name}.{pname}"
+    return True, None
 
 
 def log_ternary_distribution(decoder: Any) -> dict[str, dict[str, float]]:
@@ -110,14 +109,46 @@ def check_gradient_abort(
     """Check gradients and return abort dict if NaN/Inf detected."""
     if step % safety["gradient_check_every_n_steps"] != 0:
         return None
-    if check_gradient_health(pipeline):
+    healthy, msg = check_gradient_health(pipeline)
+    if healthy:
         return None
+    if msg:
+        print(f"  WARNING: {msg}")
     if not safety["nan_abort"]:
         return None
     if safety.get("nan_checkpoint_before_abort", True):
         save_fn(step)
     print(f"ABORT: NaN/Inf gradient at step {step}")
     return {"status": "nan_abort", "step": step}
+
+
+def build_checkpoint_data(
+    step: int,
+    loss_dict: dict,
+    metrics: PABMetricsSnapshot | None,
+    last_bridge_features: np.ndarray | None,
+    decoder: Any,
+) -> CheckpointData:
+    """Pure construction of PAB checkpoint data from training state."""
+    m = metrics or PABMetricsSnapshot()  # type: ignore[call-arg]
+    return CheckpointData(
+        step=step,
+        train_loss=loss_dict["L_total"],
+        val_loss=m.val_loss,
+        loss_components={
+            "ce": loss_dict.get("L_ce", 0.0),
+            "margin": loss_dict.get("L_margin", 0.0),
+            "repair": loss_dict.get("L_repair", 0.0),
+        },
+        adaptive_weights={
+            k: v for k, v in loss_dict.items() if k.startswith("w_") and isinstance(v, float)
+        },
+        tier_accuracies=m.tier_accuracies or {},
+        bottleneck_embeddings=last_bridge_features,
+        decoder_weight_signs=collect_decoder_weight_signs(decoder),
+        domain_accuracies=m.domain_accuracies or {},
+        tactic_accuracies=m.tactic_accuracies or {},
+    )
 
 
 def record_pab_checkpoint(
@@ -137,25 +168,8 @@ def record_pab_checkpoint(
     interval = pab_cfg.get("checkpoint_interval", 50)
     if step % interval != 0:
         return None
-    m = metrics or PABMetricsSnapshot()  # type: ignore[call-arg]
-    data = CheckpointData(
-        step=step,
-        train_loss=loss_dict["L_total"],
-        val_loss=m.val_loss,
-        loss_components={
-            "ce": loss_dict.get("L_ce", 0.0),
-            "margin": loss_dict.get("L_margin", 0.0),
-            "repair": loss_dict.get("L_repair", 0.0),
-        },
-        adaptive_weights={
-            k: v for k, v in loss_dict.items() if k.startswith("w_") and isinstance(v, float)
-        },
-        tier_accuracies=m.tier_accuracies or {},
-        bottleneck_embeddings=last_bridge_features,
-        decoder_weight_signs=collect_decoder_weight_signs(decoder),
-        domain_accuracies=m.domain_accuracies or {},
-        tactic_accuracies=m.tactic_accuracies or {},
-    )
+
+    data = build_checkpoint_data(step, loss_dict, metrics, last_bridge_features, decoder)
     tracker.record(data)
     if pab_cfg.get("early_exit_enabled", False) and tracker.should_early_exit(step):
         print(f"  PAB early exit triggered at step {step}")

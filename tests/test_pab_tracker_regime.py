@@ -74,9 +74,7 @@ class TestDetectConvergence(unittest.TestCase):
         return tracker
 
     def test_too_few_checkpoints_returns_none(self):
-        tracker = self._tracker_with_stability_and_steps(
-            [0.05] * 3, [50, 100, 150]
-        )
+        tracker = self._tracker_with_stability_and_steps([0.05] * 3, [50, 100, 150])
         self.assertIsNone(tracker._detect_convergence())
 
     def test_no_convergent_window_returns_none(self):
@@ -132,9 +130,7 @@ class TestDetectEarlyStop(unittest.TestCase):
         self.assertIsNone(tracker._detect_early_stop())
 
     def test_single_val_loss_returns_none(self):
-        tracker = self._tracker_with_val_losses(
-            [1.0], [50], [50]
-        )
+        tracker = self._tracker_with_val_losses([1.0], [50], [50])
         self.assertIsNone(tracker._detect_early_stop())
 
     def test_always_decreasing_returns_none(self):
@@ -197,10 +193,7 @@ class TestShouldEarlyExit(unittest.TestCase):
     ):
         """Build a tracker with controlled internal state."""
         tracker = PABTracker(experiment_id="EXIT")
-        steps = [
-            (i + 1) * step_interval + step_start - step_interval
-            for i in range(n_checkpoints)
-        ]
+        steps = [(i + 1) * step_interval + step_start - step_interval for i in range(n_checkpoints)]
         for s in steps:
             tracker.record(CheckpointData(step=s, train_loss=1.0))
         # Overwrite accumulators with controlled values

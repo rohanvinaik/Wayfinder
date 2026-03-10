@@ -42,7 +42,6 @@ def _make_candidate(tactic="apply", premises=None, score=0.9):
 
 
 class TestShouldHammer(unittest.TestCase):
-
     def test_automation_neg1_returns_true(self):
         nav = _make_nav_output(automation=-1)
         self.assertEqual(_should_hammer(nav), True)
@@ -66,7 +65,6 @@ class TestShouldHammer(unittest.TestCase):
 
 
 class TestBuildTacticText(unittest.TestCase):
-
     def test_no_premises_returns_tactic_name(self):
         c = _make_candidate(tactic="rfl", premises=[])
         self.assertEqual(_build_tactic_text(c), "rfl")
@@ -92,7 +90,6 @@ class TestBuildTacticText(unittest.TestCase):
 
 
 class TestSearchState(unittest.TestCase):
-
     def test_open_goals_required(self):
         state = _SearchState(open_goals=["goal1"])
         self.assertEqual(state.open_goals, ["goal1"])
@@ -119,7 +116,6 @@ class TestSearchState(unittest.TestCase):
 
 
 class TestSearchConfig(unittest.TestCase):
-
     def test_defaults(self):
         cfg = SearchConfig()
         self.assertEqual(cfg.budget, 600)

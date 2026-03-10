@@ -245,7 +245,8 @@ class BalancedSashimiTrainer(TrainerStepsMixin):
         }
 
     def check_gradient_health(self) -> bool:
-        return check_gradient_health(self.pipeline)
+        healthy, _msg = check_gradient_health(self.pipeline)
+        return healthy
 
     def _collect_decoder_weight_signs(self) -> np.ndarray | None:
         return collect_decoder_weight_signs(self.pipeline.decoder)
@@ -316,6 +317,31 @@ class BalancedSashimiTrainer(TrainerStepsMixin):
             metrics=metrics,
         )
 
+    @staticmethod
+    def _build_training_result(
+        step: int,
+        all_losses: list[dict],
+        epoch: int,
+        elapsed: float,
+        checkpoint_path: str,
+        validation_snapshot: dict | None = None,
+        pab_profile_path: str | None = None,
+    ) -> dict:
+        """Pure construction of training result summary dict."""
+        result = {
+            "status": "complete",
+            "steps": step,
+            "epochs": epoch,
+            "elapsed_s": round(elapsed, 1),
+            "final_loss": all_losses[-1] if all_losses else {},
+            "checkpoint": checkpoint_path,
+        }
+        if validation_snapshot:
+            result["final_validation_snapshot"] = validation_snapshot
+        if pab_profile_path:
+            result["pab_profile"] = pab_profile_path
+        return result
+
     def _finalize_training(self, all_losses, epoch, elapsed, log_path) -> dict:
         ckpt_path = self.save_checkpoint(self.step)
         with open(log_path, "w") as f:
@@ -329,17 +355,7 @@ class BalancedSashimiTrainer(TrainerStepsMixin):
             print("No losses recorded")
         print(f"Checkpoint: {ckpt_path}")
 
-        result = {
-            "status": "complete",
-            "steps": self.step,
-            "epochs": epoch,
-            "elapsed_s": round(elapsed, 1),
-            "final_loss": all_losses[-1] if all_losses else {},
-            "checkpoint": str(ckpt_path),
-        }
-        if self._tracking["validation_snapshot"]:
-            result["final_validation_snapshot"] = self._tracking["validation_snapshot"]
-
+        pab_profile_path = None
         tracker = self.infra.pab_tracker
         if tracker is not None:
             profile = tracker.finalize()
@@ -347,11 +363,15 @@ class BalancedSashimiTrainer(TrainerStepsMixin):
             if pab_cfg.get("save_profiles", True):
                 profile_path = self.run_dir / f"{self.run_id}_pab_profile.json"
                 profile.save(profile_path)
-                result["pab_profile"] = str(profile_path)
+                pab_profile_path = str(profile_path)
             print(f"  PAB regime: {profile.summary.stability_regime}")
             print(f"  PAB stability_mean: {profile.summary.stability_mean:.4f}")
 
-        return result
+        return self._build_training_result(
+            self.step, all_losses, epoch, elapsed, str(ckpt_path),
+            validation_snapshot=self._tracking["validation_snapshot"] or None,
+            pab_profile_path=pab_profile_path,
+        )
 
     def train(self, dry_run: bool = False) -> dict:
         """Main training loop."""

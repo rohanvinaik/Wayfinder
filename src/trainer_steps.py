@@ -15,6 +15,35 @@ if TYPE_CHECKING:
 _UNK_TOKEN = "<UNK>"
 
 
+def compute_batch_metrics(
+    batch: list,
+    predictions: np.ndarray,
+    targets: np.ndarray,
+    idx2token: dict[int, str],
+) -> dict[str, Any]:
+    """Pure computation of tier/domain/tactic accuracy metrics from a batch."""
+    correct = predictions == targets
+    tier1_acc = float(np.mean(correct)) if len(correct) else 0.0
+
+    domain_correct: dict[str, list[float]] = defaultdict(list)
+    tactic_correct: dict[str, list[float]] = defaultdict(list)
+    for i, ex in enumerate(batch):
+        domain = infer_domain(ex)
+        domain_correct[domain].append(float(correct[i]))
+        tactic_token = idx2token.get(int(targets[i]), _UNK_TOKEN)
+        tactic_correct[tactic_token].append(float(correct[i]))
+
+    return {
+        "tier1_accuracy": tier1_acc,
+        "domain_accuracies": {
+            d: float(np.mean(vals)) for d, vals in domain_correct.items() if vals
+        },
+        "tactic_accuracies": {
+            a: float(np.mean(vals)) for a, vals in tactic_correct.items() if vals
+        },
+    }
+
+
 class TrainerStepsMixin:
     """Mixin providing train_step, domain gate step, and batch-building helpers.
 
@@ -133,30 +162,17 @@ class TrainerStepsMixin:
         targets: np.ndarray,
     ) -> None:
         """Track tier/domain/tactic metrics from the latest batch."""
-        correct = predictions == targets
-        tier1_acc = float(np.mean(correct)) if len(correct) else 0.0
-
-        domain_correct: dict[str, list[float]] = defaultdict(list)
-        tactic_correct: dict[str, list[float]] = defaultdict(list)
         idx2token = {v: k for k, v in self.vocabs.tier1.items()}
-        for i, ex in enumerate(batch):
-            domain = infer_domain(ex)
-            domain_correct[domain].append(float(correct[i]))
-            tactic_token = idx2token.get(int(targets[i]), _UNK_TOKEN)
-            tactic_correct[tactic_token].append(float(correct[i]))
+        metrics = compute_batch_metrics(batch, predictions, targets, idx2token)
 
         prev_tiers = self._tracking["tier_accuracies"]
         self._tracking["tier_accuracies"] = {
-            "tier1": tier1_acc,
-            "tier2": prev_tiers.get("tier2", tier1_acc),
-            "tier3": prev_tiers.get("tier3", tier1_acc),
+            "tier1": metrics["tier1_accuracy"],
+            "tier2": prev_tiers.get("tier2", metrics["tier1_accuracy"]),
+            "tier3": prev_tiers.get("tier3", metrics["tier1_accuracy"]),
         }
-        self._tracking["domain_accuracies"] = {
-            d: float(np.mean(vals)) for d, vals in domain_correct.items() if vals
-        }
-        self._tracking["tactic_accuracies"] = {
-            a: float(np.mean(vals)) for a, vals in tactic_correct.items() if vals
-        }
+        self._tracking["domain_accuracies"] = metrics["domain_accuracies"]
+        self._tracking["tactic_accuracies"] = metrics["tactic_accuracies"]
 
     def _sample_ood_examples(self, n: int, in_domain: bool) -> list[Any]:
         """Sample OOD prompt records by label with replacement."""

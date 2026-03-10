@@ -113,6 +113,11 @@ class TestComputeVarianceEigenvalues(unittest.TestCase):
         result = compute_variance_eigenvalues(logits)
         for v in result:
             self.assertIsInstance(v, float)
+        # 3x2 matrix → covariance is 3x3 → up to 3 eigenvalues
+        self.assertEqual(len(result), 3)
+        # Eigenvalues of a covariance matrix are non-negative
+        for v in result:
+            self.assertGreaterEqual(v, -1e-10)
 
     def test_identical_rows_eigenvalues_near_zero(self):
         logits = np.array([[1.0, 2.0]] * 5)
@@ -145,10 +150,12 @@ class TestComputeDiscreteness(unittest.TestCase):
 
     def test_multiple_rows_averaged(self):
         # Mix of peaked and uniform
-        logits = np.array([
-            [100.0, 0.0, 0.0],
-            [1.0, 1.0, 1.0],
-        ])
+        logits = np.array(
+            [
+                [100.0, 0.0, 0.0],
+                [1.0, 1.0, 1.0],
+            ]
+        )
         result = compute_discreteness(logits)
         # Should be between peaked and uniform
         self.assertGreater(result, 0.1)

@@ -63,7 +63,6 @@ def _make_tactic_result(success, tactic="apply", premises=None, new_goals=None):
 
 
 class TestSearch(unittest.TestCase):
-
     def _setup_pipeline_for_search(self, nav_output=None):
         """Build pipeline mock that returns a fixed NavOutput through _infer."""
         nav = nav_output or _make_nav_output()
@@ -83,7 +82,12 @@ class TestSearch(unittest.TestCase):
         cfg = SearchConfig(budget=1, hammer_delegation=False)
 
         result = search(
-            "thm1", "initial_goal", pipeline, MagicMock(), lean, config=cfg,
+            "thm1",
+            "initial_goal",
+            pipeline,
+            MagicMock(),
+            lean,
+            config=cfg,
         )
 
         self.assertEqual(result.success, False)
@@ -97,7 +101,9 @@ class TestSearch(unittest.TestCase):
 
         lean = MagicMock()
         lean.try_tactic.return_value = _make_tactic_result(
-            success=True, tactic="rfl", new_goals=[],
+            success=True,
+            tactic="rfl",
+            new_goals=[],
         )
 
         pipeline = self._setup_pipeline_for_search()
@@ -121,7 +127,10 @@ class TestSearch(unittest.TestCase):
 
         lean = MagicMock()
         lean.try_hammer.return_value = _make_tactic_result(
-            success=True, tactic="omega", premises=["h"], new_goals=[],
+            success=True,
+            tactic="omega",
+            premises=["h"],
+            new_goals=[],
         )
 
         cfg = SearchConfig(hammer_delegation=True)
@@ -143,7 +152,9 @@ class TestSearch(unittest.TestCase):
 
         lean = MagicMock()
         lean.try_tactic.return_value = _make_tactic_result(
-            success=True, tactic="exact", new_goals=[],
+            success=True,
+            tactic="exact",
+            new_goals=[],
         )
 
         cfg = SearchConfig(hammer_delegation=False)
@@ -160,7 +171,9 @@ class TestSearch(unittest.TestCase):
 
         lean = MagicMock()
         lean.try_tactic.return_value = _make_tactic_result(
-            success=True, tactic="rfl", new_goals=[],
+            success=True,
+            tactic="rfl",
+            new_goals=[],
         )
 
         pipeline = self._setup_pipeline_for_search()
@@ -176,14 +189,15 @@ class TestSearch(unittest.TestCase):
 
         lean = MagicMock()
         lean.try_tactic.return_value = _make_tactic_result(
-            success=True, tactic="rfl", new_goals=[],
+            success=True,
+            tactic="rfl",
+            new_goals=[],
         )
 
         pipeline = self._setup_pipeline_for_search()
         cfg = SearchConfig(accessible_premises=True, hammer_delegation=False)
 
-        search("thm", "g", pipeline, MagicMock(), lean, config=cfg,
-               accessible_theorem_id=42)
+        search("thm", "g", pipeline, MagicMock(), lean, config=cfg, accessible_theorem_id=42)
 
         # resolve was called; verify context had the accessible_theorem_id
         call_args = mock_resolve.call_args
@@ -197,14 +211,15 @@ class TestSearch(unittest.TestCase):
 
         lean = MagicMock()
         lean.try_tactic.return_value = _make_tactic_result(
-            success=True, tactic="rfl", new_goals=[],
+            success=True,
+            tactic="rfl",
+            new_goals=[],
         )
 
         pipeline = self._setup_pipeline_for_search()
         cfg = SearchConfig(accessible_premises=False, hammer_delegation=False)
 
-        search("thm", "g", pipeline, MagicMock(), lean, config=cfg,
-               accessible_theorem_id=42)
+        search("thm", "g", pipeline, MagicMock(), lean, config=cfg, accessible_theorem_id=42)
 
         call_args = mock_resolve.call_args
         context_arg = call_args[0][2]
@@ -243,7 +258,9 @@ class TestSearch(unittest.TestCase):
         lean = MagicMock()
         lean.try_hammer.return_value = _make_tactic_result(success=False, tactic="hammer")
         lean.try_tactic.return_value = _make_tactic_result(
-            success=True, tactic="exact h", new_goals=[],
+            success=True,
+            tactic="exact h",
+            new_goals=[],
         )
 
         cfg = SearchConfig(hammer_delegation=True)

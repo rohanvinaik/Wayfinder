@@ -19,3 +19,7 @@ data/
 .claude/settings.local.json
 .claude/rules/
 **/.mypy_cache/
+.qlty/
+.coverage
+coverage.xml
+.scannerwork/
