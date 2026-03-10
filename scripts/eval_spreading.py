@@ -39,7 +39,7 @@ def load_config(path: Path) -> dict:
 
 def load_modules(checkpoint_path: Path, config: dict, device: str) -> dict:
     """Load trained modules from checkpoint."""
-    ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)
+    ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)  # nosec B614 — trusted local checkpoints
     enc_cfg = config["model"]["encoder"]
     ana_cfg = config["model"]["goal_analyzer"]
     br_cfg = config["model"]["bridge"]

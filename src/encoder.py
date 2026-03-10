@@ -95,8 +95,8 @@ class GoalEncoder(nn.Module):
     def _load_t5(self) -> None:
         from transformers import AutoModel, AutoTokenizer
 
-        self._tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-        self._model = AutoModel.from_pretrained(self.model_name).encoder.to(self.device)
+        self._tokenizer = AutoTokenizer.from_pretrained(self.model_name)  # nosec B615 — model name from config, not user input
+        self._model = AutoModel.from_pretrained(self.model_name).encoder.to(self.device)  # nosec B615
         self._native_dim = self._model.config.d_model
         if self.frozen:
             for p in self._model.parameters():
