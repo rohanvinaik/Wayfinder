@@ -1,0 +1,161 @@
+name: Mutation Testing
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  mutation-sweep:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -e .
+
+      - name: Install LintGate
+        run: |
+          git clone --depth 1 https://github.com/rohanvinaik/LintGate.git /tmp/lintgate
+          pip install -e /tmp/lintgate
+
+      - name: Run mutation sweep
+        id: sweep
+        run: |
+          python << 'PYEOF'
+          import json, os, sys
+          from pathlib import Path
+          from concurrent.futures import ProcessPoolExecutor, as_completed
+
+          SRC_DIRS = ['src']
+          WORKERS = 4
+          BUDGET_MS = 500.0
+          PROJECT_DIR = os.getcwd()
+
+          def collect_python_files(root):
+              files = []
+              for subdir in SRC_DIRS:
+                  base = os.path.join(root, subdir)
+                  if not os.path.isdir(base):
+                      continue
+                  for dirpath, _, filenames in os.walk(base):
+                      for fn in sorted(filenames):
+                          if fn.endswith('.py') and not fn.startswith('test_'):
+                              files.append(os.path.relpath(os.path.join(dirpath, fn), root))
+              return files
+
+          def profile_single_file(args):
+              import ast, os, sys
+              project_root, rel_path, budget_ms = args
+              sys.path.insert(0, project_root)
+              try:
+                  from lintgate.specification.mutation_engine import run_function_sampling
+                  from lintgate.keys import canonical_function_key
+                  from lintgate.specification.mutation_filter import filter_categories
+                  from mcp_tools._mutation_impl import (
+                      MutationContext, detect_purity_map, discover_test_files,
+                      get_cache_dir, load_test_callables, lookup_purity,
+                      parse_file, walk_functions,
+                  )
+              except ImportError:
+                  return {'profiled': 0, 'killed': 0, 'survived': 0, 'errors': 1}
+              full_path = os.path.join(project_root, rel_path)
+              cache_dir = get_cache_dir(project_root)
+              result = {'profiled': 0, 'killed': 0, 'survived': 0, 'errors': 0}
+              tree = parse_file(full_path)
+              if not tree:
+                  return result
+              functions = walk_functions(tree)
+              if not functions:
+                  return result
+              test_files = discover_test_files(project_root, full_path)
+              purity_map = detect_purity_map(full_path)
+              ctx = MutationContext(
+                  full_path=full_path, rel_path=rel_path, cache_dir=cache_dir,
+                  purity_map=purity_map, test_files=test_files, project_root=project_root,
+              )
+              for qualname, node in functions:
+                  func_key = canonical_function_key(rel_path, qualname)
+                  body = getattr(node, 'body', [])
+                  if len(body) <= 1 and isinstance(body[0] if body else None, (ast.Return, ast.Expr)):
+                      continue
+                  is_pure = lookup_purity(purity_map, qualname)
+                  cats = filter_categories(node, is_pure=is_pure)
+                  tests, _ = load_test_callables(
+                      ctx.test_files, qualname.split('.')[-1],
+                      project_root=ctx.project_root, func_key=func_key,
+                  )
+                  try:
+                      sr = run_function_sampling(
+                          node, func_key, cats, tests, lambda *_: None, budget_ms=budget_ms,
+                      )
+                      result['profiled'] += 1
+                      result['killed'] += sr.total_killed
+                      result['survived'] += sr.total_survived
+                  except Exception:
+                      result['errors'] += 1
+              return result
+
+          files = collect_python_files(PROJECT_DIR)
+          print(f'Found {len(files)} source files')
+          totals = {'profiled': 0, 'killed': 0, 'survived': 0, 'errors': 0}
+          work = [(PROJECT_DIR, f, BUDGET_MS) for f in files]
+
+          with ProcessPoolExecutor(max_workers=WORKERS) as pool:
+              for future in as_completed({pool.submit(profile_single_file, w): w for w in work}):
+                  try:
+                      r = future.result()
+                      for k in totals:
+                          totals[k] += r.get(k, 0)
+                  except Exception:
+                      totals['errors'] += 1
+
+          t = totals['killed'] + totals['survived']
+          kill_rate = totals['killed'] / t if t > 0 else 0
+          print(f'Kill rate: {totals["killed"]}/{t} ({kill_rate:.1%})')
+
+          # Badge color
+          color = 'brightgreen' if kill_rate >= 0.8 else 'green' if kill_rate >= 0.6 else 'yellow' if kill_rate >= 0.4 else 'red'
+
+          # Write outputs for downstream steps
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as gh:
+              gh.write(f'kill_rate={kill_rate:.0%}\n')
+              gh.write(f'badge_color={color}\n')
+
+          # Write badge JSON
+          Path('.lintgate/mutation').mkdir(parents=True, exist_ok=True)
+          json.dump({'schemaVersion': 1, 'label': 'mutation score', 'message': f'{kill_rate:.0%}', 'color': color},
+                    open('mutation-badge.json', 'w'))
+          json.dump({'profiled': totals['profiled'], 'killed': totals['killed'], 'survived': totals['survived'],
+                     'kill_rate': round(kill_rate, 4), 'total_mutants': t},
+                    open('.lintgate/mutation/sweep_summary.json', 'w'), indent=2)
+          PYEOF
+
+      - name: Upload mutation results
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-results
+          path: |
+            mutation-badge.json
+            .lintgate/mutation/sweep_summary.json
+
+      - name: Update badge gist
+        if: github.ref == 'refs/heads/main' && vars.MUTATION_BADGE_GIST_ID != ''
+        uses: schneegans/dynamic-badges-action@v1.7.0
+        with:
+          auth: ${{ secrets.GIST_TOKEN }}
+          gistID: ${{ vars.MUTATION_BADGE_GIST_ID }}
+          filename: wayfinder-mutation-badge.json
+          label: mutation score
+          message: ${{ steps.sweep.outputs.kill_rate }}
+          color: ${{ steps.sweep.outputs.badge_color }}
+        continue-on-error: true
