@@ -112,12 +112,77 @@ _MISSING_BANK_SCORE = 0.3
 # 242K IDs on every navigate() call. Cleared by clear_caches().
 _entity_id_cache: dict[tuple[int, str | None], set[int]] = {}
 
+# In-memory data cache: pre-load positions, anchor sets, and names for all
+# entities on first navigate() call. Eliminates SQLite I/O on subsequent calls.
+# Key: conn_id. Cleared by clear_caches().
+class _DataCache:
+    """Typed container for pre-loaded entity data."""
+
+    __slots__ = ("positions", "anchor_sets", "names")
+
+    def __init__(
+        self,
+        positions: dict[int, dict[str, int]],
+        anchor_sets: dict[int, set[int]],
+        names: dict[int, str],
+    ) -> None:
+        self.positions = positions
+        self.anchor_sets = anchor_sets
+        self.names = names
+
+
+_data_cache: dict[int, _DataCache] = {}
+
+
+def _get_data_cache(conn: sqlite3.Connection) -> _DataCache:
+    """Load all entity data into memory on first call, return cached data.
+
+    Pre-loads:
+        positions: {eid: {bank: signed_pos}}
+        anchor_sets: {eid: {anchor_id, ...}}
+        names: {eid: name}
+
+    On a 242K entity DB this costs ~3 seconds and ~50MB RAM but
+    eliminates ~3100ms of SQLite I/O per navigate() call.
+    """
+    conn_id = id(conn)
+    if conn_id in _data_cache:
+        return _data_cache[conn_id]
+
+    # Load all positions
+    positions: dict[int, dict[str, int]] = defaultdict(dict)
+    for eid, bank, signed_pos in conn.execute(
+        "SELECT entity_id, bank, sign * depth FROM entity_positions"
+    ).fetchall():
+        positions[eid][bank] = signed_pos
+
+    # Load all anchor sets
+    anchor_sets: dict[int, set[int]] = defaultdict(set)
+    for eid, aid in conn.execute(
+        "SELECT entity_id, anchor_id FROM entity_anchors"
+    ).fetchall():
+        anchor_sets[eid].add(aid)
+
+    # Load all names
+    names: dict[int, str] = dict(
+        conn.execute("SELECT id, name FROM entities").fetchall()
+    )
+
+    cache = _DataCache(
+        positions=dict(positions),
+        anchor_sets=dict(anchor_sets),
+        names=names,
+    )
+    _data_cache[conn_id] = cache
+    return cache
+
 
 def clear_caches() -> None:
     """Clear all module-level caches. Call between test cases or DB swaps."""
     _idf_cache.clear()
     _accessible_cache.clear()
     _entity_id_cache.clear()
+    _data_cache.clear()
     bank_score.cache_clear()
 
 
@@ -337,11 +402,12 @@ def navigate(
     if not candidate_ids:
         return []
 
-    # Batch-fetch all data needed for scoring
-    positions = _batch_get_positions(conn, candidate_ids)
-    entity_anchor_sets = _batch_get_anchor_sets(conn, candidate_ids)
+    # Use in-memory data cache (pre-loaded on first call, ~3s startup, 0ms thereafter)
+    data = _get_data_cache(conn)
+    positions = data.positions
+    entity_anchor_sets = data.anchor_sets
+    names = data.names
     idf_cache = _get_idf_cache(conn)
-    names = _batch_get_names(conn, candidate_ids)
 
     # Precompute seed anchor set
     seed_anchors: set[int] = set()
