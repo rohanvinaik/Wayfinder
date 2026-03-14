@@ -29,6 +29,7 @@ from src.proof_scoring import (  # noqa: F401
     _vectorized_bank_scores,
     bank_score,
     compose_bank_scores,
+    compute_observability_score,
 )
 
 # ---------------------------------------------------------------------------
@@ -122,17 +123,19 @@ _entity_id_cache: dict[tuple[int, str | None], set[int]] = {}
 class _DataCache:
     """Typed container for pre-loaded entity data."""
 
-    __slots__ = ("positions", "anchor_sets", "names")
+    __slots__ = ("positions", "anchor_sets", "names", "provenances")
 
     def __init__(
         self,
         positions: dict[int, dict[str, int]],
         anchor_sets: dict[int, set[int]],
         names: dict[int, str],
+        provenances: dict[int, str],
     ) -> None:
         self.positions = positions
         self.anchor_sets = anchor_sets
         self.names = names
+        self.provenances = provenances
 
 
 _data_cache: dict[int, _DataCache] = {}
@@ -165,13 +168,20 @@ def _get_data_cache(conn: sqlite3.Connection) -> _DataCache:
     for eid, aid in conn.execute("SELECT entity_id, anchor_id FROM entity_anchors").fetchall():
         anchor_sets[eid].add(aid)
 
-    # Load all names
-    names: dict[int, str] = dict(conn.execute("SELECT id, name FROM entities").fetchall())
+    # Load all names and provenances
+    names: dict[int, str] = {}
+    provenances: dict[int, str] = {}
+    for eid, name, prov in conn.execute(
+        "SELECT id, name, provenance FROM entities"
+    ).fetchall():
+        names[eid] = name
+        provenances[eid] = prov
 
     cache = _DataCache(
         positions=dict(positions),
         anchor_sets=dict(anchor_sets),
         names=names,
+        provenances=provenances,
     )
     _data_cache[conn_id] = cache
     return cache
@@ -218,12 +228,17 @@ def _score_candidates(
     query: StructuredQuery,
     seed_anchors: set[int],
     mechanism: str,
+    provenances: dict[int, str] | None = None,
 ) -> list[ScoredEntity]:
     """Score and rank candidate entities against a navigational query.
 
     Uses NumPy vectorization for bank scoring (the hot inner loop),
-    with per-entity anchor/seed scoring. Only constructs ScoredEntity
-    objects for candidates with final_score > 0.
+    with per-entity anchor/seed/observability scoring.
+
+    When provenances is provided, applies an observability score that
+    penalizes partially-observed entities (premise_only with sparse
+    annotations) relative to fully-observed entities (traced with
+    proof-trace data).
     """
     if not candidate_ids:
         return []
@@ -232,7 +247,6 @@ def _score_candidates(
     if mechanism == "confidence_weighted":
         bank_scores = _vectorized_bank_scores(candidate_ids, positions, query)
     else:
-        # Fallback for non-standard mechanisms
         bank_scores = np.array(
             [_compute_bank_score(positions.get(eid, {}), query, mechanism) for eid in candidate_ids]
         )
@@ -249,7 +263,18 @@ def _score_candidates(
         if a_score <= 0:
             continue
         s_score = _compute_seed_score(entity_anchor_sets.get(eid, set()), seed_anchors, idf_cache)
-        final = b_score * a_score * s_score
+
+        # Observability: confidence-weight based on annotation quality
+        if provenances is not None:
+            o_score = compute_observability_score(
+                positions.get(eid, {}),
+                entity_anchor_sets.get(eid, set()),
+                provenances.get(eid, "traced"),
+            )
+        else:
+            o_score = 1.0
+
+        final = b_score * a_score * s_score * o_score
         if final > 0:
             results.append(
                 ScoredEntity(
@@ -294,7 +319,7 @@ def navigate(
         for sid in query.seed_entity_ids:
             seed_anchors.update(entity_anchor_sets.get(sid, set()))
 
-    # Pure scoring
+    # Pure scoring with observability weighting
     results = _score_candidates(
         candidate_ids,
         positions,
@@ -304,6 +329,7 @@ def navigate(
         query,
         seed_anchors,
         mechanism,
+        provenances=data.provenances,
     )
     return results[:limit]
 

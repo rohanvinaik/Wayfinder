@@ -193,3 +193,40 @@ def _compute_seed_score(
     if union_idf == 0:
         return 1.0
     return shared_idf / union_idf
+
+
+def compute_observability_score(
+    positions: dict[str, int],
+    entity_anchors: set[int],
+    provenance: str = "traced",
+) -> float:
+    """Score how well-observed an entity is (annotation confidence).
+
+    This is NOT a relevance score — it measures how much evidence we have
+    about the entity, not whether it matches the query. Entities with more
+    populated banks and richer anchors are better observed.
+
+    Traced entities with full proof-trace data get higher observability
+    than premise-only entities with sparse namespace-derived annotations.
+
+    Returns a value in (0, 1] where 1.0 = fully observed.
+
+    Args:
+        positions: {bank_name: signed_position} for the entity.
+        entity_anchors: Set of anchor IDs for the entity.
+        provenance: 'traced', 'premise_only', or 'tactic'.
+    """
+    # Factor 1: bank population (how many banks have non-zero positions)
+    populated = sum(1 for v in positions.values() if v != 0)
+    bank_confidence = 0.3 + 0.7 * (populated / max(len(BANK_NAMES), 1))
+
+    # Factor 2: anchor richness (diminishing returns, floor at 0.1)
+    n_anchors = len(entity_anchors)
+    anchor_confidence = max(0.1, min(1.0, n_anchors / 10.0))
+
+    # Factor 3: has tactic-derived anchors (proxy for proof trace quality)
+    # Tactic anchors are the ones NOT prefixed with ns:, name:, type:, file:, dir:
+    has_tactic_anchors = provenance == "traced"
+    trace_bonus = 1.0 if has_tactic_anchors else 0.6
+
+    return bank_confidence * anchor_confidence * trace_bonus
