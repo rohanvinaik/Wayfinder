@@ -305,7 +305,7 @@ def _run_search_loop_v3(
     from src.sketch_predictor import SketchPredictor
     from src.specialist_navigator import ExecutionSlot
     from src.template_classifier import TemplateClassifier
-    from src.v3_runtime import V3Config, V3Slots, v3_search
+    from src.v3_runtime import V3Config, V3SearchParams, V3Slots, v3_search
     from src.v3_scoring import compute_bank_idf
 
     model_cfg = config.get("model", {})
@@ -369,9 +369,11 @@ def _run_search_loop_v3(
             initial_goal=thm["goal_state"],
             slots=slots,
             conn=conn,
-            config=cfg,
-            v3_config=v3_cfg,
-            accessible_theorem_id=accessible_id,
+            params=V3SearchParams(
+                config=cfg,
+                v3_config=v3_cfg,
+                accessible_theorem_id=accessible_id,
+            ),
         )
         elapsed = time.perf_counter() - t0
 

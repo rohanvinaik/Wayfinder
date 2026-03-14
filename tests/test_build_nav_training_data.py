@@ -113,21 +113,48 @@ class TestResolveStepDirections(unittest.TestCase):
         """Entity in Nat namespace (domain=-1) + simp tactic."""
         entity = self._make_entity(
             domain_sign=-1,
-            tactic_dirs=[{"directions": {"structure": -1, "domain": 0, "automation": -1,
-                                         "depth": -1, "context": 0, "decomposition": -1}}],
+            tactic_dirs=[
+                {
+                    "directions": {
+                        "structure": -1,
+                        "domain": 0,
+                        "automation": -1,
+                        "depth": -1,
+                        "context": 0,
+                        "decomposition": -1,
+                    }
+                }
+            ],
         )
         result = _resolve_step_directions(entity, step_idx=0, tactic="simp")
-        self.assertEqual(result, {
-            "structure": -1, "domain": -1, "automation": -1,
-            "depth": -1, "context": 0, "decomposition": -1,
-        })
+        self.assertEqual(
+            result,
+            {
+                "structure": -1,
+                "domain": -1,
+                "automation": -1,
+                "depth": -1,
+                "context": 0,
+                "decomposition": -1,
+            },
+        )
 
     def test_exact_values_abstract_domain(self):
         """Entity in CategoryTheory namespace (domain=+1) + apply tactic."""
         entity = self._make_entity(
             domain_sign=1,
-            tactic_dirs=[{"directions": {"structure": 0, "domain": 0, "automation": 1,
-                                         "depth": 0, "context": 0, "decomposition": 0}}],
+            tactic_dirs=[
+                {
+                    "directions": {
+                        "structure": 0,
+                        "domain": 0,
+                        "automation": 1,
+                        "depth": 0,
+                        "context": 0,
+                        "decomposition": 0,
+                    }
+                }
+            ],
         )
         result = _resolve_step_directions(entity, step_idx=0, tactic="apply")
         self.assertEqual(result["domain"], 1)

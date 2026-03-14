@@ -105,7 +105,7 @@ def direction_bin_analysis(directions: list[dict[str, int]]) -> None:
     for rank, (key, count) in enumerate(bin_counter.most_common(20), 1):
         pct = 100.0 * count / n
         cum += pct
-        s, d, dp, a, c, dc = key
+        v_s, v_d, v_dp, v_a, v_c, v_dc = key
 
         # Format each value with +/- sign
         def fmt(v: int) -> str:
@@ -116,7 +116,7 @@ def direction_bin_analysis(directions: list[dict[str, int]]) -> None:
             return " 0"
 
         print(
-            f"   {rank:<6} {fmt(s):>3} {fmt(d):>3} {fmt(dp):>3} {fmt(a):>3} {fmt(c):>3} {fmt(dc):>3}   {count:>7,} {pct:>5.1f}%  {cum:>5.1f}%"
+            f"   {rank:<6} {fmt(v_s):>3} {fmt(v_d):>3} {fmt(v_dp):>3} {fmt(v_a):>3} {fmt(v_c):>3} {fmt(v_dc):>3}   {count:>7,} {pct:>5.1f}%  {cum:>5.1f}%"
         )
 
     print()
@@ -179,6 +179,62 @@ def otp_dimensionality(directions: list[dict[str, int]]) -> None:
     print()
 
 
+def _print_coactivation_details(
+    abbrev: dict[str, str],
+    activation: dict[str, int],
+    coactivation: dict[tuple[str, str], int],
+    n: int,
+) -> None:
+    """Print co-activation matrix, strongest/weakest pairs, and lift analysis."""
+    header = "   " + " " * 16 + "  ".join(f"{abbrev[b]:>5}" for b in BANKS)
+    print(header)
+    print("   " + "-" * (16 + 7 * 6))
+
+    for b1 in BANKS:
+        row = f"   {abbrev[b1] + ' ' + b1:<16}"
+        for b2 in BANKS:
+            if b1 == b2:
+                row += f"{'---':>7}"
+            else:
+                key = (b1, b2) if (b1, b2) in coactivation else (b2, b1)
+                rate = 100.0 * coactivation[key] / n
+                row += f"{rate:>6.1f}%"
+        print(row)
+
+    print()
+
+    sorted_pairs = sorted(coactivation.items(), key=lambda x: x[1], reverse=True)
+    print("   Strongest co-activation pairs:")
+    for (b1, b2), count in sorted_pairs[:5]:
+        rate = 100.0 * count / n
+        print(f"     {b1} + {b2}: {rate:.1f}%")
+
+    print()
+    print("   Weakest co-activation pairs:")
+    for (b1, b2), count in sorted_pairs[-5:]:
+        rate = 100.0 * count / n
+        print(f"     {b1} + {b2}: {rate:.1f}%")
+
+    print()
+
+    # Lift analysis
+    print("   Co-activation lift (observed / expected if independent):")
+    print(f"   {'Pair':<35} {'Obs%':>6} {'Exp%':>6} {'Lift':>6}")
+    print("   " + "-" * 55)
+    lifts = []
+    for (b1, b2), count in sorted_pairs:
+        obs_rate = count / n
+        exp_rate = (activation[b1] / n) * (activation[b2] / n)
+        lift = obs_rate / exp_rate if exp_rate > 0 else float("inf")
+        lifts.append(((b1, b2), obs_rate, exp_rate, lift))
+
+    lifts.sort(key=lambda x: x[3], reverse=True)
+    for (b1, b2), obs, exp, lift in lifts:
+        print(f"   {b1 + ' + ' + b2:<35} {obs * 100:>5.1f}% {exp * 100:>5.1f}% {lift:>5.2f}x")
+
+    print()
+
+
 def bank_coactivation(directions: list[dict[str, int]]) -> None:
     """Section 4: Pairwise bank co-activation rates."""
     n = len(directions)
@@ -224,54 +280,7 @@ def bank_coactivation(directions: list[dict[str, int]]) -> None:
         "context": "C",
         "decomposition": "Dc",
     }
-    header = "   " + " " * 16 + "  ".join(f"{abbrev[b]:>5}" for b in BANKS)
-    print(header)
-    print("   " + "-" * (16 + 7 * 6))
-
-    for b1 in BANKS:
-        row = f"   {abbrev[b1] + ' ' + b1:<16}"
-        for b2 in BANKS:
-            if b1 == b2:
-                row += f"{'---':>7}"
-            else:
-                key = (b1, b2) if (b1, b2) in coactivation else (b2, b1)
-                rate = 100.0 * coactivation[key] / n
-                row += f"{rate:>6.1f}%"
-        print(row)
-
-    print()
-
-    # Report strongest and weakest pairs
-    sorted_pairs = sorted(coactivation.items(), key=lambda x: x[1], reverse=True)
-    print("   Strongest co-activation pairs:")
-    for (b1, b2), count in sorted_pairs[:5]:
-        rate = 100.0 * count / n
-        print(f"     {b1} + {b2}: {rate:.1f}%")
-
-    print()
-    print("   Weakest co-activation pairs:")
-    for (b1, b2), count in sorted_pairs[-5:]:
-        rate = 100.0 * count / n
-        print(f"     {b1} + {b2}: {rate:.1f}%")
-
-    print()
-
-    # Lift analysis: co-activation vs. independent expectation
-    print("   Co-activation lift (observed / expected if independent):")
-    print(f"   {'Pair':<35} {'Obs%':>6} {'Exp%':>6} {'Lift':>6}")
-    print("   " + "-" * 55)
-    lifts = []
-    for (b1, b2), count in sorted_pairs:
-        obs_rate = count / n
-        exp_rate = (activation[b1] / n) * (activation[b2] / n)
-        lift = obs_rate / exp_rate if exp_rate > 0 else float("inf")
-        lifts.append(((b1, b2), obs_rate, exp_rate, lift))
-
-    lifts.sort(key=lambda x: x[3], reverse=True)
-    for (b1, b2), obs, exp, lift in lifts:
-        print(f"   {b1 + ' + ' + b2:<35} {obs * 100:>5.1f}% {exp * 100:>5.1f}% {lift:>5.2f}x")
-
-    print()
+    _print_coactivation_details(abbrev, activation, coactivation, n)
 
 
 def main() -> None:

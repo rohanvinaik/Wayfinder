@@ -200,9 +200,7 @@ def _compare_retrieval(
         for k in ks:
             nav_recalls[k].append(compute_recall_at_k(nav_prem, gt, k))
             dense_recalls[k].append(compute_recall_at_k(dense_prem, gt, k))
-            nav_cond[k].append(
-                compute_conditional_recall_at_k(nav_prem, gt, entity_name_set, k)
-            )
+            nav_cond[k].append(compute_conditional_recall_at_k(nav_prem, gt, entity_name_set, k))
             dense_cond[k].append(
                 compute_conditional_recall_at_k(dense_prem, gt, entity_name_set, k)
             )
@@ -257,10 +255,12 @@ def _build_report(comparison: dict, ks: list[int]) -> dict:
         "timing": timing,
     }
 
-    print(f"\n=== Universe Coverage ===")
-    print(f"  mean={coverage_stats['mean']:.1%}"
-          f"  fully_covered={coverage_stats['fully_covered']}/{len(coverages)}"
-          f"  zero_covered={coverage_stats['zero_covered']}/{len(coverages)}")
+    print("\n=== Universe Coverage ===")
+    print(
+        f"  mean={coverage_stats['mean']:.1%}"
+        f"  fully_covered={coverage_stats['fully_covered']}/{len(coverages)}"
+        f"  zero_covered={coverage_stats['zero_covered']}/{len(coverages)}"
+    )
 
     print("\n=== Retrieval Comparison (raw) ===")
     for k in ks:

@@ -24,6 +24,7 @@ import functools
 import json
 import re
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 
 from scripts.tactic_maps import (
@@ -296,7 +297,7 @@ def _extract_type_token_anchors(theorem_type: str) -> list[str]:
 
 
 def _collect_anchors(
-    domain_anchors: list[str],
+    domain_anchors: Sequence[str],
     theorem_type: str,
     tactic_names: list[str],
     entity_fields: dict,

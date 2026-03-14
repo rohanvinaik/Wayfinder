@@ -82,16 +82,23 @@ class _V3SearchEnv:
     v3_config: V3Config
 
 
+@dataclass
+class V3SearchParams:
+    """Optional parameters for v3_search, grouped to reduce argument count."""
+
+    config: SearchConfig | None = None
+    v3_config: V3Config | None = None
+    anchor_id_map: dict[str, int] | None = None
+    accessible_theorem_id: int | None = None
+    max_template_retries: int = 3
+
+
 def v3_search(
     theorem_id: str,
     initial_goal: str,
     slots: V3Slots,
     conn: sqlite3.Connection,
-    config: SearchConfig | None = None,
-    v3_config: V3Config | None = None,
-    anchor_id_map: dict[str, int] | None = None,
-    accessible_theorem_id: int | None = None,
-    max_template_retries: int = 3,
+    params: V3SearchParams | None = None,
 ) -> SearchResult:
     """Run v3 proof search on a single theorem.
 
@@ -103,19 +110,15 @@ def v3_search(
         initial_goal: Initial goal state text.
         slots: v3 pipeline components.
         conn: SQLite connection to proof network.
-        config: Search configuration (budget, hammer, etc.).
-        v3_config: v3-specific settings (bank IDF, censor, constraints).
-        anchor_id_map: Anchor label → DB ID mapping.
-        accessible_theorem_id: Theorem ID for premise filtering.
-        max_template_retries: Max alternative templates per goal.
-
+        params: Optional search parameters (config, v3_config, anchor_id_map, etc.).
     Returns:
         SearchResult with proof attempt details.
     """
-    cfg = config or SearchConfig()
-    v3_cfg = v3_config or V3Config()
+    p = params or V3SearchParams()
+    cfg = p.config or SearchConfig()
+    v3_cfg = p.v3_config or V3Config()
     context = SearchContext(
-        accessible_theorem_id=accessible_theorem_id if cfg.accessible_premises else None,
+        accessible_theorem_id=p.accessible_theorem_id if cfg.accessible_premises else None,
     )
     state = _V3SearchState(
         open_goals=[initial_goal],
@@ -125,13 +128,13 @@ def v3_search(
         slots=slots,
         conn=conn,
         context=context,
-        anchor_id_map=anchor_id_map,
+        anchor_id_map=p.anchor_id_map,
         config=cfg,
         v3_config=v3_cfg,
     )
 
     while state.open_goals and state.attempts < cfg.budget:
-        _v3_search_step(state, env, max_template_retries)
+        _v3_search_step(state, env, p.max_template_retries)
 
     success = len(state.open_goals) == 0
     state.trace.result = "proved" if success else "failed"
@@ -233,7 +236,7 @@ def _censor_prune(
     scored: list[tuple[Candidate, float]] = []
     for candidate in candidates:
         # Build tactic feature placeholder — full pipeline uses tactic anchor embeddings
-        censor_input_dim: int = slots.censor.network[0].in_features  # type: ignore[union-attr]
+        censor_input_dim = int(getattr(slots.censor.network[0], "in_features", 384))
         tactic_dim = censor_input_dim - int(goal_features.shape[-1])
         tactic_feat = torch.zeros(1, tactic_dim)
         pred = slots.censor.predict(goal_features, tactic_feat)

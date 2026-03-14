@@ -112,6 +112,7 @@ _MISSING_BANK_SCORE = 0.3
 # 242K IDs on every navigate() call. Cleared by clear_caches().
 _entity_id_cache: dict[tuple[int, str | None], set[int]] = {}
 
+
 # In-memory data cache: pre-load positions, anchor sets, and names for all
 # entities on first navigate() call. Eliminates SQLite I/O on subsequent calls.
 # Key: conn_id. Cleared by clear_caches().
@@ -158,15 +159,11 @@ def _get_data_cache(conn: sqlite3.Connection) -> _DataCache:
 
     # Load all anchor sets
     anchor_sets: dict[int, set[int]] = defaultdict(set)
-    for eid, aid in conn.execute(
-        "SELECT entity_id, anchor_id FROM entity_anchors"
-    ).fetchall():
+    for eid, aid in conn.execute("SELECT entity_id, anchor_id FROM entity_anchors").fetchall():
         anchor_sets[eid].add(aid)
 
     # Load all names
-    names: dict[int, str] = dict(
-        conn.execute("SELECT id, name FROM entities").fetchall()
-    )
+    names: dict[int, str] = dict(conn.execute("SELECT id, name FROM entities").fetchall())
 
     cache = _DataCache(
         positions=dict(positions),
@@ -287,9 +284,7 @@ def _vectorized_bank_scores(
                 pos_matrix[i, j] = epos[bank]
 
     # Query direction vector
-    directions = np.array(
-        [query.bank_directions.get(b, 0) for b in BANK_NAMES], dtype=np.float64
-    )
+    directions = np.array([query.bank_directions.get(b, 0) for b in BANK_NAMES], dtype=np.float64)
     confidences = np.array(
         [query.bank_confidences.get(b, 1.0) for b in BANK_NAMES], dtype=np.float64
     )
@@ -309,9 +304,11 @@ def _vectorized_bank_scores(
             directions == 0,
             1.0 / (1.0 + np.abs(np.nan_to_num(pos_matrix, nan=0.0))),  # query doesn't care
             np.where(
-                alignment > 0, 1.0,  # right side
+                alignment > 0,
+                1.0,  # right side
                 np.where(
-                    alignment == 0, 0.5,  # neutral
+                    alignment == 0,
+                    0.5,  # neutral
                     1.0 / (1.0 + np.abs(alignment)),  # wrong side
                 ),
             ),
@@ -353,10 +350,9 @@ def _score_candidates(
         bank_scores = _vectorized_bank_scores(candidate_ids, positions, query)
     else:
         # Fallback for non-standard mechanisms
-        bank_scores = np.array([
-            _compute_bank_score(positions.get(eid, {}), query, mechanism)
-            for eid in candidate_ids
-        ])
+        bank_scores = np.array(
+            [_compute_bank_score(positions.get(eid, {}), query, mechanism) for eid in candidate_ids]
+        )
 
     # Early pruning: skip candidates with zero bank score
     nonzero_mask = bank_scores > 0

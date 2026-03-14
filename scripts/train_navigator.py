@@ -338,12 +338,13 @@ def _run_step_checks(
         if step % 200 == 0:
             tiers = ckpt_data.tier_accuracies
             val_str = f" val={ckpt_data.val_loss:.4f}" if ckpt_data.val_loss is not None else ""
-            print(
-                f"    Nav accuracy: {ckpt_data.domain_accuracies}"
-                f"\n    Tiers: t1={tiers['tier1']:.3f}"
-                f" t2(hard)={tiers['tier2']:.3f} t3(easy)={tiers['tier3']:.3f}"
-                f"{val_str}"
-            )
+            if tiers:
+                print(
+                    f"    Nav accuracy: {ckpt_data.domain_accuracies}"
+                    f"\n    Tiers: t1={tiers['tier1']:.3f}"
+                    f" t2(hard)={tiers['tier2']:.3f} t3(easy)={tiers['tier3']:.3f}"
+                    f"{val_str}"
+                )
 
     if _check_nan_abort(loss_dict, ctx.config):
         return "nan_abort"
