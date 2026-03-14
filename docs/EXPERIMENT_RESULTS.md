@@ -87,7 +87,20 @@ Cosine similarity between goal state embeddings and pre-computed premise embeddi
 | 0 (bootstrap) | 100% | 0 | — | 2026-03-10, 78K entity DB (trace-bounded) |
 | **RE-RUN** | pending | — | — | 242K entity DB (proof-bounded), domain labels fixed |
 
-**IMPORTANT (2026-03-14):** The original 100% recall pass was on the trace-bounded DB (78K entities, 34.5% premise coverage). This result is partially invalid — it measured recall within a truncated candidate universe. The anchor gap analysis must be re-run on the expanded DB (242K entities, 90.4% coverage) to validate that retrieval still works when premise-only entities compete for ranking positions.
+**IMPORTANT (2026-03-14):** The original 100% recall pass was on the trace-bounded DB (78K entities, 34.5% premise coverage). Re-run on expanded DB below.
+
+**Re-run on expanded DB (2026-03-14, Colab T4):**
+
+| Metric | Value | Target | Status |
+|--------|-------|--------|--------|
+| Samples | 152 | 500 | Partial (script ran 152) |
+| Mean recall@16 | **4.1%** | ≥70% | **FAIL** |
+| Perfect recall | 2/152 (1.3%) | — | — |
+| Zero recall | 140/152 (92.1%) | — | — |
+
+**Root cause: dilution.** The 242K entity DB includes 163K premise-only entities with sparse metadata (namespace-derived positions only, no tactic anchors). These compete with traced entities in the ranking but can't be distinguished by the scoring function. Even "perfect queries" (ground-truth bank positions + anchors) can't discriminate correct premises from the flood of weakly-annotated competitors.
+
+**Implication:** The proof network expansion (Stage 1) improved coverage from 34.5% → 85.9% but destroyed discrimination. The scoring function needs to incorporate provenance weighting — traced entities with full position/anchor data should rank higher than premise-only entities with sparse metadata. Alternatively, premise-only entities need richer annotations (type-level anchors, constant usage) before they can compete fairly.
 
 **Top 20 gap anchors (final iteration):**
 
@@ -385,9 +398,23 @@ Cosine similarity between goal state embeddings and pre-computed premise embeddi
 2. **Build tactic entities** — `build_proof_network_db.py` has tactic entity code but 0 tactic entities exist in DB (likely skipped during initial run)
 3. Re-run `anchor_gap_analysis.py` after expansion to confirm recall@16 still passes
 
-**Target:** Nav recall@16 >= 80% of dense recall@16 (NOT evaluable until data gap fixed).
+**Re-run on expanded DB (2026-03-14, Colab T4, 482 samples):**
 
-**Stream 1 verdict:** [ ] Navigation matches/exceeds dense / [ ] Dense superior / [x] Inconclusive — blocked by data coverage
+| k | Nav recall | Dense recall | Nav cond_recall | Dense cond_recall |
+|---|-----------|-------------|-----------------|-------------------|
+| 1 | 0.0000 | 0.0012 | 0.0083 | 0.0097 |
+| 4 | 0.0000 | 0.0066 | 0.0083 | 0.0154 |
+| 8 | 0.0000 | 0.0092 | 0.0083 | 0.0185 |
+| 16 | 0.0000 | 0.0159 | 0.0083 | 0.0255 |
+
+Universe coverage: 85.9% mean (198 fully covered, 4 zero covered).
+Timing: nav=1980ms, dense=19ms.
+
+**Analysis:** Coverage improved (34.5% → 85.9%) but both methods are at floor. Nav raw recall is zero; conditional recall is 0.8% (non-zero but negligible). Dense conditional recall is 2.6% — also very low but consistently above nav. The 242K entity expansion diluted discrimination (see EXP-0.2 re-run).
+
+**Target:** Nav recall@16 >= 80% of dense recall@16 → NOT MET.
+
+**Stream 1 verdict:** [ ] Navigation matches/exceeds dense / [x] Dense superior / [ ] Inconclusive
 
 ### EXP-2.2: Spreading Activation Benefit ⚠️ BLOCKED BY DATA GAP
 
@@ -404,11 +431,19 @@ Cosine similarity between goal state embeddings and pre-computed premise embeddi
 |---|---|---|
 | Average per-goal | 6205.3 | 6180.7 |
 
-**Root cause:** Same 34.5% premise coverage gap as EXP-2.1. Cannot evaluate spreading activation when the premises being retrieved don't exist as entities. See EXP-2.1 for full coverage analysis and fix plan.
+**Re-run on expanded DB (2026-03-14, Colab T4, 487 multi-step samples):**
 
-**Target:** Spreading adds >= 5% recall@16 on proof steps 3+ (NOT evaluable until data gap fixed).
+| k | No-spread recall@k | With-spread recall@k | Delta |
+|---|---|---|---|
+| 4 | 0.0000 | 0.0000 | 0.0000 |
+| 8 | 0.0000 | 0.0000 | 0.0000 |
+| 16 | 0.0000 | 0.0000 | 0.0000 |
 
-**Observations:** Spreading adds negligible timing overhead (~0.4% faster with spread, within noise). Once the data gap is fixed, spreading should show benefit on multi-step proofs where closed goals provide seed entities for activation.
+Timing: no_spread=2124ms, with_spread=1794ms.
+
+**Analysis:** Both methods at zero — spreading can't improve what doesn't work. The base retrieval is at floor due to the 242K entity dilution problem (see EXP-0.2 re-run). Spreading will become evaluable once discrimination is restored.
+
+**Target:** Spreading adds >= 5% recall@16 on proof steps 3+ → NOT EVALUABLE (base retrieval at floor).
 
 ### EXP-2.3: Scoring Mechanism Comparison
 
