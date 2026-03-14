@@ -165,5 +165,35 @@ class TestSearchTrace(unittest.TestCase):
         self.assertEqual(len(d["steps"]), 1)
 
 
+class TestConstraintReportAllFields(unittest.TestCase):
+    """VALUE prescriptions: exact assertions for every to_dict field."""
+
+    def test_all_fields_round_trip(self):
+        cr = ConstraintReport(
+            bank_scores={"structure": 0.9, "domain": 0.5},
+            critic_distance=3.0,
+            censor_score=0.1,
+            anchor_alignment=0.7,
+            total_score=1.5,
+            energy=0.42,
+        )
+        d = cr.to_dict()
+        self.assertEqual(d["bank_scores"], {"structure": 0.9, "domain": 0.5})
+        self.assertAlmostEqual(d["critic_distance"], 3.0)
+        self.assertAlmostEqual(d["censor_score"], 0.1)
+        self.assertAlmostEqual(d["anchor_alignment"], 0.7)
+        self.assertAlmostEqual(d["total_score"], 1.5)
+        self.assertAlmostEqual(d["energy"], 0.42)
+
+    def test_default_fields(self):
+        cr = ConstraintReport(total_score=0.0)
+        d = cr.to_dict()
+        self.assertEqual(d["bank_scores"], {})
+        self.assertAlmostEqual(d["critic_distance"], 0.0)
+        self.assertAlmostEqual(d["censor_score"], 0.0)
+        self.assertAlmostEqual(d["anchor_alignment"], 0.0)
+        self.assertAlmostEqual(d["total_score"], 0.0)
+
+
 if __name__ == "__main__":
     unittest.main()
