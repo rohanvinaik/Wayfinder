@@ -96,16 +96,25 @@ CREATE INDEX IF NOT EXISTS idx_entity_links_target
     ON entity_links(target_id);
 CREATE INDEX IF NOT EXISTS idx_accessible_premises_theorem
     ON accessible_premises(theorem_id);
+CREATE INDEX IF NOT EXISTS idx_entities_type
+    ON entities(entity_type);
+CREATE INDEX IF NOT EXISTS idx_entities_provenance
+    ON entities(provenance);
 """
 
 # Missing bank penalty: not zero, but penalized.
 _MISSING_BANK_SCORE = 0.3
+
+# Cache entity ID sets by (conn_id, entity_type) to avoid re-querying
+# 242K IDs on every navigate() call. Cleared by clear_caches().
+_entity_id_cache: dict[tuple[int, str | None], set[int]] = {}
 
 
 def clear_caches() -> None:
     """Clear all module-level caches. Call between test cases or DB swaps."""
     _idf_cache.clear()
     _accessible_cache.clear()
+    _entity_id_cache.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -364,7 +373,12 @@ def _get_candidates(
     query: StructuredQuery,
     entity_type: str | None,
 ) -> list[int]:
-    """Build candidate entity IDs from filters."""
+    """Build candidate entity IDs from filters.
+
+    Entity ID sets are cached per (connection, entity_type) to avoid
+    re-querying 242K rows on every navigate() call. Cache is cleared
+    by clear_caches().
+    """
     # Start with accessible premises if specified
     if query.accessible_theorem_id is not None:
         accessible = get_accessible_premises(conn, query.accessible_theorem_id)
@@ -372,15 +386,21 @@ def _get_candidates(
             return []
         candidate_ids = accessible
     else:
-        # All entities (optionally filtered by type)
-        if entity_type:
+        # Cache entity ID sets to avoid re-querying 242K rows per navigate() call
+        cache_key = (id(conn), entity_type)
+        if cache_key in _entity_id_cache:
+            candidate_ids = _entity_id_cache[cache_key]
+        elif entity_type:
             rows = conn.execute(
                 "SELECT id FROM entities WHERE entity_type = ?",
                 (entity_type,),
             ).fetchall()
+            candidate_ids = {r[0] for r in rows}
+            _entity_id_cache[cache_key] = candidate_ids
         else:
             rows = conn.execute("SELECT id FROM entities").fetchall()
-        candidate_ids = {r[0] for r in rows}
+            candidate_ids = {r[0] for r in rows}
+            _entity_id_cache[cache_key] = candidate_ids
 
     # Hard filter by required anchors
     if query.require_anchors:
