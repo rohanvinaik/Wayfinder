@@ -419,7 +419,7 @@ def _encode_peft(
     from transformers import AutoModel, AutoTokenizer
 
     base_name = PEFT_MODELS[model_name]
-    tokenizer = AutoTokenizer.from_pretrained(base_name)
+    tokenizer = AutoTokenizer.from_pretrained(base_name)  # nosec B615
     base_model = AutoModel.from_pretrained(  # nosec B615
         base_name,
         torch_dtype=torch.float16,

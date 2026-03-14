@@ -22,7 +22,7 @@ class TestBuildSorryProof(unittest.TestCase):
         result = _build_sorry_proof(entry)
         self.assertIn("sorry", result)
         # Should have "sorry" as the tactic block AND the trailing sorry
-        lines = [l.strip() for l in result.strip().split("\n") if l.strip()]
+        lines = [line.strip() for line in result.strip().split("\n") if line.strip()]
         self.assertEqual(lines[-1], "sorry")
 
     def test_missing_theorem_id_defaults_to_unknown(self):

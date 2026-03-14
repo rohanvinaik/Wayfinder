@@ -38,7 +38,8 @@ def per_bank_distribution(directions: list[dict[str, int]]) -> None:
     print(f"   (N = {n:,} examples, first {MAX_LINES:,} lines of nav_train.jsonl)")
     print()
     print(
-        f"{'Bank':<16} {'  -1':>8} {'   0':>8} {'  +1':>8}  {'%-1':>6} {'%0':>6} {'%+1':>6}  Zero-Heavy?"
+        f"{'Bank':<16} {'  -1':>8} {'   0':>8} {'  +1':>8}"
+        f"  {'%-1':>6} {'%0':>6} {'%+1':>6}  Zero-Heavy?"
     )
     print("-" * 90)
 
@@ -56,7 +57,8 @@ def per_bank_distribution(directions: list[dict[str, int]]) -> None:
         if is_zero_heavy:
             zero_heavy_banks.append(bank)
         print(
-            f"{bank:<16} {c_neg:>8,} {c_zero:>8,} {c_pos:>8,}  {p_neg:>5.1f}% {p_zero:>5.1f}% {p_pos:>5.1f}%  {marker}"
+            f"{bank:<16} {c_neg:>8,} {c_zero:>8,} {c_pos:>8,}"
+            f"  {p_neg:>5.1f}% {p_zero:>5.1f}% {p_pos:>5.1f}%  {marker}"
         )
 
     print()
@@ -98,7 +100,8 @@ def direction_bin_analysis(directions: list[dict[str, int]]) -> None:
     # Top 20 bins
     print("   Top 20 most frequent bins:")
     print(
-        f"   {'Rank':<6} {'S':>3} {'D':>3} {'Dp':>3} {'A':>3} {'C':>3} {'Dc':>3}   {'Count':>7} {'%':>6}  {'Cum%':>6}"
+        f"   {'Rank':<6} {'S':>3} {'D':>3} {'Dp':>3} {'A':>3} {'C':>3} {'Dc':>3}"
+        f"   {'Count':>7} {'%':>6}  {'Cum%':>6}"
     )
     print("   " + "-" * 55)
     cum = 0.0
@@ -116,7 +119,9 @@ def direction_bin_analysis(directions: list[dict[str, int]]) -> None:
             return " 0"
 
         print(
-            f"   {rank:<6} {fmt(v_s):>3} {fmt(v_d):>3} {fmt(v_dp):>3} {fmt(v_a):>3} {fmt(v_c):>3} {fmt(v_dc):>3}   {count:>7,} {pct:>5.1f}%  {cum:>5.1f}%"
+            f"   {rank:<6} {fmt(v_s):>3} {fmt(v_d):>3} {fmt(v_dp):>3}"
+            f" {fmt(v_a):>3} {fmt(v_c):>3} {fmt(v_dc):>3}"
+            f"   {count:>7,} {pct:>5.1f}%  {cum:>5.1f}%"
         )
 
     print()
@@ -126,7 +131,10 @@ def direction_bin_analysis(directions: list[dict[str, int]]) -> None:
     top20_pct = sum(count for _, count in bin_counter.most_common(20)) / n * 100
     top50_pct = sum(count for _, count in bin_counter.most_common(50)) / n * 100
     print(
-        f"   Concentration: top-5={top5_pct:.1f}%, top-10={top10_pct:.1f}%, top-20={top20_pct:.1f}%, top-50={top50_pct:.1f}%"
+        f"   Concentration: top-5={top5_pct:.1f}%,"
+        f" top-10={top10_pct:.1f}%,"
+        f" top-20={top20_pct:.1f}%,"
+        f" top-50={top50_pct:.1f}%"
     )
     print()
 

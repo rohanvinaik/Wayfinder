@@ -88,9 +88,7 @@ class TestTernaryDecoderInit(unittest.TestCase):
         self.assertEqual(dec.tier2_vocab_size, 0)
 
     def test_partial_ternary_heads_are_linear(self):
-        dec = TernaryDecoder(
-            ternary_enabled=True, partial_ternary=True, tier1_vocab_size=5
-        )
+        dec = TernaryDecoder(ternary_enabled=True, partial_ternary=True, tier1_vocab_size=5)
         self.assertTrue(dec.partial_ternary)
 
 
