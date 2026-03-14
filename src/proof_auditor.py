@@ -103,7 +103,7 @@ class ProofAuditor:
     def connect(self) -> None:
         """Initialize the Axle client. Call before any audit operations."""
         try:
-            from axle import AxleClient
+            from axle import AxleClient  # type: ignore[import-not-found]
         except ImportError:
             msg = (
                 "axiom-axle not installed. Install with: pip install axiom-axle\n"

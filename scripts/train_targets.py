@@ -52,15 +52,72 @@ def build_critic_targets(examples: list, device: str) -> torch.Tensor:
     return torch.tensor(vals, dtype=torch.float32, device=device)
 
 
+def compute_val_loss(
+    modules: dict,
+    loss_fn,
+    examples: list,
+    banks: list[str],
+    anchor_labels: list[str],
+    device: str,
+) -> float:
+    """Compute validation loss on a fixed set of examples."""
+    goal_states = [ex.goal_state for ex in examples]
+    with torch.no_grad():
+        embeddings = modules["encoder"].encode(goal_states)
+        features, _, _ = modules["analyzer"](embeddings)
+        bridge_out = modules["bridge"](features)
+        dir_logits, anchor_logits, progress_pred, critic_pred = modules["navigator"](bridge_out)
+
+        loss_dict = loss_fn(
+            direction_logits=dir_logits,
+            direction_targets=build_direction_targets(examples, banks, device),
+            anchor_logits=anchor_logits,
+            anchor_targets=build_anchor_targets(examples, anchor_labels, device),
+            progress_pred=progress_pred,
+            progress_target=build_progress_targets(examples, device),
+            critic_pred=critic_pred,
+            critic_target=build_critic_targets(examples, device),
+        )
+    return loss_dict["L_total"].item()
+
+
+def capture_bridge_embeddings(
+    modules: dict,
+    examples: list,
+) -> np.ndarray:
+    """Capture bridge output embeddings for representation evolution tracking."""
+    goal_states = [ex.goal_state for ex in examples]
+    with torch.no_grad():
+        embeddings = modules["encoder"].encode(goal_states)
+        features, _, _ = modules["analyzer"](embeddings)
+        bridge_out = modules["bridge"](features)
+    return bridge_out.cpu().numpy()
+
+
+def extract_decoder_weight_signs(modules: dict) -> np.ndarray:
+    """Extract sign pattern from navigator direction head weights for crystallization tracking."""
+    signs = []
+    navigator = modules["navigator"]
+    for bank in navigator.navigable_banks:
+        w = navigator.direction_heads[bank].weight.detach().cpu().numpy()
+        signs.append(np.sign(w).flatten())
+    return np.concatenate(signs)
+
+
 def compute_nav_accuracy(
     modules: dict,
     dataset,
     banks: list[str],
     _device: str,
     max_samples: int = 200,
+    seed: int = 42,
 ) -> dict[str, float]:
-    """Compute per-bank direction accuracy on a subset."""
-    rng = np.random.default_rng()
+    """Compute per-bank direction accuracy on a fixed subset.
+
+    Uses a deterministic seed so the same subset is evaluated every checkpoint,
+    eliminating measurement noise from random sampling.
+    """
+    rng = np.random.default_rng(seed)
     n = min(len(dataset), max_samples)
     indices = rng.choice(len(dataset), n, replace=False)
     examples = [dataset[int(i)] for i in indices]

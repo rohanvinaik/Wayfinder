@@ -30,9 +30,29 @@ class TestProofExample(unittest.TestCase):
         ex = self._make_example()
         d = ex.to_dict()
         ex2 = ProofExample.from_dict(d)
-        self.assertEqual(ex.theorem_id, ex2.theorem_id)
-        self.assertEqual(ex.tier1_tokens, ex2.tier1_tokens)
-        self.assertEqual(ex.goal_state, ex2.goal_state)
+        self.assertEqual(ex2.theorem_id, "test.add_comm")
+        self.assertEqual(ex2.goal_state, "a b : Nat |- a + b = b + a")
+        self.assertEqual(ex2.theorem_statement, "theorem add_comm (a b : Nat) : a + b = b + a")
+        self.assertEqual(ex2.proof_text, "  omega")
+        self.assertEqual(ex2.tier1_tokens, ["BOS", "omega", "EOS"])
+        self.assertEqual(ex2.tier2_blocks, [])
+        self.assertEqual(ex2.tier3_slots, [])
+        self.assertEqual(ex2.metadata, {"domain": "algebra"})
+
+    def test_to_dict_exact_keys(self):
+        ex = self._make_example()
+        d = ex.to_dict()
+        required = {
+            "theorem_id",
+            "goal_state",
+            "theorem_statement",
+            "proof_text",
+            "tier1_tokens",
+            "tier2_blocks",
+            "tier3_slots",
+        }
+        for key in required:
+            self.assertIn(key, d, f"Missing key: {key}")
 
     def test_with_tier2_blocks(self):
         ex = self._make_example()
@@ -61,8 +81,10 @@ class TestVerificationResult(unittest.TestCase):
         )
         d = vr.to_dict()
         vr2 = VerificationResult.from_dict(d)
-        self.assertTrue(vr2.verified)
+        self.assertEqual(vr2.verified, True)
+        self.assertEqual(vr2.goal_state, "n : Nat |- n + 0 = n")
         self.assertEqual(vr2.tactic_trace, ["omega"])
+        self.assertEqual(vr2.steps_used, 1)
 
 
 class TestNegativeBankEntry(unittest.TestCase):
@@ -97,7 +119,10 @@ class TestOODPrompt(unittest.TestCase):
         )
         d = p.to_dict()
         p2 = OODPrompt.from_dict(d)
+        self.assertEqual(p2.prompt, "Write a poem")
         self.assertEqual(p2.label, "ood")
+        self.assertEqual(p2.category, "general_chat")
+        self.assertEqual(p2.source, "synthetic")
 
 
 class TestCoverageReport(unittest.TestCase):
@@ -112,8 +137,12 @@ class TestCoverageReport(unittest.TestCase):
         )
         d = cr.to_dict()
         cr2 = CoverageReport.from_dict(d)
-        self.assertEqual(cr2.coverage_pct, 96.0)
+        self.assertEqual(cr2.scope, "tier1")
+        self.assertEqual(cr2.dataset, "eval")
+        self.assertEqual(cr2.total_tokens_in_eval, 50)
+        self.assertEqual(cr2.covered, 48)
         self.assertEqual(cr2.uncovered, ["tactic_a", "tactic_b"])
+        self.assertAlmostEqual(cr2.coverage_pct, 96.0, places=5)
 
 
 if __name__ == "__main__":

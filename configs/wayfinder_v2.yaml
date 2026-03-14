@@ -1,0 +1,217 @@
+# Wayfinder v2 configuration — Society of Mind architecture
+# Extends v1 config with specialist decomposition, template classification,
+# and SoM orchestrator settings.
+
+# --- Data paths ---
+data:
+  nav_train: data/nav_train.jsonl
+  nav_eval: data/nav_eval.jsonl
+  proof_network_db: data/proof_network.db
+  anchor_labels: data/anchor_labels.json
+  template_train: data/nav_train_templates.jsonl  # Augmented with template_id (Phase 6.1 output)
+  template_taxonomy: data/template_taxonomy.json   # Template definitions (Phase 6.1 output)
+
+# --- Model components (shared perception) ---
+model:
+  encoder:
+    type: all-MiniLM-L6-v2
+    output_dim: 384
+    frozen: true
+
+  goal_analyzer:
+    feature_dim: 256
+    num_anchors: 18729
+    navigable_banks:
+      - structure
+      - domain
+      - depth
+      - automation
+      - context
+      - decomposition
+
+  bridge:
+    bridge_dim: 128
+    history_dim: 64
+
+  navigator:
+    input_dim: 128
+    hidden_dim: 256
+    num_anchors: 18729
+    num_layers: 2
+    ternary_enabled: true
+    navigable_banks:
+      - structure
+      - domain
+      - depth
+      - automation
+      - context
+      - decomposition
+
+  # RECOGNITION slot (Slot 2)
+  template_classifier:
+    hidden_dim: 128
+    feature_dim: 64     # Template features passed to PLANNING slot
+
+  # PLANNING slot (Slot 3)
+  sketch_predictor:
+    hidden_dim: 256
+    max_subgoals: 6
+
+  # VERIFICATION enhancement (Slot 5)
+  censor:
+    goal_dim: 256
+    tactic_dim: 64
+    hidden_dim: 128
+    threshold: 0.7
+
+# --- Specialist decomposition (Slot 4: EXECUTION) ---
+# Each specialist has its own bridge + navigator for assigned banks.
+# PAB stability guides further decomposition (DESIGN §10.8).
+specialists:
+  A:
+    banks:
+      - domain
+      - context
+    bridge_dim: 128
+    hidden_dim: 256
+    num_layers: 2
+  B:
+    banks:
+      - structure
+      - automation
+      - depth
+      - decomposition
+    bridge_dim: 128
+    hidden_dim: 256
+    num_layers: 2
+
+# PAB stability thresholds per specialist (calibrated in Phase 6.0c)
+# The "chaotic" threshold is 2x the null model stability for that bank count.
+pab_thresholds:
+  A:
+    stable: 0.10    # 2-bank specialist: lower threshold than monolithic
+    chaotic: 0.20
+  B:
+    stable: 0.15    # 4-bank specialist
+    chaotic: 0.30
+
+# --- Navigation ---
+navigation:
+  scoring_mechanism: confidence_weighted
+  num_anchors: 18729
+  spread_depth: 2
+  tactic_limit: 8
+  premise_limit: 16
+  anchor_threshold: 0.3
+
+# --- Training ---
+training:
+  batch_size: 16
+  learning_rate: 1.0e-4
+  weight_decay: 0.01
+  max_iterations: 5000
+  warmup_steps: 200
+  seed: 42
+  device: mps
+
+  loss:
+    initial_log_sigma: 0.0
+
+  optimizer: adamw
+  scheduler: cosine
+
+  curriculum:
+    phase_a:
+      max_steps: 2
+      iterations: 500
+    phase_b:
+      max_steps: 5
+      iterations: 1500
+    phase_c:
+      max_steps: null
+      iterations: null
+
+  proof_history: true
+  soft_critic_targets: true
+
+  # Template classifier training (Phase 6.2)
+  template_classifier:
+    learning_rate: 1.0e-3
+    batch_size: 32
+    max_iterations: 2000
+
+# --- Search ---
+search:
+  budget: 600
+  hammer_delegation: true
+  accessible_premises: true
+  max_candidates_per_step: 8
+  hammer_timeout: 60
+  max_template_retries: 3   # v2: max alternative templates per goal
+
+# --- Lean kernel (Lane A) ---
+lean:
+  backend: stub
+
+# --- Proof auditor (Lane B: Axle) ---
+axle:
+  enabled: false
+  environment: lean-4.28.0
+  timeout_seconds: 120
+  ignore_imports: false
+  cache_enabled: true
+  max_concurrency: 10
+  repair_terminal_tactics:
+    - grind
+    - aesop
+    - simp
+    - omega
+    - decide
+
+# --- Safety ---
+safety:
+  gradient_check_every_n_steps: 50
+  nan_abort: true
+  nan_checkpoint_before_abort: true
+  ternary_distribution_log_every_n_steps: 100
+  max_grad_norm: 1.0
+
+# --- Logging ---
+logging:
+  run_dir: runs/
+  training_log_suffix: _nav_training_log.jsonl
+  eval_results_suffix: _nav_eval_results.json
+  checkpoint_dir: models/
+
+# --- PAB ---
+pab:
+  enabled: true
+  checkpoint_interval: 50
+  early_exit_enabled: true
+  save_profiles: true
+  validation_subset_size: 64
+
+# --- Evaluation ---
+evaluation:
+  benchmark_theorems: data/minif2f_test.jsonl
+  mathlib_test_split: data/mathlib_test.jsonl
+  retrieval_eval_samples: 500
+  spreading_eval_samples: 200
+
+# --- Invariants ---
+invariants:
+  eval_data_frozen: true
+  gap_analysis_before_training: true
+  single_inference_per_state: true
+  scoring_auditable: true
+  pab_from_step_zero: true
+  scoring_configurable: true
+  encoder_explicitly_chosen: true
+  six_bank_default: true
+  soft_critic_targets: true
+  accessible_premises_on: true
+  hammer_delegation_on: true
+  # v2 invariants
+  pab_guides_decomposition: true
+  specialists_share_data_not_weights: true
+  template_classifier_regime_a: true

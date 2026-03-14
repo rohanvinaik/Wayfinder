@@ -3,7 +3,7 @@
 
 # --- Data paths ---
 data:
-  nav_train: data/nav_training.jsonl
+  nav_train: data/nav_train.jsonl
   nav_eval: data/nav_eval.jsonl
   proof_network_db: data/proof_network.db
   anchor_labels: data/anchor_labels.json
@@ -11,13 +11,13 @@ data:
 # --- Model components ---
 model:
   encoder:
-    type: all-MiniLM-L6-v2   # Phase 0.6 selects final encoder; ByT5: google/byt5-small
-    output_dim: 384           # MiniLM native=384; ByT5 native=1472 (auto-projected to output_dim)
-    frozen: false
+    type: all-MiniLM-L6-v2   # Selected in Phase 0.6 (EXP-0.3/0.3b, 15 models). Ablation: leandojo-lean4-retriever-byt5-small (1472d)
+    output_dim: 384           # MiniLM native=384; LeanDojo ablation: 1472
+    frozen: true              # Frozen encoder — only navigational components are trained
 
   goal_analyzer:
     feature_dim: 256
-    num_anchors: 300
+    num_anchors: 18729          # Extracted from nav_train.jsonl (Phase 0.4)
     navigable_banks:
       - structure
       - domain
@@ -33,7 +33,7 @@ model:
   navigator:
     input_dim: 128
     hidden_dim: 256
-    num_anchors: 300
+    num_anchors: 18729
     num_layers: 2
     ternary_enabled: true
     navigable_banks:
@@ -47,7 +47,7 @@ model:
 # --- Navigation ---
 navigation:
   scoring_mechanism: confidence_weighted
-  num_anchors: 300
+  num_anchors: 18729
   spread_depth: 2
   tactic_limit: 8
   premise_limit: 16
@@ -136,7 +136,7 @@ pab:
   checkpoint_interval: 50
   early_exit_enabled: true
   save_profiles: true
-  validation_subset_size: 16
+  validation_subset_size: 64
 
 # --- Evaluation ---
 evaluation:
@@ -161,6 +161,8 @@ ablation:
     - name: no_hammer_delegation
     - name: no_accessible_premises
     - name: three_bank_navigation # structure + domain + automation only
+    - name: encoder_leandojo_byt5  # leandojo-lean4-retriever-byt5-small (1472d, sep=0.623)
+    - name: encoder_pplx_embed     # pplx-embed-v1-0.6b bidir-Qwen3 (1024d, sep=0.600)
 
 # --- Invariants (enforced at startup) ---
 invariants:

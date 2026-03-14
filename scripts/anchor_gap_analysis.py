@@ -28,6 +28,9 @@ from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
+from src.nav_contracts import StructuredQuery
+from src.proof_network import navigate
+
 
 @dataclass
 class GapRecord:
@@ -60,9 +63,9 @@ def load_proof_steps(db_path: str, sample_size: int) -> list[dict]:
 
     rows = conn.execute(
         """
-        SELECT e.id, e.name, e.type, e.namespace
+        SELECT e.id, e.name, e.entity_type, e.namespace
         FROM entities e
-        WHERE e.type = 'theorem'
+        WHERE e.entity_type = 'lemma'
         ORDER BY RANDOM()
         LIMIT ?
         """,
@@ -116,109 +119,49 @@ def load_proof_steps(db_path: str, sample_size: int) -> list[dict]:
     return steps
 
 
-def build_perfect_query(step: dict) -> dict:
-    """Build a perfect query from ground-truth bank positions and anchors."""
-    return {
-        "bank_directions": {bank: sign for bank, (sign, _depth) in step["positions"].items()},
-        "bank_confidences": {bank: 1.0 for bank in step["positions"]},
-        "anchors": step["anchors"],
-    }
-
-
-def _score_candidates_by_bank(
-    conn: sqlite3.Connection, directions: dict, limit: int
-) -> list[tuple]:
-    """Score entities by bank alignment and return ranked candidates."""
-    clauses = []
-    params: list = []
-    for bank, sign in directions.items():
-        clauses.append(
-            "SELECT entity_id, "
-            "CASE WHEN sign = ? THEN 1.0 WHEN sign = 0 THEN 0.5 ELSE 0.1 END AS score "
-            "FROM entity_positions WHERE bank = ?"
-        )
-        params.extend([sign, bank])
-
-    if not clauses:
+def _resolve_anchor_ids(conn: sqlite3.Connection, labels: list[str]) -> list[int]:
+    """Map anchor labels to IDs."""
+    if not labels:
         return []
-
-    union_sql = " UNION ALL ".join(clauses)
-    sql = f"""
-        SELECT entity_id, SUM(score) as total_score
-        FROM ({union_sql})
-        GROUP BY entity_id
-        ORDER BY total_score DESC
-        LIMIT ?
-    """  # nosec B608 — parameterized via ? placeholders
-    params.append(limit * 4)
-    return conn.execute(sql, params).fetchall()
-
-
-def _compute_anchor_boost(
-    conn: sqlite3.Connection, anchor_labels: list[str], candidate_ids: list[int]
-) -> dict[int, int]:
-    """Compute anchor overlap boost for candidate entities."""
-    if not anchor_labels:
-        return {}
-    ph_anchors = ",".join("?" * len(anchor_labels))
-    ph_ids = ",".join("?" * len(candidate_ids))
-    sql = f"""
-        SELECT ea.entity_id, COUNT(*) as shared
-        FROM entity_anchors ea
-        JOIN anchors a ON a.id = ea.anchor_id
-        WHERE a.label IN ({ph_anchors})
-        AND ea.entity_id IN ({ph_ids})
-        GROUP BY ea.entity_id
-    """  # nosec B608 — parameterized via ? placeholders
-    rows = conn.execute(sql, [*anchor_labels, *candidate_ids]).fetchall()
-    return {r[0]: r[1] for r in rows}
-
-
-def _resolve_entity_names(conn: sqlite3.Connection, entity_ids: list[int]) -> dict[int, str]:
-    """Map entity IDs to names."""
-    ph = ",".join("?" * len(entity_ids))
+    ph = ",".join("?" * len(labels))
     rows = conn.execute(
-        f"SELECT id, name FROM entities WHERE id IN ({ph})",  # nosec B608
-        entity_ids,
+        f"SELECT id FROM anchors WHERE label IN ({ph})",  # nosec B608
+        labels,
     ).fetchall()
-    return {r[0]: r[1] for r in rows}
+    return [r[0] for r in rows]
 
 
-def navigate_with_query(db_path: str, query: dict, limit: int = 16) -> list[str]:
-    """Execute a navigational query against the proof network.
+def build_perfect_query(conn: sqlite3.Connection, step: dict) -> StructuredQuery:
+    """Build a perfect StructuredQuery from ground-truth bank positions and anchors.
 
-    Simplified standalone version — scores entities by bank alignment
-    and shared anchors without importing src/.
+    Searches the full entity space (no accessible_theorem_id filter) to
+    measure whether bank+anchor navigation alone retrieves correct premises.
+    Using accessible_theorem_id would leak ground truth since accessible_premises
+    is populated from used premises (the labels themselves).
     """
-    conn = sqlite3.connect(db_path)
-
-    directions = query["bank_directions"]
-    candidates = _score_candidates_by_bank(conn, directions, limit)
-
-    if not candidates:
-        conn.close()
-        return []
-
-    candidate_ids = [c[0] for c in candidates]
-    anchor_boost = _compute_anchor_boost(conn, query.get("anchors", []), candidate_ids)
-
-    scored = [(eid, bank_score + anchor_boost.get(eid, 0) * 0.5) for eid, bank_score in candidates]
-    scored.sort(key=lambda x: x[1], reverse=True)
-    top_ids = [s[0] for s in scored[:limit]]
-
-    name_map = _resolve_entity_names(conn, top_ids)
-    conn.close()
-
-    return [name_map.get(eid, "") for eid in top_ids]
+    anchor_ids = _resolve_anchor_ids(conn, step["anchors"])
+    return StructuredQuery(
+        bank_directions={bank: sign for bank, (sign, _depth) in step["positions"].items()},
+        bank_confidences={bank: 1.0 for bank in step["positions"]},
+        prefer_anchors=anchor_ids,
+        prefer_weights=[1.0] * len(anchor_ids),
+    )
 
 
-def find_gap_anchors(db_path: str, missed_premise: str, step_anchors: list[str]) -> list[str]:
+def navigate_with_query(
+    conn: sqlite3.Connection, query: StructuredQuery, limit: int = 16
+) -> list[str]:
+    """Execute a navigational query using the real proof network navigate()."""
+    results = navigate(conn, query, limit=limit, entity_type="lemma")
+    return [r.name for r in results]
+
+
+def find_gap_anchors_from_conn(
+    conn: sqlite3.Connection, missed_premise: str, step_anchors: list[str]
+) -> list[str]:
     """Find anchors of a missed premise that differ from the query's anchors."""
-    conn = sqlite3.connect(db_path)
-
     row = conn.execute("SELECT id FROM entities WHERE name = ?", (missed_premise,)).fetchone()
     if not row:
-        conn.close()
         return []
 
     premise_anchors = conn.execute(
@@ -230,17 +173,16 @@ def find_gap_anchors(db_path: str, missed_premise: str, step_anchors: list[str])
         """,
         (row[0],),
     ).fetchall()
-    conn.close()
 
     premise_labels = {a[0] for a in premise_anchors}
     step_set = set(step_anchors)
     return sorted(premise_labels - step_set)
 
 
-def analyze_step(db_path: str, step: dict) -> GapRecord:
+def analyze_step(conn: sqlite3.Connection, step: dict) -> GapRecord:
     """Run gap analysis on a single proof step."""
-    query = build_perfect_query(step)
-    retrieved = navigate_with_query(db_path, query, limit=16)
+    query = build_perfect_query(conn, step)
+    retrieved = navigate_with_query(conn, query, limit=16)
 
     gt_set = set(step["premises"])
     retrieved_set = set(retrieved)
@@ -250,7 +192,7 @@ def analyze_step(db_path: str, step: dict) -> GapRecord:
     missed = sorted(gt_set - retrieved_set)
     gap_anchors: list[str] = []
     for premise in missed:
-        gap_anchors.extend(find_gap_anchors(db_path, premise, step["anchors"]))
+        gap_anchors.extend(find_gap_anchors_from_conn(conn, premise, step["anchors"]))
 
     return GapRecord(
         theorem_id=step["name"],
@@ -306,15 +248,20 @@ def run_analysis(db_path: str, sample_size: int, output_path: str) -> dict:
     steps = load_proof_steps(db_path, sample_size)
     print(f"  Loaded {len(steps)} steps")
 
+    conn = sqlite3.connect(db_path)
+    conn.execute("PRAGMA foreign_keys=ON")
+
     records: list[GapRecord] = []
     for i, step in enumerate(steps):
         if not step["premises"]:
             continue
-        record = analyze_step(db_path, step)
+        record = analyze_step(conn, step)
         records.append(record)
         if (i + 1) % 50 == 0:
             avg_recall = sum(r.recall_at_16 for r in records) / len(records)
             print(f"  Analyzed {i + 1}/{len(steps)}, avg recall@16: {avg_recall:.3f}")
+
+    conn.close()
 
     out_path = Path(output_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)

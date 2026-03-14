@@ -46,16 +46,22 @@ def build_pipeline_modules(
     encoder = (
         encoder_override
         if encoder_override is not None
-        else GoalEncoder(model_name=model_cfg["encoder"]["model_name"], device=device)
+        else GoalEncoder.from_config(model_cfg["encoder"], device=device)
     )
+    if isinstance(encoder, GoalEncoder):
+        encoder.ensure_loaded()
     modules = (
         encoder,
         DomainGate(
-            input_dim=model_cfg["encoder"]["output_dim"],
+            input_dim=encoder.output_dim
+            if isinstance(encoder, GoalEncoder)
+            else model_cfg["encoder"]["output_dim"],
             hidden_dim=model_cfg["domain_gate"]["hidden_dim"],
         ).to(device),
         GoalAnalyzer(
-            input_dim=model_cfg["encoder"]["output_dim"],
+            input_dim=encoder.output_dim
+            if isinstance(encoder, GoalEncoder)
+            else model_cfg["encoder"]["output_dim"],
             feature_dim=model_cfg["goal_analyzer"]["feature_dim"],
         ).to(device),
         InformationBridge(

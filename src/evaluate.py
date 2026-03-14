@@ -61,19 +61,21 @@ def _build_pipeline(config: dict, checkpoint_path: Path, vocab: _VocabInfo) -> _
     from src.ternary_decoder import TernaryDecoder
 
     ckpt = torch.load(checkpoint_path, map_location="cpu", weights_only=False)  # nosec B614 — trusted local checkpoints
-    model_cfg = config["model"]
+    checkpoint_config = ckpt.get("config", {})
+    if isinstance(checkpoint_config, dict) and isinstance(checkpoint_config.get("model"), dict):
+        model_cfg = checkpoint_config["model"]
+    else:
+        model_cfg = config["model"]
     decoder_cfg = model_cfg["decoder"]
 
-    encoder = GoalEncoder(
-        model_name=model_cfg["encoder"]["model_name"],
-        device="cpu",
-    )
+    encoder = GoalEncoder.from_config(model_cfg["encoder"], device="cpu")
+    encoder.ensure_loaded()
     domain_gate = DomainGate(
-        input_dim=model_cfg["encoder"]["output_dim"],
+        input_dim=encoder.output_dim,
         hidden_dim=model_cfg["domain_gate"]["hidden_dim"],
     )
     goal_analyzer = GoalAnalyzer(
-        input_dim=model_cfg["encoder"]["output_dim"],
+        input_dim=encoder.output_dim,
         feature_dim=model_cfg["goal_analyzer"]["feature_dim"],
     )
     bridge = InformationBridge(

@@ -23,25 +23,31 @@ BANK_NAMES: list[str] = [
 
 
 @dataclass
-class NavigationalExample:
-    """A single navigational training/eval example.
+class _NavExampleCore:
+    """Core proof-step identification and position."""
+
+    goal_state: str = ""
+    theorem_id: str = ""
+    step_index: int = 0
+    total_steps: int = 1
+    nav_directions: dict[str, int] = field(default_factory=dict)
+    remaining_steps: int = 0
+    solvable: bool = True
+
+
+@dataclass
+class NavigationalExample(_NavExampleCore):
+    """A single navigational training/eval example (data contract — flat for JSONL interchange).
 
     Maps a proof step to 6-bank direction labels, anchor targets,
     and progress/solvability information for the critic heads.
     """
 
-    goal_state: str
-    theorem_id: str
-    step_index: int
-    total_steps: int
-    nav_directions: dict[str, int]  # bank_name -> {-1, 0, +1}
-    anchor_labels: list[str]
-    ground_truth_tactic: str
-    ground_truth_premises: list[str]
-    remaining_steps: int
-    solvable: bool = True
+    anchor_labels: list[str] = field(default_factory=list)
+    ground_truth_tactic: str = ""
+    ground_truth_premises: list[str] = field(default_factory=list)
     proof_history: list[str] = field(default_factory=list)
-    bank_positions: dict[str, list[int]] | None = None  # theorem's bank positions
+    bank_positions: dict[str, list[int]] | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -71,7 +77,7 @@ class NavigationalExample:
             theorem_id=d["theorem_id"],
             step_index=d.get("step_index", 0),
             total_steps=d.get("total_steps", 1),
-            nav_directions=d["nav_directions"],
+            nav_directions=d.get("nav_directions", {}),
             anchor_labels=d.get("anchor_labels", []),
             ground_truth_tactic=d.get("ground_truth_tactic", ""),
             ground_truth_premises=d.get("ground_truth_premises", []),

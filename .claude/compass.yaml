@@ -36,6 +36,40 @@ axes:
       confidence: 0.4
       provenance: inferred
       origin_facet: core_theory
+    - text: 'build_proof_network_db.py: Build proof_network.db from proof_network_entities.jsonl.'
+      source: docstring:build_proof_network_db.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'collect_negatives.py: Negative example collection pipeline for Wayfinder
+        v3A.'
+      source: docstring:collect_negatives.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'convert_leandojo.py: Convert LeanDojo Benchmark 4 JSON to the flat JSONL
+        format expected by extract_proof_network.py.'
+      source: docstring:convert_leandojo.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'encoder_backends.py: Encoder backend helpers — transformers compat shims,
+        model loading, and encoding.'
+      source: docstring:encoder_backends.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'eval_encoders.py: Phase 0.6 encoder evaluation — benchmark candidate
+        encoders on Wayfinder goal states.'
+      source: docstring:eval_encoders.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
     - text: 'eval_retrieval.py: Evaluate navigational retrieval vs dense retrieval
         baseline.'
       source: docstring:eval_retrieval.py
@@ -57,8 +91,21 @@ axes:
       confidence: 0.4
       provenance: inferred
       origin_facet: core_theory
+    - text: 'extract_templates.py: Extract proof strategy templates from the navigational
+        training corpus.'
+      source: docstring:extract_templates.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
     - text: 'run_benchmark.py: Benchmark runner — MiniF2F + Mathlib proof search evaluation.'
       source: docstring:run_benchmark.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'similarity_metrics.py: Similarity metrics for encoder evaluation.'
+      source: docstring:similarity_metrics.py
       heading: ''
       confidence: 0.4
       provenance: inferred
@@ -70,8 +117,21 @@ axes:
       confidence: 0.4
       provenance: inferred
       origin_facet: core_theory
+    - text: 'train_censor.py: Standalone censor training for Wayfinder v3A.'
+      source: docstring:train_censor.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
     - text: 'train_navigator.py: Train the Wayfinder navigational proof search pipeline.'
       source: docstring:train_navigator.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'train_specialist.py: Train bank-cluster specialist navigators for Wayfinder
+        v2.'
+      source: docstring:train_specialist.py
       heading: ''
       confidence: 0.4
       provenance: inferred
@@ -83,9 +143,22 @@ axes:
       confidence: 0.4
       provenance: inferred
       origin_facet: core_theory
+    - text: 'train_template_classifier.py: Train the template classifier (RECOGNITION
+        slot, Slot 2) for Wayfinder v2.'
+      source: docstring:train_template_classifier.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
     - text: '__init__.py: Balanced Sashimi: hybrid continuous-ternary architecture
         for proof synthesis.'
       source: docstring:__init__.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'arbiter.py: Society of Mind arbiter — orchestrator for Wayfinder v2.'
+      source: docstring:arbiter.py
       heading: ''
       confidence: 0.4
       provenance: inferred
@@ -100,6 +173,13 @@ axes:
     - text: 'bridge.py: Information bridge — bottleneck between continuous encoder
         and ternary decoder.'
       source: docstring:bridge.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'censor.py: Censor network — VERIFICATION enhancement (Slot 5) for Wayfinder
+        v2/v3.'
+      source: docstring:censor.py
       heading: ''
       confidence: 0.4
       provenance: inferred
@@ -126,6 +206,13 @@ axes:
     - text: 'encoder.py: Goal-state encoder — produces semantic embeddings from Lean
         goal state text.'
       source: docstring:encoder.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'energy.py: Energy function and continuous ternary refinement for Wayfinder
+        v3B.'
+      source: docstring:energy.py
       heading: ''
       confidence: 0.4
       provenance: inferred
@@ -165,6 +252,12 @@ axes:
       origin_facet: core_theory
     - text: 'nav_contracts.py: Wayfinder navigational data contracts.'
       source: docstring:nav_contracts.py
+      heading: ''
+      confidence: 0.4
+      provenance: inferred
+      origin_facet: core_theory
+    - text: 'nav_model_factory.py: Shared builders for Wayfinder navigational models.'
+      source: docstring:nav_model_factory.py
       heading: ''
       confidence: 0.4
       provenance: inferred
@@ -222,115 +315,28 @@ axes:
       confidence: 0.4
       provenance: inferred
       origin_facet: core_theory
-    - text: 'ternary_decoder.py: Ternary structural decoder — {-1, 0, +1} weight layers
-        for discrete decisions.'
-      source: docstring:ternary_decoder.py
+    - text: 'sketch_predictor.py: Proof sketch predictor — PLANNING slot (Slot 3)
+        for Wayfinder v2.'
+      source: docstring:sketch_predictor.py
       heading: ''
       confidence: 0.4
       provenance: inferred
       origin_facet: core_theory
-    - text: 'trainer.py: Training loop for Balanced Sashimi proof synthesis models.'
-      source: docstring:trainer.py
+    - text: 'som_contracts.py: Society of Mind data contracts for Wayfinder v2.'
+      source: docstring:som_contracts.py
       heading: ''
       confidence: 0.4
       provenance: inferred
       origin_facet: core_theory
-    - text: 'trainer_checks.py: Per-step safety checks and logging helpers for the
-        trainer.'
-      source: docstring:trainer_checks.py
+    - text: 'specialist_navigator.py: Bank-cluster specialist navigator — EXECUTION
+        slot (Slot 4) for Wayfinder v2.'
+      source: docstring:specialist_navigator.py
       heading: ''
       confidence: 0.4
       provenance: inferred
       origin_facet: core_theory
-    - text: 'trainer_constants.py: Domain inference constants and helpers for the
-        proof training pipeline.'
-      source: docstring:trainer_constants.py
-      heading: ''
-      confidence: 0.4
-      provenance: inferred
-      origin_facet: core_theory
-    - text: 'trainer_setup.py: Setup and construction logic for the proof synthesis
-        training pipeline.'
-      source: docstring:trainer_setup.py
-      heading: ''
-      confidence: 0.4
-      provenance: inferred
-      origin_facet: core_theory
-    - text: 'trainer_steps.py: Training step logic and batch-building helpers for
-        proof synthesis.'
-      source: docstring:trainer_steps.py
-      heading: ''
-      confidence: 0.4
-      provenance: inferred
-      origin_facet: core_theory
-    - text: 'trainer_validation.py: Proof validation helpers for the training pipeline.'
-      source: docstring:trainer_validation.py
-      heading: ''
-      confidence: 0.4
-      provenance: inferred
-      origin_facet: core_theory
-    - text: 'verification.py: Lean proof verification interface.'
-      source: docstring:verification.py
-      heading: ''
-      confidence: 0.4
-      provenance: inferred
-      origin_facet: core_theory
-    - text: 'test_anchor_gap_analysis.py: Tests for anchor gap analysis pure functions
-        and DB queries.'
-      source: docstring:test_anchor_gap_analysis.py
-      heading: ''
-      confidence: 0.4
-      provenance: inferred
-      origin_facet: core_theory
-    - text: 'test_behavioral_fingerprint.py: Tests for behavioral_fingerprint — pure
-        numerical functions.'
-      source: docstring:test_behavioral_fingerprint.py
-      heading: ''
-      confidence: 0.4
-      provenance: inferred
-      origin_facet: core_theory
-    - text: 'test_behavioral_fingerprint_classes.py: Tests for behavioral_fingerprint
-        — drift, stability, dataclass methods, save/load.'
-      source: docstring:test_behavioral_fingerprint_classes.py
-      heading: ''
-      confidence: 0.4
-      provenance: inferred
-      origin_facet: core_theory
-    - text: 'test_contracts.py: Tests for data contracts — roundtrip serialization.'
-      source: docstring:test_contracts.py
-      heading: ''
-      confidence: 0.4
-      provenance: inferred
-      origin_facet: core_theory
-    - text: 'test_data_datasets.py: Tests for data.py dataset classes: OODPromptDataset,
-        NegativeBankDataset, NavigationalDataset.'
-      source: docstring:test_data_datasets.py
-      heading: ''
-      confidence: 0.4
-      provenance: inferred
-      origin_facet: core_theory
-    - text: 'test_data_io.py: Tests for data loading -- JSONL roundtrip.'
-      source: docstring:test_data_io.py
-      heading: ''
-      confidence: 0.4
-      provenance: inferred
-      origin_facet: core_theory
-    - text: 'test_data_loaders.py: Tests for data.py JSONL loader functions.'
-      source: docstring:test_data_loaders.py
-      heading: ''
-      confidence: 0.4
-      provenance: inferred
-      origin_facet: core_theory
-    - text: 'test_evaluate_helpers.py: Tests for evaluate.py — pure helper functions
-        (torch-free).'
-      source: docstring:test_evaluate_helpers.py
-      heading: ''
-      confidence: 0.4
-      provenance: inferred
-      origin_facet: core_theory
-    - text: 'test_lean_interface.py: Tests for lean_interface — LeanKernel stub backend
-        and config.'
-      source: docstring:test_lean_interface.py
+    - text: 'story_templates.py: Template taxonomy and extraction for Wayfinder v2.'
+      source: docstring:story_templates.py
       heading: ''
       confidence: 0.4
       provenance: inferred
@@ -401,9 +407,89 @@ axes:
       confidence: 0.35
       provenance: inferred
       origin_facet: abstractions
+    - text: 'build_nav_training_data.py:ShardConfig: Shard/resume parameters for _process_entities.'
+      source: docstring:build_nav_training_data.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'collect_negatives.py:SorryHoleCollector: Collect negatives from sorry
+        sites in Mathlib development history.'
+      source: docstring:collect_negatives.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'collect_negatives.py:PerturbationCollector: Collect negatives by perturbing
+        working proofs.'
+      source: docstring:collect_negatives.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'collect_negatives.py:SuggestionTraceCollector: Collect negatives from
+        Lean elaborator search traces.'
+      source: docstring:collect_negatives.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'encoder_backends.py:_ExplicitKeysWrapper: Wraps a model to forward only
+        input_ids and attention_mask (for T5 encoders).'
+      source: docstring:encoder_backends.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'train_censor.py:CensorDataset: Dataset of (goal_features, tactic_features,
+        label) for censor training.'
+      source: docstring:train_censor.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'train_navigator.py:_TrainState: Typed training loop state to satisfy
+        mypy.'
+      source: docstring:train_navigator.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
     - text: 'train_navigator.py:TrainContext: Bundles all shared training state to
         reduce argument passing.'
       source: docstring:train_navigator.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'train_specialist.py:_TrainCtx: Bundles training infrastructure to reduce
+        argument passing.'
+      source: docstring:train_specialist.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'train_template_classifier.py:TemplateDataset: Dataset for template classifier
+        training.'
+      source: docstring:train_template_classifier.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'arbiter.py:SoMSlots: Bundle of all SoM slot components.'
+      source: docstring:arbiter.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'arbiter.py:_SoMSearchState: Mutable state for a SoM proof search run.'
+      source: docstring:arbiter.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'arbiter.py:_SoMSearchEnv: Immutable environment for SoM sketch execution.'
+      source: docstring:arbiter.py
       heading: ''
       confidence: 0.35
       provenance: inferred
@@ -418,6 +504,13 @@ axes:
     - text: 'bridge.py:InformationBridge: Bottleneck bridge from continuous to discrete
         space.'
       source: docstring:bridge.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'censor.py:CensorNetwork: Predicts tactic failure from goal features +
+        tactic features.'
+      source: docstring:censor.py
       heading: ''
       confidence: 0.35
       provenance: inferred
@@ -513,6 +606,18 @@ axes:
       confidence: 0.35
       provenance: inferred
       origin_facet: abstractions
+    - text: 'energy.py:RefineConfig: Hyperparameters for energy-based sketch refinement.'
+      source: docstring:energy.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
+    - text: 'energy.py:EnergyFunction: Composite energy function over proof sketches.'
+      source: docstring:energy.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
     - text: 'goal_analyzer.py:GoalAnalysis: Structured analysis of a proof goal (non-differentiable,
         for logging).'
       source: docstring:goal_analyzer.py
@@ -560,8 +665,15 @@ axes:
       confidence: 0.35
       provenance: inferred
       origin_facet: abstractions
+    - text: 'nav_contracts.py:_NavExampleCore: Core proof-step identification and
+        position.'
+      source: docstring:nav_contracts.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
     - text: 'nav_contracts.py:NavigationalExample: A single navigational training/eval
-        example.'
+        example (data contract — flat for JSONL interchange).'
       source: docstring:nav_contracts.py
       heading: ''
       confidence: 0.35
@@ -716,6 +828,13 @@ axes:
       confidence: 0.35
       provenance: inferred
       origin_facet: abstractions
+    - text: 'proof_search.py:_SearchEnv: Infrastructure shared across search steps
+        (immutable during a search run).'
+      source: docstring:proof_search.py
+      heading: ''
+      confidence: 0.35
+      provenance: inferred
+      origin_facet: abstractions
     - text: 'proof_search.py:_SearchState: Mutable state for a single proof search
         run.'
       source: docstring:proof_search.py
@@ -736,130 +855,75 @@ axes:
       confidence: 0.35
       provenance: inferred
       origin_facet: abstractions
-    - text: 'ternary_decoder.py:TernaryLinear: Linear layer with ternary weights via
-        STE.'
-      source: docstring:ternary_decoder.py
+    - text: 'sketch_predictor.py:SketchPredictor: PLANNING slot: predict proof sketch
+        from goal embedding + template features.'
+      source: docstring:sketch_predictor.py
       heading: ''
       confidence: 0.35
       provenance: inferred
       origin_facet: abstractions
-    - text: 'ternary_decoder.py:TernaryDecoder: Multi-layer ternary decoder for Tier
-        1 and Tier 2 token prediction.'
-      source: docstring:ternary_decoder.py
+    - text: 'som_contracts.py:PerceptionOutput: Output of PERCEPTION slot (Slot 1).'
+      source: docstring:som_contracts.py
       heading: ''
       confidence: 0.35
       provenance: inferred
       origin_facet: abstractions
-    - text: 'trainer.py:BalancedSashimiTrainer: Training orchestrator for the Balanced
-        Sashimi proof synthesis pipeline.'
-      source: docstring:trainer.py
+    - text: 'som_contracts.py:TemplateInfo: Metadata for a proof strategy template.'
+      source: docstring:som_contracts.py
       heading: ''
       confidence: 0.35
       provenance: inferred
       origin_facet: abstractions
-    - text: 'trainer_steps.py:TrainerStepsMixin: Mixin providing train_step, domain
-        gate step, and batch-building helpers.'
-      source: docstring:trainer_steps.py
+    - text: 'som_contracts.py:RecognitionOutput: Output of RECOGNITION slot (Slot
+        2).'
+      source: docstring:som_contracts.py
       heading: ''
       confidence: 0.35
       provenance: inferred
       origin_facet: abstractions
-    - text: 'verification.py:VerificationConfig: Configuration for the verification
-        backend.'
-      source: docstring:verification.py
+    - text: 'som_contracts.py:SubgoalSpec: Specification for a single subgoal in a
+        proof sketch.'
+      source: docstring:som_contracts.py
       heading: ''
       confidence: 0.35
       provenance: inferred
       origin_facet: abstractions
-    - text: 'verification.py:ProofVerifier: Verifies generated proofs against the
-        Lean kernel.'
-      source: docstring:verification.py
+    - text: 'som_contracts.py:PlanningOutput: Output of PLANNING slot (Slot 3).'
+      source: docstring:som_contracts.py
       heading: ''
       confidence: 0.35
       provenance: inferred
       origin_facet: abstractions
-    - text: 'test_anchor_gap_analysis.py:_DBTestCase: Base class that creates a temporary
-        on-disk SQLite DB for tests.'
-      source: docstring:test_anchor_gap_analysis.py
+    - text: 'som_contracts.py:ExecutionOutput: Output of EXECUTION slot (Slot 4).'
+      source: docstring:som_contracts.py
       heading: ''
       confidence: 0.35
       provenance: inferred
       origin_facet: abstractions
-    - text: 'test_behavioral_fingerprint.py:TestComputeActionEntropy: Test Shannon
-        entropy computation over action predictions.'
-      source: docstring:test_behavioral_fingerprint.py
+    - text: 'som_contracts.py:VerificationOutput: Output of VERIFICATION slot (Slot
+        5).'
+      source: docstring:som_contracts.py
       heading: ''
       confidence: 0.35
       provenance: inferred
       origin_facet: abstractions
-    - text: 'test_behavioral_fingerprint.py:TestComputeActionDistribution: Test normalized
-        frequency distribution computation.'
-      source: docstring:test_behavioral_fingerprint.py
+    - text: 'som_contracts.py:CensorPrediction: Output of the Censor network (VERIFICATION
+        enhancement).'
+      source: docstring:som_contracts.py
       heading: ''
       confidence: 0.35
       provenance: inferred
       origin_facet: abstractions
-    - text: 'test_behavioral_fingerprint.py:TestComputeVarianceEigenvalues: Test top
-        eigenvalue extraction from output logits.'
-      source: docstring:test_behavioral_fingerprint.py
+    - text: 'specialist_navigator.py:SpecialistNavigator: Bank-cluster specialist
+        with its own bridge and navigator.'
+      source: docstring:specialist_navigator.py
       heading: ''
       confidence: 0.35
       provenance: inferred
       origin_facet: abstractions
-    - text: 'test_behavioral_fingerprint.py:TestComputeDiscreteness: Test discreteness
-        score from output logits.'
-      source: docstring:test_behavioral_fingerprint.py
-      heading: ''
-      confidence: 0.35
-      provenance: inferred
-      origin_facet: abstractions
-    - text: 'test_behavioral_fingerprint_classes.py:TestDistributionDrift: Test Jensen-Shannon
-        divergence between action distributions.'
-      source: docstring:test_behavioral_fingerprint_classes.py
-      heading: ''
-      confidence: 0.35
-      provenance: inferred
-      origin_facet: abstractions
-    - text: 'test_behavioral_fingerprint_classes.py:TestFingerprintStability: Test
-        stability metrics across training checkpoints.'
-      source: docstring:test_behavioral_fingerprint_classes.py
-      heading: ''
-      confidence: 0.35
-      provenance: inferred
-      origin_facet: abstractions
-    - text: 'test_behavioral_fingerprint_classes.py:TestBehavioralFingerprintDataclass:
-        Test BehavioralFingerprint methods: to_dict, from_dict, save, load, factories.'
-      source: docstring:test_behavioral_fingerprint_classes.py
-      heading: ''
-      confidence: 0.35
-      provenance: inferred
-      origin_facet: abstractions
-    - text: 'test_data_datasets.py:TestOODPromptDataset: Tests for OODPromptDataset.'
-      source: docstring:test_data_datasets.py
-      heading: ''
-      confidence: 0.35
-      provenance: inferred
-      origin_facet: abstractions
-    - text: 'test_data_datasets.py:TestNegativeBankDataset: Tests for NegativeBankDataset.'
-      source: docstring:test_data_datasets.py
-      heading: ''
-      confidence: 0.35
-      provenance: inferred
-      origin_facet: abstractions
-    - text: 'test_data_datasets.py:TestNavigationalDataset: Tests for NavigationalDataset.'
-      source: docstring:test_data_datasets.py
-      heading: ''
-      confidence: 0.35
-      provenance: inferred
-      origin_facet: abstractions
-    - text: 'test_data_loaders.py:TestLoadOODPromptsJsonl: Tests for load_ood_prompts_jsonl.'
-      source: docstring:test_data_loaders.py
-      heading: ''
-      confidence: 0.35
-      provenance: inferred
-      origin_facet: abstractions
-    - text: 'test_data_loaders.py:TestLoadNavExamplesJsonl: Tests for load_nav_examples_jsonl.'
-      source: docstring:test_data_loaders.py
+    - text: 'specialist_navigator.py:ExecutionSlot: Manages specialist routing and
+        fusion for the EXECUTION slot.'
+      source: docstring:specialist_navigator.py
       heading: ''
       confidence: 0.35
       provenance: inferred
@@ -893,13 +957,13 @@ axes:
       confidence: 0.4
       provenance: inferred
       origin_facet: ''
-    - text: 'Test suite: 27 test file(s)'
+    - text: 'Test suite: 43 test file(s)'
       source: test_patterns
       heading: ''
       confidence: 0.5
       provenance: inferred
       origin_facet: ''
-    summary: 'Test suite: 27 test file(s)'
+    summary: 'Test suite: 43 test file(s)'
     depth: 2
 directives:
 - kind: forbidden
@@ -924,6 +988,6 @@ gap_report:
   sparse_axes:
   - solution
   interview_recommended: true
-forged_at: 1773160463.179032
+forged_at: 1773506423.593837
 frozen: false
 frozen_hash: ''

@@ -1,0 +1,11 @@
+name = "WayfinderLean"
+version = "0.1.0"
+defaultTargets = ["WayfinderLean"]
+
+[[require]]
+name = "mathlib"
+scope = "leanprover-community"
+version = "git#216257fb6e85"
+
+[[lean_lib]]
+name = "WayfinderLean"

@@ -32,7 +32,8 @@ CREATE TABLE IF NOT EXISTS entities (
     name        TEXT NOT NULL UNIQUE,
     entity_type TEXT NOT NULL DEFAULT 'lemma',  -- lemma, tactic, definition
     namespace   TEXT NOT NULL DEFAULT '',
-    file_path   TEXT NOT NULL DEFAULT ''
+    file_path   TEXT NOT NULL DEFAULT '',
+    provenance  TEXT NOT NULL DEFAULT 'traced'   -- traced, premise_only, tactic
 );
 
 CREATE TABLE IF NOT EXISTS entity_positions (
@@ -99,6 +100,12 @@ CREATE INDEX IF NOT EXISTS idx_accessible_premises_theorem
 
 # Missing bank penalty: not zero, but penalized.
 _MISSING_BANK_SCORE = 0.3
+
+
+def clear_caches() -> None:
+    """Clear all module-level caches. Call between test cases or DB swaps."""
+    _idf_cache.clear()
+    _accessible_cache.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -242,8 +249,14 @@ def navigate(
 
     # Pure scoring
     results = _score_candidates(
-        candidate_ids, positions, entity_anchor_sets, idf_cache, names,
-        query, seed_anchors, mechanism,
+        candidate_ids,
+        positions,
+        entity_anchor_sets,
+        idf_cache,
+        names,
+        query,
+        seed_anchors,
+        mechanism,
     )
     return results[:limit]
 
@@ -298,13 +311,19 @@ def spread(
 # ---------------------------------------------------------------------------
 
 
+_accessible_cache: dict[tuple[int, int], set[int]] = {}
+
+
 def get_accessible_premises(conn: sqlite3.Connection, theorem_id: int) -> set[int]:
-    """Return the set of entity IDs accessible to a given theorem."""
-    rows = conn.execute(
-        "SELECT premise_id FROM accessible_premises WHERE theorem_id = ?",
-        (theorem_id,),
-    ).fetchall()
-    return {r[0] for r in rows}
+    """Return the set of entity IDs accessible to a given theorem (cached)."""
+    key = (id(conn), theorem_id)
+    if key not in _accessible_cache:
+        rows = conn.execute(
+            "SELECT premise_id FROM accessible_premises WHERE theorem_id = ?",
+            (theorem_id,),
+        ).fetchall()
+        _accessible_cache[key] = {r[0] for r in rows}
+    return _accessible_cache[key]
 
 
 # ---------------------------------------------------------------------------
@@ -426,10 +445,16 @@ def _batch_get_names(conn: sqlite3.Connection, entity_ids: list[int]) -> dict[in
     return dict(rows)
 
 
+_idf_cache: dict[int, dict[int, float]] = {}
+
+
 def _get_idf_cache(conn: sqlite3.Connection) -> dict[int, float]:
-    """Load the full IDF table into memory."""
-    rows = conn.execute("SELECT anchor_id, idf_value FROM anchor_idf").fetchall()
-    return dict(rows)
+    """Load the full IDF table into memory (cached per connection)."""
+    conn_id = id(conn)
+    if conn_id not in _idf_cache:
+        rows = conn.execute("SELECT anchor_id, idf_value FROM anchor_idf").fetchall()
+        _idf_cache[conn_id] = dict(rows)
+    return _idf_cache[conn_id]
 
 
 def _get_link_neighbors(

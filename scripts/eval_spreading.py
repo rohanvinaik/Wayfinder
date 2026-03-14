@@ -23,12 +23,9 @@ import numpy as np
 import torch
 import yaml
 
-from src.bridge import InformationBridge
 from src.data import load_nav_examples_jsonl
-from src.encoder import GoalEncoder
-from src.goal_analyzer import GoalAnalyzer
 from src.nav_contracts import NavigationalExample
-from src.proof_navigator import ProofNavigator
+from src.nav_model_factory import load_navigational_checkpoint
 from src.resolution import SearchContext, resolve
 
 
@@ -39,48 +36,8 @@ def load_config(path: Path) -> dict:
 
 def load_modules(checkpoint_path: Path, config: dict, device: str) -> dict:
     """Load trained modules from checkpoint."""
-    ckpt = torch.load(checkpoint_path, map_location=device, weights_only=False)  # nosec B614 — trusted local checkpoints
-    enc_cfg = config["model"]["encoder"]
-    ana_cfg = config["model"]["goal_analyzer"]
-    br_cfg = config["model"]["bridge"]
-    nav_cfg = config["model"]["navigator"]
-
-    encoder = GoalEncoder(
-        model_name=enc_cfg.get("type", "byt5-small"),
-        output_dim=enc_cfg.get("output_dim"),
-        frozen=enc_cfg.get("frozen", True),
-    ).to(device)
-    analyzer = GoalAnalyzer(
-        input_dim=enc_cfg["output_dim"],
-        feature_dim=ana_cfg["feature_dim"],
-        num_anchors=ana_cfg.get("num_anchors", 300),
-        navigable_banks=ana_cfg.get("navigable_banks"),
-    ).to(device)
-    bridge = InformationBridge(
-        input_dim=ana_cfg["feature_dim"],
-        bridge_dim=br_cfg["bridge_dim"],
-        history_dim=br_cfg.get("history_dim", 0),
-    ).to(device)
-    navigator = ProofNavigator(
-        input_dim=br_cfg["bridge_dim"],
-        hidden_dim=nav_cfg["hidden_dim"],
-        num_anchors=nav_cfg["num_anchors"],
-        num_layers=nav_cfg["num_layers"],
-        ternary_enabled=nav_cfg.get("ternary_enabled", True),
-        navigable_banks=nav_cfg.get("navigable_banks"),
-    ).to(device)
-
-    for name, module in [
-        ("encoder", encoder),
-        ("analyzer", analyzer),
-        ("bridge", bridge),
-        ("navigator", navigator),
-    ]:
-        if name in ckpt.get("modules", {}):
-            module.load_state_dict(ckpt["modules"][name])
-        module.eval()
-
-    return {"encoder": encoder, "analyzer": analyzer, "bridge": bridge, "navigator": navigator}
+    _, modules = load_navigational_checkpoint(checkpoint_path, config, device)
+    return modules
 
 
 def get_seed_entities(conn: sqlite3.Connection, premises_used: list[str]) -> list[int]:
@@ -182,35 +139,37 @@ def _build_spreading_report(
     ks: list[int],
 ) -> dict:
     """Build and print the spreading evaluation report."""
-    report = {
+    no_spread = {f"recall@{k}": round(float(np.mean(no_spread_recalls[k])), 4) for k in ks}
+    with_spread = {f"recall@{k}": round(float(np.mean(with_spread_recalls[k])), 4) for k in ks}
+    delta = {
+        f"recall@{k}": round(
+            float(np.mean(with_spread_recalls[k])) - float(np.mean(no_spread_recalls[k])),
+            4,
+        )
+        for k in ks
+    }
+    timing = {
+        "no_spread_avg_ms": round(float(np.mean(no_spread_times)) * 1000, 2),
+        "with_spread_avg_ms": round(float(np.mean(with_spread_times)) * 1000, 2),
+    }
+    report: dict = {
         "samples": len(no_spread_recalls[ks[0]]),
         "multi_step_only": True,
-        "no_spreading": {f"recall@{k}": round(float(np.mean(no_spread_recalls[k])), 4) for k in ks},
-        "with_spreading": {
-            f"recall@{k}": round(float(np.mean(with_spread_recalls[k])), 4) for k in ks
-        },
-        "delta": {
-            f"recall@{k}": round(
-                float(np.mean(with_spread_recalls[k])) - float(np.mean(no_spread_recalls[k])),
-                4,
-            )
-            for k in ks
-        },
-        "timing": {
-            "no_spread_avg_ms": round(float(np.mean(no_spread_times)) * 1000, 2),
-            "with_spread_avg_ms": round(float(np.mean(with_spread_times)) * 1000, 2),
-        },
+        "no_spreading": no_spread,
+        "with_spreading": with_spread,
+        "delta": delta,
+        "timing": timing,
     }
 
     print("\n=== Spreading Activation Evaluation ===")
     for k in ks:
-        ns = report["no_spreading"][f"recall@{k}"]
-        ws = report["with_spreading"][f"recall@{k}"]
-        d = report["delta"][f"recall@{k}"]
+        ns = no_spread[f"recall@{k}"]
+        ws = with_spread[f"recall@{k}"]
+        d = delta[f"recall@{k}"]
         print(f"  recall@{k}: no_spread={ns:.4f} with_spread={ws:.4f} delta={d:+.4f}")
     print(
-        f"  Timing: no_spread={report['timing']['no_spread_avg_ms']:.1f}ms"
-        f" with_spread={report['timing']['with_spread_avg_ms']:.1f}ms"
+        f"  Timing: no_spread={timing['no_spread_avg_ms']:.1f}ms"
+        f" with_spread={timing['with_spread_avg_ms']:.1f}ms"
     )
     return report
 
@@ -229,7 +188,7 @@ def evaluate(
 
     multi_step = [e for e in all_examples if e.step_index > 0 and e.proof_history]
     if len(multi_step) > samples:
-        rng = np.random.default_rng()
+        rng = np.random.default_rng(seed=42)
         indices = rng.choice(len(multi_step), samples, replace=False)
         multi_step = [multi_step[int(i)] for i in indices]
     print(f"Evaluating spreading on {len(multi_step)} multi-step examples")

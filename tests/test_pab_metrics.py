@@ -24,12 +24,24 @@ class TestComputeStability(unittest.TestCase):
         self.assertAlmostEqual(compute_stability(1.0, 1.0), 0.0, places=5)
 
     def test_decreasing_loss(self):
+        # |2.0 - 1.0| / (|2.0| + eps) = 1.0 / 2.0 ≈ 0.5
         s = compute_stability(2.0, 1.0)
-        self.assertGreater(s, 0.0)
+        self.assertAlmostEqual(s, 0.5, places=5)
 
     def test_increasing_loss(self):
+        # |1.0 - 2.0| / (|1.0| + eps) = 1.0 / 1.0 ≈ 1.0
         s = compute_stability(1.0, 2.0)
-        self.assertGreater(s, 0.0)
+        self.assertAlmostEqual(s, 1.0, places=5)
+
+    def test_halving_loss(self):
+        # |4.0 - 2.0| / (|4.0| + eps) = 2.0 / 4.0 = 0.5
+        self.assertAlmostEqual(compute_stability(4.0, 2.0), 0.5, places=5)
+
+    def test_symmetric_not_guaranteed(self):
+        """stability(a, b) != stability(b, a) in general."""
+        s_forward = compute_stability(2.0, 1.0)
+        s_backward = compute_stability(1.0, 2.0)
+        self.assertNotAlmostEqual(s_forward, s_backward, places=3)
 
 
 class TestComputeGeneralizationGap(unittest.TestCase):
@@ -50,8 +62,9 @@ class TestComputeFeatureImportance(unittest.TestCase):
         self.assertAlmostEqual(compute_feature_importance([w, w, w]), 0.0)
 
     def test_varying_snapshots(self):
+        # mean = [0.5, 0.5], var = mean((0.5^2 + 0.5^2) * 2) / 2 = 0.25
         val = compute_feature_importance([[1.0, 0.0], [0.0, 1.0]])
-        self.assertGreater(val, 0.0)
+        self.assertAlmostEqual(val, 0.25, places=5)
 
 
 class TestComputePredictability(unittest.TestCase):
@@ -64,6 +77,15 @@ class TestComputePredictability(unittest.TestCase):
     def test_varying_loss(self):
         losses = [2.0, 1.5, 1.8, 1.2, 1.6, 1.1]
         self.assertGreater(compute_predictability(losses), 0.0)
+
+    def test_exact_predictability(self):
+        # losses [1.0, 2.0, 1.0, 2.0] → deltas [-1, +1, -1, +1]
+        # But window starts at max(1, 4-10)=1, so deltas = [1.0, -1.0, 1.0]
+        # var([1.0, -1.0, 1.0]) = mean of (1-1/3)^2 + (-1-1/3)^2 + (1-1/3)^2
+        # mean = 1/3, deviations: 2/3, -4/3, 2/3
+        # var = (4/9 + 16/9 + 4/9) / 3 = 24/27 = 8/9
+        val = compute_predictability([1.0, 2.0, 1.0, 2.0])
+        self.assertAlmostEqual(val, 8.0 / 9.0, places=5)
 
     def test_two_values(self):
         self.assertEqual(compute_predictability([1.0, 0.5]), 0.0)
@@ -99,13 +121,15 @@ class TestComputeCrystallization(unittest.TestCase):
     def test_identical_signs(self):
         signs = np.array([1, -1, 0, 1])
         c = compute_crystallization(signs, signs)
-        self.assertGreater(c, 0.99)
+        # 4/4 = 1.0 (with eps negligible)
+        self.assertAlmostEqual(c, 4.0 / (4.0 + 1e-8), places=5)
 
     def test_changed_signs(self):
         s1 = np.array([1, -1, 0, 1])
         s2 = np.array([-1, 1, 0, -1])
         c = compute_crystallization(s2, s1)
-        self.assertLess(c, 0.5)
+        # Only element [2] (0==0) matches: 1/4 = 0.25
+        self.assertAlmostEqual(c, 1.0 / (4.0 + 1e-8), places=5)
 
 
 class TestClassifyDomain(unittest.TestCase):
@@ -179,9 +203,9 @@ class TestMonotonicTrend(unittest.TestCase):
         self.assertAlmostEqual(monotonic_trend([3.0, 2.0, 1.0]), 0.0)
 
     def test_mixed(self):
+        # [1→2 up, 2→1.5 down, 1.5→3 up] = 2 increases / 3 pairs = 2/3
         val = monotonic_trend([1.0, 2.0, 1.5, 3.0])
-        self.assertGreater(val, 0.0)
-        self.assertLess(val, 1.0)
+        self.assertAlmostEqual(val, 2.0 / 3.0, places=5)
 
 
 class TestFindTierConvergence(unittest.TestCase):
@@ -204,10 +228,16 @@ class TestLinearSlope(unittest.TestCase):
         self.assertEqual(linear_slope([1.0]), 0.0)
 
     def test_positive_slope(self):
-        self.assertGreater(linear_slope([1.0, 2.0, 3.0]), 0.0)
+        # Perfect linear [1, 2, 3]: slope = 1.0
+        self.assertAlmostEqual(linear_slope([1.0, 2.0, 3.0]), 1.0, places=5)
 
     def test_negative_slope(self):
-        self.assertLess(linear_slope([3.0, 2.0, 1.0]), 0.0)
+        # Perfect linear [3, 2, 1]: slope = -1.0
+        self.assertAlmostEqual(linear_slope([3.0, 2.0, 1.0]), -1.0, places=5)
+
+    def test_known_slope(self):
+        # [0, 3, 6, 9]: slope = 3.0
+        self.assertAlmostEqual(linear_slope([0.0, 3.0, 6.0, 9.0]), 3.0, places=5)
 
     def test_flat(self):
         self.assertAlmostEqual(linear_slope([5.0, 5.0, 5.0]), 0.0)

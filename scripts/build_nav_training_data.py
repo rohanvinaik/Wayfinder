@@ -26,8 +26,19 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import NamedTuple
 
 from scripts.tactic_maps import DEFAULT_DIRECTION, TACTIC_ANCHORS, TACTIC_DIRECTIONS
+
+
+class ShardConfig(NamedTuple):
+    """Shard/resume parameters for _process_entities."""
+
+    skip_ids: set[str]
+    shard_idx: int
+    shard_total: int
+    append: bool
+
 
 # ---------------------------------------------------------------------------
 # Conversion
@@ -35,11 +46,27 @@ from scripts.tactic_maps import DEFAULT_DIRECTION, TACTIC_ANCHORS, TACTIC_DIRECT
 
 
 def _resolve_step_directions(entity: dict, step_idx: int, tactic: str) -> dict:
-    """Resolve the 6-bank direction vector for a single proof step."""
+    """Resolve the 6-bank direction vector for a single proof step.
+
+    Uses tactic-level supervision for banks where tactic identity is a
+    valid signal (AUTOMATION, DECOMPOSITION, STRUCTURE, DEPTH, CONTEXT),
+    but overrides DOMAIN with the entity-level namespace-derived position.
+    This follows the bank-source alignment principle: DOMAIN represents
+    semantic mathematical locality, which should come from theorem/premise
+    content, not from which tactic was applied.
+    """
     tactic_dirs = entity.get("tactic_directions", [])
     if step_idx < len(tactic_dirs):
-        return tactic_dirs[step_idx].get("directions", DEFAULT_DIRECTION)
-    return TACTIC_DIRECTIONS.get(tactic, DEFAULT_DIRECTION)
+        directions = dict(tactic_dirs[step_idx].get("directions", DEFAULT_DIRECTION))
+    else:
+        directions = dict(TACTIC_DIRECTIONS.get(tactic, DEFAULT_DIRECTION))
+
+    # Override DOMAIN with entity-level position (namespace-derived)
+    entity_positions = entity.get("positions", {})
+    domain_pos = entity_positions.get("domain", {})
+    directions["domain"] = domain_pos.get("sign", 0)
+
+    return directions
 
 
 def _resolve_step_anchors(anchors: list[str], tactic: str) -> list[str]:
@@ -127,10 +154,7 @@ def _write_examples(fout, examples: list[dict]) -> None:
 def _process_entities(
     input_path: Path,
     output_path: Path,
-    skip_ids: set[str],
-    shard_idx: int,
-    shard_total: int,
-    append: bool,
+    shard_config: ShardConfig,
 ) -> tuple[int, int, int]:
     """Process entity records into NavigationalExample JSONL.
 
@@ -141,9 +165,12 @@ def _process_entities(
     examples_written = 0
     unmapped = 0
 
-    with open(output_path, "a" if append else "w") as fout:
-        for entity in _iter_shard_entities(input_path, shard_idx, shard_total):
-            if entity.get("theorem_id", "") in skip_ids:
+    mode = "a" if shard_config.append else "w"
+    entities = _iter_shard_entities(input_path, shard_config.shard_idx, shard_config.shard_total)
+
+    with open(output_path, mode) as fout:
+        for entity in entities:
+            if entity.get("theorem_id", "") in shard_config.skip_ids:
                 skipped += 1
                 continue
 
@@ -155,6 +182,7 @@ def _process_entities(
             _write_examples(fout, examples)
             examples_written += len(examples)
             processed += 1
+
             if processed % 5000 == 0:
                 print(f"Processed {processed} theorems, {examples_written} examples...")
 
@@ -164,7 +192,7 @@ def _process_entities(
     return processed, skipped, examples_written
 
 
-def main() -> None:
+def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Convert entity records to NavigationalExample JSONL"
     )
@@ -172,8 +200,11 @@ def main() -> None:
     parser.add_argument("--output", required=True, help="Output JSONL (nav examples)")
     parser.add_argument("--resume", action="store_true", help="Skip processed")
     parser.add_argument("--shard", default=None, help="'idx:total' (e.g., '0:2')")
-    args = parser.parse_args()
+    return parser.parse_args()
 
+
+def main() -> None:
+    args = _parse_args()
     input_path = Path(args.input)
     output_path = Path(args.output)
 
@@ -186,15 +217,17 @@ def main() -> None:
         skip_ids = _build_skip_set(output_path)
         print(f"Resume: skipping {len(skip_ids)} already-processed theorems")
 
-    shard_idx, shard_total = 0, 1
-    if args.shard:
-        parts = args.shard.split(":")
-        shard_idx, shard_total = int(parts[0]), int(parts[1])
+    shard_idx, shard_total = tuple(int(p) for p in args.shard.split(":")) if args.shard else (0, 1)
+
+    shard_config = ShardConfig(
+        skip_ids=skip_ids,
+        shard_idx=shard_idx,
+        shard_total=shard_total,
+        append=args.resume,
+    )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    processed, skipped, examples = _process_entities(
-        input_path, output_path, skip_ids, shard_idx, shard_total, append=args.resume
-    )
+    processed, skipped, examples = _process_entities(input_path, output_path, shard_config)
     print(f"\nDone. Theorems: {processed}, Skipped: {skipped}, Examples: {examples}")
     if processed > 0:
         print(f"Avg examples/theorem: {examples / processed:.1f}")

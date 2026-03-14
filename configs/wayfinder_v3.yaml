@@ -1,0 +1,249 @@
+# Wayfinder v3 configuration — Boundary Learning + Energy Refinement
+# Extends v2 config with OTP scoring, censor training, contrastive loss,
+# and (gated) energy refinement settings.
+# See DESIGN §12.6, PLAN §Phase 7.
+
+# --- Runtime mode ---
+runtime:
+  mode: v3  # v1 | v2 | v3
+
+# --- Data paths (extends v2) ---
+data:
+  nav_train: data/nav_train.jsonl
+  nav_eval: data/nav_eval.jsonl
+  nav_negative: data/nav_negative.jsonl
+  proof_network_db: data/proof_network.db
+  anchor_labels: data/anchor_labels.json
+  template_train: data/nav_train_templates.jsonl
+  template_taxonomy: data/template_taxonomy.json
+
+# --- Model components (shared with v2) ---
+model:
+  encoder:
+    type: all-MiniLM-L6-v2
+    output_dim: 384
+    frozen: true
+
+  goal_analyzer:
+    feature_dim: 256
+    num_anchors: 18729
+    navigable_banks:
+      - structure
+      - domain
+      - depth
+      - automation
+      - context
+      - decomposition
+
+  bridge:
+    bridge_dim: 128
+    history_dim: 64
+
+  navigator:
+    input_dim: 128
+    hidden_dim: 256
+    num_anchors: 18729
+    num_layers: 2
+    ternary_enabled: true
+    navigable_banks:
+      - structure
+      - domain
+      - depth
+      - automation
+      - context
+      - decomposition
+
+  template_classifier:
+    hidden_dim: 128
+    feature_dim: 64
+
+  sketch_predictor:
+    hidden_dim: 256
+    max_subgoals: 6
+
+  censor:
+    goal_dim: 256
+    tactic_dim: 64
+    hidden_dim: 128
+    threshold: 0.5  # v3: lower threshold than v2 (0.7) — more aggressive pruning
+
+# --- Specialist decomposition (shared with v2) ---
+specialists:
+  A:
+    banks: [domain, context]
+    bridge_dim: 128
+    hidden_dim: 256
+    num_layers: 2
+  B:
+    banks: [structure, automation, depth, decomposition]
+    bridge_dim: 128
+    hidden_dim: 256
+    num_layers: 2
+
+# --- v3A: OTP scoring ---
+otp_scoring:
+  bank_idf_enabled: true
+  zero_sparsity_curriculum: true
+  curriculum_phases: [3, 5, 6]  # max active banks per training phase
+
+# --- v3A: Negative data ---
+negative_data:
+  path: data/nav_negative.jsonl
+  semantic_weight: 1.0
+  suggestion_trace_weight: 1.0
+  perturbation_weight: 0.8
+  weak_negative_weight: 0.1
+  infra_exclude: true
+
+# --- v3A: Censor (asymmetric loss) ---
+censor:
+  asymmetric_loss: true
+  w_neg: 2.0       # missed suppression penalty (MCA: rare signal is valuable)
+  w_pos: 1.0       # false suppression penalty
+  operating_threshold: 0.5
+  safety_net_k: 3   # minimum candidates after pruning — never prune ALL
+
+# --- v3A: Contrastive training ---
+contrastive:
+  enabled: true
+  lambda: 0.05
+  margin_start: 0.1
+  margin_end: 0.3
+  margin_anneal_steps: 5000
+  hard_negative_ratio: 0.5
+  semi_hard_ratio: 0.3
+  easy_ratio: 0.2
+
+# --- v3B: Energy refinement (disabled by default until v3A demonstrates value) ---
+energy_refinement:
+  enabled: false
+  refine_steps: 20
+  refine_lr: 0.01
+  tau_start: 1.0      # Gumbel temperature start
+  tau_end: 0.1         # Gumbel temperature end (hardens toward discrete)
+  energy_threshold: 0.1  # early exit if energy below threshold
+  weights:
+    bank: 1.0
+    critic: 0.5
+    censor: 2.0        # MCA: high penalty for forbidden actions
+    anchor: 0.3
+
+# --- Navigation ---
+navigation:
+  scoring_mechanism: confidence_weighted
+  num_anchors: 18729
+  spread_depth: 2
+  tactic_limit: 8
+  premise_limit: 16
+  anchor_threshold: 0.3
+
+# --- Training ---
+training:
+  batch_size: 16
+  learning_rate: 1.0e-4
+  weight_decay: 0.01
+  max_iterations: 5000
+  warmup_steps: 200
+  seed: 42
+  device: mps
+
+  loss:
+    initial_log_sigma: 0.0
+
+  optimizer: adamw
+  scheduler: cosine
+
+  curriculum:
+    phase_a:
+      max_steps: 2
+      iterations: 500
+    phase_b:
+      max_steps: 5
+      iterations: 1500
+    phase_c:
+      max_steps: null
+      iterations: null
+
+  proof_history: true
+  soft_critic_targets: true
+
+  template_classifier:
+    learning_rate: 1.0e-3
+    batch_size: 32
+    max_iterations: 2000
+
+# --- Search ---
+search:
+  budget: 600
+  hammer_delegation: true
+  accessible_premises: true
+  max_candidates_per_step: 8
+  hammer_timeout: 60
+  max_template_retries: 3
+
+# --- Lean kernel (Lane A) ---
+lean:
+  backend: stub
+
+# --- Proof auditor (Lane B: Axle) ---
+axle:
+  enabled: false
+  environment: lean-4.28.0
+  timeout_seconds: 120
+  ignore_imports: false
+  cache_enabled: true
+  max_concurrency: 10
+  repair_terminal_tactics: [grind, aesop, simp, omega, decide]
+
+# --- Safety ---
+safety:
+  gradient_check_every_n_steps: 50
+  nan_abort: true
+  nan_checkpoint_before_abort: true
+  ternary_distribution_log_every_n_steps: 100
+  max_grad_norm: 1.0
+
+# --- Logging ---
+logging:
+  run_dir: runs/
+  training_log_suffix: _nav_training_log.jsonl
+  eval_results_suffix: _nav_eval_results.json
+  checkpoint_dir: models/
+
+# --- PAB ---
+pab:
+  enabled: true
+  checkpoint_interval: 50
+  early_exit_enabled: true
+  save_profiles: true
+  validation_subset_size: 64
+
+# --- Evaluation ---
+evaluation:
+  benchmark_theorems: data/minif2f_test.jsonl
+  mathlib_test_split: data/mathlib_test.jsonl
+  retrieval_eval_samples: 500
+  spreading_eval_samples: 200
+
+# --- Invariants ---
+invariants:
+  eval_data_frozen: true
+  gap_analysis_before_training: true
+  single_inference_per_state: true
+  scoring_auditable: true
+  pab_from_step_zero: true
+  scoring_configurable: true
+  encoder_explicitly_chosen: true
+  six_bank_default: true
+  soft_critic_targets: true
+  accessible_premises_on: true
+  hammer_delegation_on: true
+  # v2 invariants
+  pab_guides_decomposition: true
+  specialists_share_data_not_weights: true
+  template_classifier_regime_a: true
+  # v3 invariants
+  negative_label_hygiene: true        # infra failures never enter training loss
+  censor_safety_net: true             # never prune ALL candidates
+  search_trace_mandatory: true        # every v3 benchmark emits SearchTrace
+  energy_refinement_off_by_default: true  # v3B gated on v3A success

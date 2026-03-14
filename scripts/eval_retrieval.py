@@ -23,12 +23,9 @@ import numpy as np
 import torch
 import yaml
 
-from src.bridge import InformationBridge
 from src.data import load_nav_examples_jsonl
-from src.encoder import GoalEncoder
-from src.goal_analyzer import GoalAnalyzer
 from src.nav_contracts import NavigationalExample
-from src.proof_navigator import ProofNavigator
+from src.nav_model_factory import load_navigational_checkpoint
 from src.resolution import SearchContext, resolve
 
 
@@ -39,47 +36,8 @@ def load_config(path: Path) -> dict:
 
 def load_checkpoint(path: Path, config: dict, device: str) -> dict:
     """Load trained modules from checkpoint."""
-    ckpt = torch.load(path, map_location=device, weights_only=False)  # nosec B614 — trusted local checkpoints
-    enc_cfg = config["model"]["encoder"]
-    ana_cfg = config["model"]["goal_analyzer"]
-    br_cfg = config["model"]["bridge"]
-    nav_cfg = config["model"]["navigator"]
-
-    encoder = GoalEncoder(
-        model_name=enc_cfg.get("type", "byt5-small"),
-        output_dim=enc_cfg.get("output_dim"),
-        frozen=enc_cfg.get("frozen", True),
-    ).to(device)
-    analyzer = GoalAnalyzer(
-        input_dim=enc_cfg["output_dim"],
-        feature_dim=ana_cfg["feature_dim"],
-        num_anchors=ana_cfg.get("num_anchors", 300),
-        navigable_banks=ana_cfg.get("navigable_banks"),
-    ).to(device)
-    bridge = InformationBridge(
-        input_dim=ana_cfg["feature_dim"],
-        bridge_dim=br_cfg["bridge_dim"],
-        history_dim=br_cfg.get("history_dim", 0),
-    ).to(device)
-    navigator = ProofNavigator(
-        input_dim=br_cfg["bridge_dim"],
-        hidden_dim=nav_cfg["hidden_dim"],
-        num_anchors=nav_cfg["num_anchors"],
-        num_layers=nav_cfg["num_layers"],
-        ternary_enabled=nav_cfg.get("ternary_enabled", True),
-        navigable_banks=nav_cfg.get("navigable_banks"),
-    ).to(device)
-
-    for name, module in [
-        ("encoder", encoder),
-        ("analyzer", analyzer),
-        ("bridge", bridge),
-        ("navigator", navigator),
-    ]:
-        if name in ckpt.get("modules", {}):
-            module.load_state_dict(ckpt["modules"][name])
-
-    return {"encoder": encoder, "analyzer": analyzer, "bridge": bridge, "navigator": navigator}
+    _, modules = load_navigational_checkpoint(path, config, device)
+    return modules
 
 
 def nav_retrieve(
@@ -97,16 +55,16 @@ def nav_retrieve(
 
     context = SearchContext()
     candidates = resolve(nav_output, conn, context, premise_limit=limit)
+    seen: set[str] = set()
     premises: list[str] = []
     for c in candidates:
         for p in c.premises:
-            if p not in premises:
+            if p not in seen:
+                seen.add(p)
                 premises.append(p)
             if len(premises) >= limit:
-                break
-        if len(premises) >= limit:
-            break
-    return premises[:limit]
+                return premises
+    return premises
 
 
 def dense_retrieve(
@@ -138,10 +96,41 @@ def compute_recall_at_k(retrieved: list[str], ground_truth: list[str], k: int) -
     return hits / len(gt_set)
 
 
+def compute_universe_coverage(
+    ground_truth: list[str], entity_names: set[str]
+) -> tuple[float, list[str], list[str]]:
+    """Compute what fraction of ground-truth premises exist in the DB.
+
+    Returns:
+        (coverage_fraction, covered_premises, uncovered_premises)
+    """
+    if not ground_truth:
+        return 1.0, [], []
+    covered = [p for p in ground_truth if p in entity_names]
+    uncovered = [p for p in ground_truth if p not in entity_names]
+    return len(covered) / len(ground_truth), covered, uncovered
+
+
+def compute_conditional_recall_at_k(
+    retrieved: list[str], ground_truth: list[str], entity_names: set[str], k: int
+) -> float:
+    """Compute recall@k conditioned on premises existing in the DB.
+
+    Only counts ground-truth premises that are actually in the entity universe.
+    This separates retrieval quality from extraction coverage.
+    """
+    reachable_gt = [p for p in ground_truth if p in entity_names]
+    if not reachable_gt:
+        return 1.0  # all GT premises are unreachable — vacuously correct
+    gt_set = set(reachable_gt)
+    hits = sum(1 for p in retrieved[:k] if p in gt_set)
+    return hits / len(gt_set)
+
+
 def _encode_all_premises(conn: sqlite3.Connection, modules: dict) -> tuple[torch.Tensor, list[str]]:
     """Pre-compute premise embeddings for dense baseline."""
     print("  Computing premise embeddings for dense baseline...")
-    rows = conn.execute("SELECT name FROM entities WHERE type = 'lemma'").fetchall()
+    rows = conn.execute("SELECT name FROM entities WHERE entity_type = 'lemma'").fetchall()
     names = [r[0] for r in rows]
 
     if not names:
@@ -164,10 +153,18 @@ def _compare_retrieval(
     premise_emb: torch.Tensor,
     premise_names: list[str],
     ks: list[int],
-) -> tuple[dict[int, list[float]], dict[int, list[float]], list[float], list[float]]:
-    """Run nav vs dense retrieval on all examples, collecting recall and timing."""
+) -> dict:
+    """Run nav vs dense retrieval on all examples, collecting recall and timing.
+
+    Returns a dict with nav_recalls, dense_recalls, nav_cond_recalls,
+    dense_cond_recalls, coverages, nav_times, dense_times.
+    """
+    entity_name_set = set(premise_names)
     nav_recalls: dict[int, list[float]] = {k: [] for k in ks}
     dense_recalls: dict[int, list[float]] = {k: [] for k in ks}
+    nav_cond: dict[int, list[float]] = {k: [] for k in ks}
+    dense_cond: dict[int, list[float]] = {k: [] for k in ks}
+    coverages: list[float] = []
     nav_times: list[float] = []
     dense_times: list[float] = []
 
@@ -176,6 +173,9 @@ def _compare_retrieval(
         gt = ex.ground_truth_premises
         if not gt:
             continue
+
+        cov, _, _ = compute_universe_coverage(gt, entity_name_set)
+        coverages.append(cov)
 
         t0 = time.perf_counter()
         nav_prem = nav_retrieve(ex, modules, conn, limit=16)
@@ -191,41 +191,84 @@ def _compare_retrieval(
         for k in ks:
             nav_recalls[k].append(compute_recall_at_k(nav_prem, gt, k))
             dense_recalls[k].append(compute_recall_at_k(dense_prem, gt, k))
+            nav_cond[k].append(
+                compute_conditional_recall_at_k(nav_prem, gt, entity_name_set, k)
+            )
+            dense_cond[k].append(
+                compute_conditional_recall_at_k(dense_prem, gt, entity_name_set, k)
+            )
 
         if (i + 1) % 100 == 0:
             print(f"    {i + 1}/{len(examples)} done")
 
-    return nav_recalls, dense_recalls, nav_times, dense_times
-
-
-def _build_report(
-    nav_recalls: dict[int, list[float]],
-    dense_recalls: dict[int, list[float]],
-    nav_times: list[float],
-    dense_times: list[float],
-    ks: list[int],
-) -> dict:
-    """Build and print the comparison report."""
-    report = {
-        "samples": len(nav_recalls[ks[0]]),
-        "nav_retrieval": {f"recall@{k}": round(float(np.mean(nav_recalls[k])), 4) for k in ks},
-        "dense_retrieval": {f"recall@{k}": round(float(np.mean(dense_recalls[k])), 4) for k in ks},
-        "timing": {
-            "nav_avg_ms": round(float(np.mean(nav_times)) * 1000, 2),
-            "dense_avg_ms": round(float(np.mean(dense_times)) * 1000, 2),
-            "speedup": round(float(np.mean(dense_times)) / max(float(np.mean(nav_times)), 1e-9), 2),
-        },
+    return {
+        "nav_recalls": nav_recalls,
+        "dense_recalls": dense_recalls,
+        "nav_cond_recalls": nav_cond,
+        "dense_cond_recalls": dense_cond,
+        "coverages": coverages,
+        "nav_times": nav_times,
+        "dense_times": dense_times,
     }
 
-    print("\n=== Retrieval Comparison ===")
+
+def _build_report(comparison: dict, ks: list[int]) -> dict:
+    """Build and print the comparison report with coverage-aware metrics."""
+    nav_recalls = comparison["nav_recalls"]
+    dense_recalls = comparison["dense_recalls"]
+    nav_cond = comparison["nav_cond_recalls"]
+    dense_cond = comparison["dense_cond_recalls"]
+    coverages = comparison["coverages"]
+    nav_times = comparison["nav_times"]
+    dense_times = comparison["dense_times"]
+
+    nav_ret = {f"recall@{k}": round(float(np.mean(nav_recalls[k])), 4) for k in ks}
+    dense_ret = {f"recall@{k}": round(float(np.mean(dense_recalls[k])), 4) for k in ks}
+    nav_cond_ret = {f"cond_recall@{k}": round(float(np.mean(nav_cond[k])), 4) for k in ks}
+    dense_cond_ret = {f"cond_recall@{k}": round(float(np.mean(dense_cond[k])), 4) for k in ks}
+    timing = {
+        "nav_avg_ms": round(float(np.mean(nav_times)) * 1000, 2),
+        "dense_avg_ms": round(float(np.mean(dense_times)) * 1000, 2),
+        "speedup": round(float(np.mean(dense_times)) / max(float(np.mean(nav_times)), 1e-9), 2),
+    }
+    coverage_stats = {
+        "mean": round(float(np.mean(coverages)), 4),
+        "min": round(float(np.min(coverages)), 4),
+        "max": round(float(np.max(coverages)), 4),
+        "fully_covered": sum(1 for c in coverages if c >= 1.0),
+        "zero_covered": sum(1 for c in coverages if c <= 0.0),
+    }
+    report: dict = {
+        "samples": len(nav_recalls[ks[0]]),
+        "universe_coverage": coverage_stats,
+        "nav_retrieval": nav_ret,
+        "dense_retrieval": dense_ret,
+        "nav_conditional_retrieval": nav_cond_ret,
+        "dense_conditional_retrieval": dense_cond_ret,
+        "timing": timing,
+    }
+
+    print(f"\n=== Universe Coverage ===")
+    print(f"  mean={coverage_stats['mean']:.1%}"
+          f"  fully_covered={coverage_stats['fully_covered']}/{len(coverages)}"
+          f"  zero_covered={coverage_stats['zero_covered']}/{len(coverages)}")
+
+    print("\n=== Retrieval Comparison (raw) ===")
     for k in ks:
-        nr = report["nav_retrieval"][f"recall@{k}"]
-        dr = report["dense_retrieval"][f"recall@{k}"]
+        nr = nav_ret[f"recall@{k}"]
+        dr = dense_ret[f"recall@{k}"]
         print(f"  recall@{k}: nav={nr:.4f} dense={dr:.4f} delta={nr - dr:+.4f}")
+
+    print("\n=== Conditional Retrieval (only reachable premises) ===")
+    for k in ks:
+        nr = nav_cond_ret[f"cond_recall@{k}"]
+        dr = dense_cond_ret[f"cond_recall@{k}"]
+        print(f"  cond_recall@{k}: nav={nr:.4f} dense={dr:.4f} delta={nr - dr:+.4f}")
+
     print(
-        f"  Timing: nav={report['timing']['nav_avg_ms']:.1f}ms"
-        f" dense={report['timing']['dense_avg_ms']:.1f}ms"
-        f" speedup={report['timing']['speedup']:.1f}x"
+        f"\n  Timing: nav={timing['nav_avg_ms']:.1f}ms"
+        f" dense={timing['dense_avg_ms']:.1f}ms"
+        f" speedup={timing['speedup']:.1f}x"
     )
     return report
 
@@ -244,7 +287,7 @@ def evaluate(
     eval_path = Path(config["data"].get("nav_eval", "data/nav_eval.jsonl"))
     examples = load_nav_examples_jsonl(eval_path)
     if len(examples) > samples:
-        rng = np.random.default_rng()
+        rng = np.random.default_rng(seed=42)
         indices = rng.choice(len(examples), samples, replace=False)
         examples = [examples[int(i)] for i in indices]
     print(f"Evaluating on {len(examples)} examples")
@@ -253,12 +296,10 @@ def evaluate(
     ks = [1, 4, 8, 16]
 
     premise_emb, premise_names = _encode_all_premises(conn, modules)
-    nav_recalls, dense_recalls, nav_times, dense_times = _compare_retrieval(
-        examples, modules, conn, premise_emb, premise_names, ks
-    )
+    comparison = _compare_retrieval(examples, modules, conn, premise_emb, premise_names, ks)
     conn.close()
 
-    return _build_report(nav_recalls, dense_recalls, nav_times, dense_times, ks)
+    return _build_report(comparison, ks)
 
 
 def main() -> None:

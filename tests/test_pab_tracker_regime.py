@@ -327,5 +327,136 @@ class TestShouldEarlyExit(unittest.TestCase):
         self.assertEqual(tracker.should_early_exit(300), False)
 
 
+class TestClassifyRegimeExactValues(unittest.TestCase):
+    """Exact-value assertions for _classify_regime with known stability inputs."""
+
+    def _tracker_with_stability(self, stab_values):
+        tracker = PABTracker(experiment_id="REG-EXACT")
+        for i, _ in enumerate(stab_values):
+            tracker.record(CheckpointData(step=(i + 1) * 50, train_loss=1.0))
+        tracker._core.stability = list(stab_values)
+        return tracker
+
+    def test_stable_exact_mean(self):
+        """mean([0.05, 0.10, 0.12, 0.08, 0.03]) = 0.076 < 0.15 -> stable."""
+        stab = [0.05, 0.10, 0.12, 0.08, 0.03]
+        tracker = self._tracker_with_stability(stab)
+        import numpy as np
+
+        self.assertAlmostEqual(float(np.mean(stab)), 0.076, places=6)
+        self.assertEqual(tracker._classify_regime(), "stable")
+
+    def test_chaotic_exact_mean(self):
+        """mean([0.31, 0.35, 0.40, 0.28, 0.32]) = 0.332 > 0.30 -> chaotic."""
+        stab = [0.31, 0.35, 0.40, 0.28, 0.32]
+        tracker = self._tracker_with_stability(stab)
+        import numpy as np
+
+        self.assertAlmostEqual(float(np.mean(stab)), 0.332, places=6)
+        self.assertEqual(tracker._classify_regime(), "chaotic")
+
+    def test_moderate_exact_mean(self):
+        """mean([0.20, 0.22, 0.18, 0.25, 0.16]) = 0.202, in [0.15, 0.30] -> moderate."""
+        stab = [0.20, 0.22, 0.18, 0.25, 0.16]
+        tracker = self._tracker_with_stability(stab)
+        import numpy as np
+
+        self.assertAlmostEqual(float(np.mean(stab)), 0.202, places=6)
+        self.assertEqual(tracker._classify_regime(), "moderate")
+
+    def test_phase_transition_exact_halves(self):
+        """First half mean=0.30, second half mean=0.08, overall=0.19 -> phase_transition."""
+        stab = [0.28, 0.30, 0.32, 0.30, 0.30, 0.08, 0.08, 0.08, 0.08, 0.08]
+        tracker = self._tracker_with_stability(stab)
+        import numpy as np
+
+        first_half = stab[:5]
+        second_half = stab[5:]
+        self.assertAlmostEqual(float(np.mean(first_half)), 0.30, places=6)
+        self.assertAlmostEqual(float(np.mean(second_half)), 0.08, places=6)
+        overall = float(np.mean(stab))
+        self.assertTrue(0.15 <= overall <= 0.30)
+        self.assertEqual(tracker._classify_regime(), "phase_transition")
+
+    def test_single_stability_value_exact(self):
+        """Single value 0.05 -> mean=0.05 < 0.15 -> stable."""
+        tracker = self._tracker_with_stability([0.05])
+        self.assertEqual(tracker._classify_regime(), "stable")
+
+    def test_boundary_exactly_015_is_moderate(self):
+        """mean=0.15 is NOT < 0.15, so not stable. Not > 0.30. -> moderate."""
+        tracker = self._tracker_with_stability([0.15] * 6)
+        self.assertEqual(tracker._classify_regime(), "moderate")
+
+    def test_boundary_exactly_030_is_moderate(self):
+        """mean=0.30 is NOT > 0.30, so not chaotic. Not < 0.15. -> moderate."""
+        tracker = self._tracker_with_stability([0.30] * 6)
+        self.assertEqual(tracker._classify_regime(), "moderate")
+
+
+class TestDetectConvergenceExactValues(unittest.TestCase):
+    """Exact-value assertions for _detect_convergence with known inputs."""
+
+    def _tracker_with_stability_and_steps(self, stab_values, steps):
+        tracker = PABTracker(experiment_id="CONV-EXACT")
+        for i, s in enumerate(steps):
+            tracker.record(CheckpointData(step=s, train_loss=1.0))
+        tracker._core.stability = list(stab_values)
+        return tracker
+
+    def test_exactly_4_values_returns_none(self):
+        """Window size is 5; 4 values is too few regardless of values."""
+        stab = [0.01, 0.02, 0.01, 0.03]
+        steps = [50, 100, 150, 200]
+        tracker = self._tracker_with_stability_and_steps(stab, steps)
+        self.assertIsNone(tracker._detect_convergence())
+
+    def test_five_converged_returns_first_step(self):
+        """All 5 below 0.10 -> convergence at step index 0 = step 100."""
+        stab = [0.09, 0.08, 0.07, 0.06, 0.05]
+        steps = [100, 200, 300, 400, 500]
+        tracker = self._tracker_with_stability_and_steps(stab, steps)
+        self.assertEqual(tracker._detect_convergence(), 100)
+
+    def test_convergence_delayed_by_one_high_value(self):
+        """[0.20, 0.05, 0.03, 0.04, 0.02, 0.01] -> window starts at index 1 -> step 200."""
+        stab = [0.20, 0.05, 0.03, 0.04, 0.02, 0.01]
+        steps = [100, 200, 300, 400, 500, 600]
+        tracker = self._tracker_with_stability_and_steps(stab, steps)
+        self.assertEqual(tracker._detect_convergence(), 200)
+
+    def test_convergence_delayed_to_end(self):
+        """High values then converge only at the last 5 -> step at index 3."""
+        stab = [0.50, 0.40, 0.30, 0.05, 0.04, 0.03, 0.02, 0.01]
+        steps = [50, 100, 150, 200, 250, 300, 350, 400]
+        tracker = self._tracker_with_stability_and_steps(stab, steps)
+        self.assertEqual(tracker._detect_convergence(), 200)
+
+    def test_single_value_at_threshold_breaks_window(self):
+        """0.10 is NOT < 0.10 -- breaks the window at index 2."""
+        stab = [0.05, 0.03, 0.10, 0.02, 0.01, 0.04, 0.03, 0.02, 0.01, 0.005]
+        steps = [50, 100, 150, 200, 250, 300, 350, 400, 450, 500]
+        tracker = self._tracker_with_stability_and_steps(stab, steps)
+        # Index 0: [0.05, 0.03, 0.10, ...] -- 0.10 not < 0.10, fails
+        # Index 1: [0.03, 0.10, ...] -- 0.10 not < 0.10, fails
+        # Index 2: [0.10, ...] -- fails immediately
+        # Index 3: [0.02, 0.01, 0.04, 0.03, 0.02] all < 0.10 -> step at index 3 = 200
+        self.assertEqual(tracker._detect_convergence(), 200)
+
+    def test_no_convergence_all_above(self):
+        """All values >= 0.10 -> None."""
+        stab = [0.15, 0.12, 0.11, 0.10, 0.13]
+        steps = [50, 100, 150, 200, 250]
+        tracker = self._tracker_with_stability_and_steps(stab, steps)
+        self.assertIsNone(tracker._detect_convergence())
+
+    def test_convergence_with_nonstandard_steps(self):
+        """Non-uniform step spacing works correctly."""
+        stab = [0.01, 0.02, 0.03, 0.01, 0.02]
+        steps = [10, 25, 77, 200, 999]
+        tracker = self._tracker_with_stability_and_steps(stab, steps)
+        self.assertEqual(tracker._detect_convergence(), 10)
+
+
 if __name__ == "__main__":
     unittest.main()

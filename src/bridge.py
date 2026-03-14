@@ -52,6 +52,15 @@ class InformationBridge(nn.Module):
             features: [batch, input_dim] from GoalAnalyzer.
             proof_history: [batch, history_dim] mean-pooled history embeddings.
         """
-        if proof_history is not None and self.history_dim > 0:
-            features = torch.cat([features, proof_history], dim=-1)
+        if self.history_dim > 0:
+            if proof_history is not None:
+                features = torch.cat([features, proof_history], dim=-1)
+            else:
+                zeros = torch.zeros(
+                    features.shape[0],
+                    self.history_dim,
+                    device=features.device,
+                    dtype=features.dtype,
+                )
+                features = torch.cat([features, zeros], dim=-1)
         return self.norm(self.projection(features))

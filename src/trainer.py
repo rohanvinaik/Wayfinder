@@ -368,7 +368,11 @@ class BalancedSashimiTrainer(TrainerStepsMixin):
             print(f"  PAB stability_mean: {profile.summary.stability_mean:.4f}")
 
         return self._build_training_result(
-            self.step, all_losses, epoch, elapsed, str(ckpt_path),
+            self.step,
+            all_losses,
+            epoch,
+            elapsed,
+            str(ckpt_path),
             validation_snapshot=self._tracking["validation_snapshot"] or None,
             pab_profile_path=pab_profile_path,
         )

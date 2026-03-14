@@ -1,7 +1,7 @@
 # Wayfinder: Technical Design Reference
 
-**Version:** 1.1
-**Date:** March 6, 2026
+**Version:** 2.0
+**Date:** March 10, 2026
 **Corresponding documents:** `WAYFINDER_RESEARCH.md` (theory), `WAYFINDER_PLAN.md` (operational plan), `EXPERIMENT_RESULTS.md` (results ledger)
 
 ---
@@ -12,7 +12,9 @@
 
 This design is directly adapted from ModelAtlas (Vinaik, 2025), which demonstrated that structured navigation over signed semantic coordinates outperforms both flat database queries and dense embedding retrieval for finding ML models on HuggingFace. We apply the same paradigm to mathematical entities: lemmas, tactics, and proof states are positioned in a structured coordinate system; retrieval is multiplicative bank alignment × IDF-weighted anchor relevance × seed similarity.
 
-The thesis is falsifiable. If dense retrieval consistently outperforms structured navigation for premise selection (Phase 2.2 of the plan), the navigational paradigm is wrong for this domain. If tactic classification outperforms navigational coordinates (Phase 4.4 ablation), the ternary decoder design is wrong. Both negative results would be informative.
+**Decompose, then navigate (v2).** NAV-001/002 training runs demonstrated that a monolithic navigator produces chaotic PAB dynamics (stability_mean > 0.30) because the six bank dimensions have heterogeneous difficulty — Regime A banks (DOMAIN, CONTEXT) saturate early while Regime B banks (STRUCTURE, AUTOMATION, DEPTH) never converge. The composition gap theorem (σ(A∘B) ≤ σ(A) + σ(B) + γ(A,B)) explains why: the shared bridge creates high γ between bank representations. The v2 architecture decomposes proof search into a Society of Mind — five typed temporal slots (PERCEPTION → RECOGNITION → PLANNING → EXECUTION → VERIFICATION) with independent specialists. Each specialist operates at bounded specification complexity, communicating through typed interfaces rather than shared weights. PAB stability per specialist serves as the empirical proxy for σ, guiding decomposition until every component is "stable." See `WAYFINDER_RESEARCH.md` §2.9 for the full theoretical argument.
+
+The thesis is falsifiable. If dense retrieval consistently outperforms structured navigation for premise selection (Phase 2.2 of the plan), the navigational paradigm is wrong for this domain. If tactic classification outperforms navigational coordinates (Phase 4.4 ablation), the ternary decoder design is wrong. If a monolithic navigator with sufficient capacity achieves stable PAB dynamics (Phase 6 comparison), the SoM decomposition is unnecessary. All negative results would be informative.
 
 ---
 
@@ -394,7 +396,7 @@ The three-signal multiplicative scoring structure mirrors this three-way partiti
 
 ## 8. Module Architecture
 
-All modules are implemented. The codebase consists of 28 source files and 8 scripts.
+All modules are implemented. The codebase consists of 28 source files and 11 scripts.
 
 ### 8.0 Three-Lane Verification Architecture
 
@@ -459,7 +461,10 @@ src/
 scripts/
 ├── extract_proof_network.py    Populate proof network from Mathlib
 ├── build_nav_training_data.py  Convert proof traces to nav labels
+├── build_proof_network_db.py   Load entities JSONL → SQLite proof network
+├── convert_leandojo.py         Bridge LeanDojo Benchmark 4 → flat JSONL
 ├── anchor_gap_analysis.py      Iterative anchor gap analysis
+├── eval_encoders.py            Phase 0.6 encoder evaluation (10 candidates, 4 tiers)
 ├── tactic_maps.py              Tactic-to-direction mapping tables
 ├── train_navigator.py          Training script with curriculum
 ├── eval_retrieval.py           Nav vs dense retrieval comparison
@@ -588,8 +593,355 @@ pab:
 
 ---
 
-## 10. The Name
+## 10. Society of Mind Architecture (v2)
+
+The v2 architecture decomposes the monolithic v1 pipeline into five typed temporal slots. Each slot has bounded specification complexity and communicates with adjacent slots through typed data contracts, not shared weights. The composition gap γ ≈ 0 because slots share structured data (navigational coordinates, template IDs, proof sketches), not learned representations.
+
+### 10.1 Slot 1: PERCEPTION (σ ≈ O(1))
+
+**Function:** Deterministic encoding of goal state text into a fixed embedding.
+
+**Implementation:** The existing Goal Encoder (`src/encoder.py`). Frozen `all-MiniLM-L6-v2` (384d, 617 goals/sec). Domain Gate (`src/domain_gate.py`) provides OOD detection. No changes from v1.
+
+**Output contract:** `PerceptionOutput { embedding: Tensor[384], in_domain: bool }`
+
+### 10.2 Slot 2: RECOGNITION (σ ≈ O(log k))
+
+**Function:** Classify the proof into one of k narrative templates. This is the key regime conversion — raw proof structure (Regime B, |G_μ| ≈ 1) becomes template classification (Regime A, |G_μ| >> 1).
+
+**Template taxonomy (initial, to be refined empirically):**
+
+| Template ID | Pattern | Bank Signature | Example |
+|-------------|---------|----------------|---------|
+| DECIDE | Single automation tactic closes goal | AUTO=-1, DEPTH=-1 | `omega`, `simp`, `decide` |
+| REWRITE_CHAIN | Sequence of rewrites reaching normal form | STRUCT=0, AUTO=0 | `rw [h1, h2]; ring` |
+| INDUCT_THEN_CLOSE | Induction + base/step each closed by automation | STRUCT=+1, DEPTH=+1, AUTO=-1 | `induction n; simp; omega` |
+| DECOMPOSE_AND_CONQUER | Split into independent subgoals via `have`/`suffices` | DECOMP=+1, DEPTH=+1 | `have h1 := ...; have h2 := ...; exact ...` |
+| APPLY_CHAIN | Sequence of `apply`/`exact` targeting specific lemmas | STRUCT=0, AUTO=+1 | `apply foo; exact bar` |
+| CASE_ANALYSIS | Split on data constructor or hypothesis | STRUCT=+1, DECOMP=+1 | `cases h; · ...; · ...` |
+| CONTRAPOSITIVE | Negate goal, derive contradiction | STRUCT=+1, CONTEXT=+1 | `by_contra h; ...` |
+| EPSILON_DELTA | Introduce witnesses, bound distances | DOMAIN=+1, DEPTH=+1 | Analysis-style ε-δ proofs |
+| HAMMER_DELEGATE | Entirely delegated to ATP | AUTO=-1 | `aesop`, LeanHammer |
+
+**Implementation:** A lightweight classifier over the GoalAnalyzer features (256d → k classes). Trained on proof corpus with template labels extracted from tactic sequences. Template assignment is deterministic post-classification: argmax over softmax logits.
+
+**Output contract:** `RecognitionOutput { template_id: int, template_confidence: float, template_features: Tensor[64] }`
+
+**Training data:** Extract template labels from existing `nav_training.jsonl` by clustering tactic sequences. Each proof's tactic sequence maps to its dominant template via the bank signature table above.
+
+### 10.3 Slot 3: PLANNING (σ ≈ O(poly(n)))
+
+**Function:** Given a template and goal state, produce a concrete proof sketch — an ordered sequence of abstract subgoals with key lemma targets and estimated depth per subgoal.
+
+**Implementation options (evaluated in Phase 6):**
+
+1. **Template instantiation (deterministic).** For simple templates (DECIDE, REWRITE_CHAIN), the sketch is the template itself — no learning needed. The template specifies the tactic sequence; the EXECUTION slot fills in arguments.
+
+2. **Sketch predictor (learned).** For complex templates (DECOMPOSE_AND_CONQUER, INDUCT_THEN_CLOSE), train a small model to predict the subgoal sequence. Input: goal embedding + template features. Output: ordered list of (abstract_subgoal_type, estimated_difficulty, key_anchor_targets).
+
+3. **Story-writing LLM (deferred, Phase 6.3).** For the hardest proofs, use a fine-tuned story-writing model that generates natural-language proof narratives, which are then parsed into structured sketches. This is the Relational-AI pattern: a narrative model produces the strategy, and specialist models execute it. Requires integration with a small LLM (e.g., Qwen 3.5, DeepSeek-Math 1.3B).
+
+**Output contract:** `PlanningOutput { sketch: list[SubgoalSpec], total_estimated_depth: int }` where `SubgoalSpec { subgoal_type: str, anchor_targets: list[str], estimated_steps: int, bank_hints: dict[str, int] }`
+
+### 10.4 Slot 4: EXECUTION (σ varies by specialist)
+
+**Function:** For each subgoal in the sketch, navigate proof space to find concrete tactics and premises. This is the existing v1 pipeline, decomposed into bank-cluster specialists.
+
+**Specialist decomposition (guided by PAB stability):**
+
+| Specialist | Banks | Regime | Rationale |
+|-----------|-------|--------|-----------|
+| **Navigator-A** (easy) | DOMAIN, CONTEXT | A | High symmetry, saturates early. Shared encoder features suffice. |
+| **Navigator-B** (hard) | STRUCTURE, AUTOMATION, DEPTH, DECOMPOSITION | B | Low symmetry, needs dedicated capacity. Separate bridge and hidden layers. |
+
+This is the initial decomposition. PAB stability measurement on each specialist determines whether further splitting is needed:
+- If Navigator-B remains "chaotic" → split into Navigator-B1 (STRUCTURE, DECOMPOSITION) and Navigator-B2 (AUTOMATION, DEPTH)
+- If Navigator-A remains "stable" → scope is correct, no further decomposition
+
+Each specialist has its own bridge (eliminates the shared-bridge γ that made v1 chaotic), its own hidden layers, and its own output heads for its assigned banks.
+
+**Fusion mechanism for shared heads.** Anchor logits, progress, and critic are produced by each specialist independently, then fused:
+
+```python
+def fuse_specialist_outputs(outputs_a, outputs_b):
+    # Direction heads: concatenate (no fusion needed — each specialist owns its banks)
+    directions = {**outputs_a.directions, **outputs_b.directions}
+
+    # Anchor logits: max-pool across specialists
+    # Rationale: if ANY specialist thinks an anchor is relevant, it should be considered.
+    # Max preserves strong signals without averaging them away.
+    anchor_logits = torch.max(outputs_a.anchor_logits, outputs_b.anchor_logits)
+
+    # Progress: confidence-weighted average
+    # Each specialist's critic confidence weights its progress estimate.
+    total_conf = outputs_a.critic_confidence + outputs_b.critic_confidence + 1e-8
+    progress = (outputs_a.progress * outputs_a.critic_confidence +
+                outputs_b.progress * outputs_b.critic_confidence) / total_conf
+
+    # Critic: min (conservative — if either specialist thinks the goal is hard, trust that)
+    critic = min(outputs_a.critic, outputs_b.critic)
+
+    return ExecutionOutput(directions, anchor_logits, progress, critic)
+```
+
+**Fusion alternatives to ablate in Phase 6:**
+- Max-pool anchors vs mean-pool vs learned attention
+- Min critic vs mean critic vs max critic
+- Confidence-weighted progress vs simple average
+
+**Output contract:** Same as v1 `NavOutput`, but produced by combining specialist outputs: `ExecutionOutput { directions: dict[str, int], anchor_logits: Tensor, progress: float, critic: float }`
+
+### 10.5 Slot 5: VERIFICATION (σ ≈ O(1))
+
+**Function:** Verify tactic applications and learn from failures. Unchanged from v1's three-lane architecture.
+
+**New addition — Censor network.** A small classifier that learns to predict tactic failure *before* Lean kernel verification, trained on accumulated (goal_state, tactic, result) triples from search. This inverts the verification oracle: instead of only learning what works, actively learn what does NOT work. The censor prunes the candidate set before expensive Lean kernel calls.
+
+**Output contract:** `VerificationOutput { success: bool, new_goals: list[GoalState], failure_reason: Optional[str] }`
+
+### 10.6 Arbiter (Orchestrator)
+
+The Arbiter manages the proof search loop at the SoM level:
+
+1. Receives initial goal from PERCEPTION
+2. Routes to RECOGNITION for template classification
+3. Routes to PLANNING for proof sketch generation
+4. For each subgoal in sketch: routes to appropriate EXECUTION specialist
+5. Routes tactic candidates to VERIFICATION
+6. On verification failure: updates censor, re-routes to EXECUTION with updated context
+7. On verification success: advances to next subgoal, updates proof history
+8. On sketch failure (all subgoals attempted, proof incomplete): re-routes to RECOGNITION with "retry" flag for alternative template
+
+**Goal selection** uses the critic head (estimated distance-to-completion) and progress head (estimated remaining steps), same as v1. The Arbiter adds template-level goal selection: if one subgoal in a sketch is stuck, try a different template before exhausting the search budget on the current one.
+
+### 10.7 Module Map Update (v2)
+
+New modules for v2 (to be implemented in Phase 6):
+
+```
+src/
+├── ... (all existing v1 modules retained)
+├── story_templates.py          Template taxonomy and extraction (Slot 2)
+├── template_classifier.py      Recognition classifier (Slot 2)
+├── sketch_predictor.py         Proof sketch generator (Slot 3)
+├── specialist_navigator.py     Bank-cluster specialist wrapper (Slot 4)
+├── censor.py                   Failure prediction network (Slot 5)
+└── arbiter.py                  SoM orchestrator
+
+scripts/
+├── ... (all existing scripts retained)
+├── extract_templates.py        Extract template labels from proof corpus
+├── train_specialist.py         Train individual specialists with PAB monitoring
+└── train_template_classifier.py  Train the RECOGNITION slot
+```
+
+### 10.8 PAB-Guided Decomposition Protocol
+
+The decomposition protocol is iterative and data-driven:
+
+```
+1. Start with candidate specialist scope (e.g., all 6 banks)
+2. Train specialist for N steps (e.g., 2000)
+3. Measure PAB stability_regime
+4. If "stable" (stability_mean < 0.15):
+     → Scope is correct. Lock specialist, proceed.
+5. If "transitional" (0.15 ≤ stability_mean < 0.30):
+     → Scope is borderline. Try longer training (2x steps).
+     → If still transitional after 2x: decompose.
+6. If "chaotic" (stability_mean ≥ 0.30):
+     → Scope too broad. Decompose into sub-specialists.
+     → Split banks by difficulty tier (Regime A vs Regime B).
+     → Recurse on each sub-specialist.
+7. Verify: total system σ = Σ specialist σ_i (additive, no γ)
+   by running end-to-end eval and checking that combined performance
+   ≥ monolithic performance.
+```
+
+The free energy bound (Theorem 3.10 of the specification complexity paper) guarantees that each decomposition step that reduces γ also reduces total specification complexity. Over-decomposition is self-correcting: a specialist with scope too narrow will have σ ≈ O(1) and trivially reach "stable," contributing its small additive cost without harming the total.
+
+---
+
+## 11. The Name
 
 **Wayfinder** refers to the Polynesian navigators who crossed the Pacific Ocean — the largest navigable space on Earth — without instruments. They read structured patterns: star positions (fixed reference points, like bank zero states), ocean swells (propagation patterns, like spreading activation), and bird flight paths (semantic signals, like anchors). They navigated by understanding the *structure* of the space, not by memorizing routes.
 
 Wayfinder navigates proof space the same way: structured coordinates (banks), semantic patterns (anchors), and propagation signals (spreading activation). The neural network is the navigator who reads these signals. The symbolic network is the ocean — vast, structured, and navigable by those who understand its patterns.
+
+---
+
+## 12. v3 Runtime Architecture: Boundary Learning and Energy Refinement
+
+*v3 is a parallel orchestration path added alongside v1 (monolithic) and v2 (SoM). It does NOT modify v1 or v2 code paths. All three runtimes produce the same top-level metrics schema for A/B/C/D comparison.*
+
+### 12.1 Runtime Modes
+
+Benchmark runs require explicit mode selection: `--mode v1|v2|v3`. Each mode owns its orchestration logic; shared infrastructure (encoder, proof network, Lean interface) is reused.
+
+| Mode | Orchestrator | Scoring | Pruning | Sketch |
+|------|-------------|---------|---------|--------|
+| **v1** | `proof_search.py` (sequential best-first) | `confidence_weighted` | None | None (tactic-by-tactic) |
+| **v2** | `arbiter.py` (SoM 5-slot pipeline) | Specialist fusion (§10.4) | None | Template-based (sketch_predictor) |
+| **v3** | `v3_runtime.py` (new) | OTP bank-IDF + ConstraintReport | Censor (asymmetric) | Template-based + optional energy refinement |
+
+### 12.2 Shared Interfaces
+
+All v3 data flows through these dataclasses, defined in `src/v3_contracts.py`:
+
+```python
+@dataclass
+class GoalContext:
+    theorem_id: str
+    goal_text: str
+    proof_history: list[str]          # closed goals so far
+    accessible_premises: list[str]     # import-accessible premise IDs
+    source_split: str                  # "train" | "eval"
+
+@dataclass
+class ActionCandidate:
+    tactic: str
+    premises: list[str]
+    provenance: str                    # "navigate" | "spread" | "hammer"
+    navigational_scores: dict[str, float]  # per-bank scores
+    template_provenance: str | None    # template ID if from sketch
+
+@dataclass
+class NegativeExample:
+    goal_state: str
+    theorem_id: str
+    step_index: int
+    failed_tactic: str
+    failure_reason: str
+    failure_category: str              # "semantic" | "infra" | "weak_negative"
+    source: str                        # "sorry_hole" | "perturbation" | "suggestion_trace" | "unchosen_weak"
+    proof_history: list[str]
+    paired_positive_tactic: str | None
+    paired_positive_premises: list[str]
+    bank_directions: dict[str, int]
+    otp_dimensionality: int            # 6 - count(zeros)
+
+@dataclass
+class ConstraintReport:
+    bank_scores: dict[str, float]      # per-bank alignment
+    critic_distance: float             # estimated steps remaining
+    censor_score: float                # P(failure)
+    anchor_alignment: float            # IDF-weighted Jaccard
+    total_score: float                 # composite (v3A: weighted sum)
+    energy: float | None               # v3B only: differentiable energy
+
+@dataclass
+class SketchProposal:
+    template_id: str
+    proposed_steps: list[ActionCandidate]
+    latent_form: 'torch.Tensor | None'  # v3B only: continuous representation
+    total_constraint_score: float
+
+@dataclass
+class SearchTrace:
+    theorem_id: str
+    mode: str                          # "v1" | "v2" | "v3"
+    steps: list[dict]                  # per-step decisions
+    pruning_decisions: list[dict]      # censor prune log (v3)
+    lean_calls: int
+    result: str                        # "proved" | "failed" | "timeout"
+    constraint_reports: list[ConstraintReport]  # v3 only
+```
+
+### 12.3 v3 Subsystem Boundaries
+
+The v3 runtime is organized by function, not phase:
+
+```
+src/
+├── v3_runtime.py          v3 orchestrator (imports below)
+├── v3_contracts.py         Shared interfaces above
+├── v3_scoring.py           OTP bank-IDF scoring, ConstraintReport composition
+├── censor.py               Standalone censor (existing from Phase 6.0, retrained with asymmetric loss)
+├── energy.py               [v3B] Energy function, Gumbel-softmax, refinement loop
+│
+scripts/
+├── collect_negatives.py    First-class data pipeline (3 collectors + weak negatives)
+├── train_censor.py         Standalone censor training (independent of navigator)
+└── run_benchmark.py        --mode v1|v2|v3, SearchTrace output
+```
+
+### 12.4 v3A Pipeline (Boundary Learning)
+
+```
+GoalContext
+  → Encoder (shared, frozen)
+  → OTP-scored navigation (bank-IDF weights from v3_scoring.py)
+  → Censor pruning (asymmetric, safety-net: never prune ALL)
+  → Template classification (shared with v2)
+  → Discrete sketch scoring via ConstraintReport
+  → Lean verification (Lane A)
+  → SearchTrace output
+```
+
+### 12.5 v3B Pipeline Extension (Energy Refinement — gated on v3A)
+
+```
+[v3A pipeline through template classification]
+  → Continuous sketch in latent space (Gumbel-softmax relaxation)
+  → Energy minimization loop (energy.py, ~20 gradient steps)
+  → Temperature annealing (τ: 1.0 → 0.1)
+  → Snap to discrete ternary
+  → Lean verification (Lane A)
+  → SearchTrace output (includes energy trajectory)
+```
+
+### 12.6 Config Separation
+
+v3 config lives in its own namespace to avoid overloading v1/v2 settings:
+
+```yaml
+# In configs/wayfinder_v3.yaml (extends wayfinder_v2.yaml)
+runtime:
+  mode: v3                    # v1 | v2 | v3
+
+otp_scoring:
+  bank_idf_enabled: true
+  zero_sparsity_curriculum: true
+  curriculum_phases: [3, 5, 6]  # max active banks per phase
+
+negative_data:
+  path: data/nav_negative.jsonl
+  semantic_weight: 1.0
+  weak_negative_weight: 0.1
+  infra_exclude: true
+
+censor:
+  asymmetric_loss: true
+  w_neg: 2.0                 # missed suppression penalty
+  w_pos: 1.0                 # false suppression penalty
+  operating_threshold: 0.5
+  safety_net_k: 3            # minimum candidates after pruning
+
+contrastive:
+  lambda: 0.05
+  margin_start: 0.1
+  margin_end: 0.3
+  margin_anneal_steps: 5000
+  hard_negative_ratio: 0.5
+
+# v3B (disabled by default until v3A demonstrates value)
+energy_refinement:
+  enabled: false
+  refine_steps: 20
+  refine_lr: 0.01
+  tau_start: 1.0
+  tau_end: 0.1
+  energy_threshold: 0.1
+  weights:
+    bank: 1.0
+    critic: 0.5
+    censor: 2.0
+    anchor: 0.3
+```
+
+### 12.7 Invariants (v3-specific, supplements §Invariants in PLAN)
+
+1. **v1 and v2 code paths are frozen.** v3 must not modify `proof_search.py` or `arbiter.py`. Shared infrastructure changes require v1/v2 regression tests.
+2. **SearchTrace is mandatory.** Every v3 benchmark run emits per-theorem SearchTrace for auditability.
+3. **Censor safety net is non-negotiable.** `safety_net_k ≥ 1`. The censor may never prune all candidates.
+4. **Negative label hygiene.** `failure_category: "infra"` examples never enter training loss. Enforced at data loading, not filtering.
+5. **Energy refinement defaults to off.** `energy_refinement.enabled: false` in shipping config. Switched on only after v3A gate passes.

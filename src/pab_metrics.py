@@ -15,13 +15,13 @@ from __future__ import annotations
 import numpy as np
 
 try:
-    from pab.metrics import (  # type: ignore[import-untyped]
+    from pab.metrics import (  # type: ignore[import-untyped,import-not-found]
         feature_importance_consistency as _pabkit_feature_importance,
     )
-    from pab.metrics import (  # type: ignore[import-untyped]
+    from pab.metrics import (  # type: ignore[import-untyped,import-not-found]
         generalization_efficiency as _pabkit_gen_efficiency,
     )
-    from pab.metrics import (  # type: ignore[import-untyped]
+    from pab.metrics import (  # type: ignore[import-untyped,import-not-found]
         learning_stability as _pabkit_stability,
     )
 

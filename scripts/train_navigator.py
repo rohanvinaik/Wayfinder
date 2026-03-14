@@ -32,16 +32,26 @@ from scripts.train_targets import (
     build_critic_targets,
     build_direction_targets,
     build_progress_targets,
+    capture_bridge_embeddings,
     compute_nav_accuracy,
+    compute_val_loss,
+    extract_decoder_weight_signs,
 )
-from src.bridge import InformationBridge
 from src.data import NavigationalDataset
-from src.encoder import GoalEncoder
-from src.goal_analyzer import GoalAnalyzer
 from src.losses import NavigationalLoss
 from src.nav_contracts import BANK_NAMES
+from src.nav_model_factory import build_navigational_modules
 from src.pab_tracker import CheckpointData, PABTracker
-from src.proof_navigator import ProofNavigator
+
+
+@dataclass
+class _TrainState:
+    """Typed training loop state to satisfy mypy."""
+
+    step: int = 0
+    losses: list[dict[str, float]] = field(default_factory=list)
+    phase: str = ""
+    dataset: NavigationalDataset | None = None
 
 
 @dataclass
@@ -53,9 +63,11 @@ class TrainContext:
     anchor_labels: list[str]
     loss_fn: NavigationalLoss
     optimizer: torch.optim.Optimizer
+    scheduler: torch.optim.lr_scheduler.LRScheduler | None
     tracker: PABTracker
     device: str
     config: dict
+    eval_examples: list = field(default_factory=list)  # fixed eval subset for PAB
     paths: dict = field(default_factory=dict)  # run_dir, ckpt_dir, log_path
 
 
@@ -67,45 +79,7 @@ def load_config(path: Path) -> dict:
 
 def build_pipeline(config: dict, device: str) -> dict:
     """Build neural pipeline components from config."""
-    enc_cfg = config["model"]["encoder"]
-    encoder = GoalEncoder(
-        model_name=enc_cfg.get("type", "byt5-small"),
-        output_dim=enc_cfg.get("output_dim"),
-        frozen=enc_cfg.get("frozen", True),
-    )
-
-    ana_cfg = config["model"]["goal_analyzer"]
-    analyzer = GoalAnalyzer(
-        input_dim=enc_cfg["output_dim"],
-        feature_dim=ana_cfg["feature_dim"],
-        num_anchors=ana_cfg.get("num_anchors", 300),
-        navigable_banks=ana_cfg.get("navigable_banks"),
-    )
-
-    br_cfg = config["model"]["bridge"]
-    bridge = InformationBridge(
-        input_dim=ana_cfg["feature_dim"],
-        bridge_dim=br_cfg["bridge_dim"],
-        history_dim=br_cfg.get("history_dim", 0),
-    )
-
-    nav_cfg = config["model"]["navigator"]
-    navigator = ProofNavigator(
-        input_dim=br_cfg["bridge_dim"],
-        hidden_dim=nav_cfg["hidden_dim"],
-        num_anchors=nav_cfg["num_anchors"],
-        num_layers=nav_cfg["num_layers"],
-        ternary_enabled=nav_cfg.get("ternary_enabled", True),
-        navigable_banks=nav_cfg.get("navigable_banks"),
-    )
-
-    modules = {
-        "encoder": encoder.to(device),
-        "analyzer": analyzer.to(device),
-        "bridge": bridge.to(device),
-        "navigator": navigator.to(device),
-    }
-    return modules
+    return build_navigational_modules(config["model"], device)
 
 
 def load_anchor_labels(config: dict) -> list[str]:
@@ -169,31 +143,75 @@ def get_curriculum_phase(step: int, config: dict) -> tuple[str, int | None]:
     return "C", None
 
 
-def _setup_training(config: dict, run_id: str, device: str, seed: int) -> TrainContext:
-    """Initialize all training components."""
-    torch.manual_seed(seed)
-    np.random.seed(seed)
-
+def _setup_directories(config: dict, run_id: str) -> dict:
+    """Create run and checkpoint directories, return paths dict."""
     run_dir = Path(config["logging"]["run_dir"]) / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
     ckpt_dir = Path(config["logging"]["checkpoint_dir"])
     ckpt_dir.mkdir(parents=True, exist_ok=True)
+    return {
+        "run_dir": run_dir,
+        "ckpt_dir": ckpt_dir,
+        "log_path": run_dir / f"{run_id}{config['logging']['training_log_suffix']}",
+    }
 
-    modules = build_pipeline(config, device)
 
-    loss_fn = NavigationalLoss(
-        initial_log_sigma=config["training"]["loss"].get("initial_log_sigma", 0.0)
-    ).to(device)
-
+def _build_optimizer(modules: dict, loss_fn: NavigationalLoss, config: dict) -> torch.optim.AdamW:
+    """Collect trainable parameters and build AdamW optimizer."""
     all_params = [p for m in modules.values() for p in m.parameters() if p.requires_grad]
     all_params.extend(p for p in loss_fn.parameters() if p.requires_grad)
     train_cfg = config["training"]
-    optimizer = torch.optim.AdamW(
+    return torch.optim.AdamW(
         all_params,
         lr=train_cfg["learning_rate"],
         weight_decay=train_cfg["weight_decay"],
     )
 
+
+def _build_scheduler(
+    optimizer: torch.optim.Optimizer, config: dict
+) -> torch.optim.lr_scheduler.LRScheduler | None:
+    """Build cosine LR scheduler if configured, else return None."""
+    train_cfg = config["training"]
+    scheduler_type = train_cfg.get("scheduler", "cosine")
+    max_iters = train_cfg["max_iterations"]
+    warmup_steps = train_cfg.get("warmup_steps", 0)
+    if scheduler_type == "cosine" and max_iters > warmup_steps:
+        print(f"  Scheduler: cosine (T_max={max_iters - warmup_steps}, warmup={warmup_steps})")
+        return torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max_iters - warmup_steps)
+    return None
+
+
+def _load_eval_subset(config: dict, seed: int) -> list:
+    """Load fixed eval subset for PAB val_loss and bridge embedding tracking."""
+    nav_eval_path = Path(config["data"].get("nav_eval", "data/nav_eval.jsonl"))
+    pab_val_size = config.get("pab", {}).get("validation_subset_size", 16)
+    if nav_eval_path.exists():
+        eval_ds = NavigationalDataset(nav_eval_path)
+        rng = np.random.default_rng(seed)
+        n = min(len(eval_ds), pab_val_size)
+        indices = rng.choice(len(eval_ds), n, replace=False)
+        examples = [eval_ds[int(i)] for i in indices]
+        print(f"  PAB eval subset: {n} examples from {nav_eval_path}")
+        return examples
+    return []
+
+
+def _setup_training(config: dict, run_id: str, device: str, seed: int) -> TrainContext:
+    """Initialize all training components."""
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+
+    paths = _setup_directories(config, run_id)
+    modules = build_pipeline(config, device)
+    loss_fn = NavigationalLoss(
+        initial_log_sigma=config["training"]["loss"].get("initial_log_sigma", 0.0)
+    ).to(device)
+    optimizer = _build_optimizer(modules, loss_fn, config)
+    scheduler = _build_scheduler(optimizer, config)
+    eval_examples = _load_eval_subset(config, seed)
+
+    train_cfg = config["training"]
     print(f"Training run: {run_id}")
     print(
         f"  Device: {device}, Max iters: {train_cfg['max_iterations']}"
@@ -206,18 +224,101 @@ def _setup_training(config: dict, run_id: str, device: str, seed: int) -> TrainC
         anchor_labels=load_anchor_labels(config),
         loss_fn=loss_fn,
         optimizer=optimizer,
+        scheduler=scheduler,
         tracker=PABTracker(
             experiment_id=run_id,
             checkpoint_interval=config.get("pab", {}).get("checkpoint_interval", 50),
         ),
         device=device,
         config=config,
-        paths={
-            "run_dir": run_dir,
-            "ckpt_dir": ckpt_dir,
-            "log_path": run_dir / f"{run_id}{config['logging']['training_log_suffix']}",
-        },
+        eval_examples=eval_examples,
+        paths=paths,
     )
+
+
+def _log_step_progress(step: int, loss_dict: dict, ctx: TrainContext) -> None:
+    """Print periodic training progress."""
+    max_iters = ctx.config["training"]["max_iterations"]
+    lr_str = ""
+    if ctx.scheduler is not None:
+        lr_str = f" lr={ctx.scheduler.get_last_lr()[0]:.2e}"
+    print(
+        f"  Step {step}/{max_iters}: L={loss_dict['L_total']:.4f}"
+        f" nav={loss_dict.get('L_nav', 0):.4f}"
+        f" anchor={loss_dict.get('L_anchor', 0):.4f}"
+        f" critic={loss_dict.get('L_critic', 0):.4f}"
+        f"{lr_str}"
+    )
+
+
+def _compute_tier_accuracies(
+    nav_acc: dict,
+) -> tuple[float, float]:
+    """Compute hard-bank (tier2) and easy-bank (tier3) accuracy means."""
+    hard_banks = ["structure", "automation", "depth"]
+    easy_banks = ["domain", "context", "decomposition"]
+    tier2 = float(np.mean([nav_acc.get(b, 0) for b in hard_banks]))
+    tier3 = float(np.mean([nav_acc.get(b, 0) for b in easy_banks]))
+    return tier2, tier3
+
+
+def _build_pab_checkpoint_data(
+    step: int, loss_dict: dict, ctx: TrainContext, dataset: NavigationalDataset
+) -> CheckpointData:
+    """Gather metrics and build a PAB checkpoint data record."""
+    nav_acc = compute_nav_accuracy(ctx.modules, dataset, ctx.banks, ctx.device)
+    tier2, tier3 = _compute_tier_accuracies(nav_acc)
+
+    val_loss = None
+    if ctx.eval_examples:
+        val_loss = compute_val_loss(
+            ctx.modules,
+            ctx.loss_fn,
+            ctx.eval_examples,
+            ctx.banks,
+            ctx.anchor_labels,
+            ctx.device,
+        )
+
+    bottleneck_emb = None
+    if ctx.eval_examples:
+        bottleneck_emb = capture_bridge_embeddings(ctx.modules, ctx.eval_examples)
+
+    decoder_signs = extract_decoder_weight_signs(ctx.modules)
+
+    loss_components = {
+        "ce": loss_dict.get("L_nav", 0.0),
+        "margin": loss_dict.get("L_anchor", 0.0),
+        "repair": loss_dict.get("L_progress", 0.0),
+    }
+    adaptive_weights = {
+        "w_nav": loss_dict.get("w_nav", 0.0),
+        "w_anchor": loss_dict.get("w_anchor", 0.0),
+        "w_progress": loss_dict.get("w_progress", 0.0),
+        "w_critic": loss_dict.get("w_critic", 0.0),
+    }
+
+    return CheckpointData(
+        step=step,
+        train_loss=loss_dict["L_total"],
+        val_loss=val_loss,
+        loss_components=loss_components,
+        adaptive_weights=adaptive_weights,
+        tier_accuracies={"tier1": nav_acc["mean"], "tier2": tier2, "tier3": tier3},
+        bottleneck_embeddings=bottleneck_emb,
+        decoder_weight_signs=decoder_signs,
+        domain_accuracies=nav_acc,
+    )
+
+
+def _check_nan_abort(loss_dict: dict, config: dict) -> bool:
+    """Return True if NaN detected and nan_abort is enabled."""
+    safety = config["safety"]
+    if safety.get("nan_abort") and any(
+        np.isnan(v) for v in loss_dict.values() if isinstance(v, float)
+    ):
+        return True
+    return False
 
 
 def _run_step_checks(
@@ -228,32 +329,23 @@ def _run_step_checks(
 ) -> str | None:
     """Run per-step logging, PAB checkpoints, and NaN checks. Returns abort reason or None."""
     if step % 50 == 0:
-        max_iters = ctx.config["training"]["max_iterations"]
-        print(
-            f"  Step {step}/{max_iters}: L={loss_dict['L_total']:.4f}"
-            f" nav={loss_dict.get('L_nav', 0):.4f}"
-            f" anchor={loss_dict.get('L_anchor', 0):.4f}"
-            f" critic={loss_dict.get('L_critic', 0):.4f}"
-        )
+        _log_step_progress(step, loss_dict, ctx)
 
     pab_interval = ctx.config.get("pab", {}).get("checkpoint_interval", 50)
     if step % pab_interval == 0:
-        nav_acc = compute_nav_accuracy(ctx.modules, dataset, ctx.banks, ctx.device)
-        ctx.tracker.record(
-            CheckpointData(
-                step=step,
-                train_loss=loss_dict["L_total"],
-                tier_accuracies={"tier1": nav_acc["mean"]},
-                domain_accuracies=nav_acc,
-            )
-        )
+        ckpt_data = _build_pab_checkpoint_data(step, loss_dict, ctx, dataset)
+        ctx.tracker.record(ckpt_data)
         if step % 200 == 0:
-            print(f"    Nav accuracy: {nav_acc}")
+            tiers = ckpt_data.tier_accuracies
+            val_str = f" val={ckpt_data.val_loss:.4f}" if ckpt_data.val_loss is not None else ""
+            print(
+                f"    Nav accuracy: {ckpt_data.domain_accuracies}"
+                f"\n    Tiers: t1={tiers['tier1']:.3f}"
+                f" t2(hard)={tiers['tier2']:.3f} t3(easy)={tiers['tier3']:.3f}"
+                f"{val_str}"
+            )
 
-    safety = ctx.config["safety"]
-    if safety.get("nan_abort") and any(
-        np.isnan(v) for v in loss_dict.values() if isinstance(v, float)
-    ):
+    if _check_nan_abort(loss_dict, ctx.config):
         return "nan_abort"
 
     return None
@@ -268,16 +360,16 @@ def _finalize_training(
 ) -> dict:
     """Save checkpoint, training log, PAB profile, and return results."""
     ckpt_path = ctx.paths["ckpt_dir"] / f"{run_id}_step{step}.pt"
-    torch.save(
-        {
-            "step": step,
-            "modules": {name: m.state_dict() for name, m in ctx.modules.items()},
-            "loss_fn": ctx.loss_fn.state_dict(),
-            "optimizer": ctx.optimizer.state_dict(),
-            "config": ctx.config,
-        },
-        ckpt_path,
-    )
+    ckpt_data = {
+        "step": step,
+        "modules": {name: m.state_dict() for name, m in ctx.modules.items()},
+        "loss_fn": ctx.loss_fn.state_dict(),
+        "optimizer": ctx.optimizer.state_dict(),
+        "config": ctx.config,
+    }
+    if ctx.scheduler is not None:
+        ckpt_data["scheduler"] = ctx.scheduler.state_dict()
+    torch.save(ckpt_data, ckpt_path)
 
     with open(ctx.paths["log_path"], "w") as f:
         for entry in all_losses:
@@ -304,28 +396,50 @@ def _finalize_training(
     }
 
 
+def _apply_warmup(step: int, ctx: TrainContext, config: dict) -> None:
+    """Apply linear warmup scaling if within warmup window."""
+    warmup_steps = config["training"].get("warmup_steps", 0)
+    if step < warmup_steps and warmup_steps > 0:
+        base_lr = config["training"]["learning_rate"]
+        warmup_factor = (step + 1) / warmup_steps
+        for pg in ctx.optimizer.param_groups:
+            pg["lr"] = base_lr * warmup_factor
+
+
+def _step_scheduler(ctx: TrainContext, step: int, warmup_steps: int) -> None:
+    """Step cosine scheduler if past warmup."""
+    if ctx.scheduler is not None and step >= warmup_steps:
+        ctx.scheduler.step()
+
+
 def _run_epoch(
     loader: DataLoader,
     ctx: TrainContext,
-    state: dict,
+    state: _TrainState,
     dry_run: bool,
 ) -> dict | None:
     """Run one epoch of batches. Returns early-exit result or None to continue."""
     max_grad_norm = ctx.config["safety"].get("max_grad_norm", 1.0)
     max_iters = ctx.config["training"]["max_iterations"]
+    warmup_steps = ctx.config["training"].get("warmup_steps", 0)
 
     for batch in loader:
-        if state["step"] >= max_iters:
+        if state.step >= max_iters:
             break
 
-        loss_dict = train_step(batch, ctx, max_grad_norm)
-        state["losses"].append({"step": state["step"], **loss_dict})
-        state["step"] += 1
+        _apply_warmup(state.step, ctx, ctx.config)
 
-        abort = _run_step_checks(state["step"], loss_dict, ctx, state["dataset"])
+        loss_dict = train_step(batch, ctx, max_grad_norm)
+        state.losses.append({"step": state.step, **loss_dict})
+        state.step += 1
+
+        _step_scheduler(ctx, state.step, warmup_steps)
+
+        assert state.dataset is not None
+        abort = _run_step_checks(state.step, loss_dict, ctx, state.dataset)
         if abort:
-            print(f"  {abort} at step {state['step']}, aborting")
-            return {"status": abort, "step": state["step"]}
+            print(f"  {abort} at step {state.step}, aborting")
+            return {"status": abort, "step": state.step}
 
         if dry_run:
             print(f"  Dry run complete. Loss: {loss_dict['L_total']:.4f}")
@@ -341,25 +455,24 @@ def train(config: dict, run_id: str, device: str, seed: int, dry_run: bool) -> d
     max_iters = config["training"]["max_iterations"]
     batch_size = config["training"]["batch_size"]
 
-    state = {"step": 0, "losses": [], "phase": "", "dataset": None}
+    state = _TrainState()
     start = time.time()
 
-    while state["step"] < max_iters:
-        phase_name, max_steps = get_curriculum_phase(state["step"], config)
+    while state.step < max_iters:
+        phase_name, max_steps = get_curriculum_phase(state.step, config)
 
-        if phase_name != state["phase"]:
-            state["phase"] = phase_name
-            state["dataset"] = NavigationalDataset(nav_train_path, max_steps=max_steps)
-            print(
-                f"\n  Phase {phase_name}: {len(state['dataset'])} examples (max_steps={max_steps})"
-            )
-            if len(state["dataset"]) == 0:
+        if phase_name != state.phase:
+            state.phase = phase_name
+            state.dataset = NavigationalDataset(nav_train_path, max_steps=max_steps)
+            print(f"\n  Phase {phase_name}: {len(state.dataset)} examples (max_steps={max_steps})")
+            if len(state.dataset) == 0:
                 print(f"  WARNING: Phase {phase_name} has no examples, skipping")
-                state["step"] += 1
+                state.step += 1
                 continue
 
-        loader = DataLoader(
-            state["dataset"],
+        assert state.dataset is not None
+        loader: DataLoader = DataLoader(  # type: ignore[type-arg]
+            state.dataset,
             batch_size=batch_size,
             shuffle=True,
             collate_fn=lambda b: b,
@@ -369,7 +482,7 @@ def train(config: dict, run_id: str, device: str, seed: int, dry_run: bool) -> d
         if result is not None:
             return result
 
-    return _finalize_training(state["step"], state["losses"], time.time() - start, run_id, ctx)
+    return _finalize_training(state.step, state.losses, time.time() - start, run_id, ctx)
 
 
 def main() -> None:

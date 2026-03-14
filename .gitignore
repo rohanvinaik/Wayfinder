@@ -23,3 +23,9 @@ data/
 .coverage
 coverage.xml
 .scannerwork/
+lean/.lake/
+lean/lake-packages/
+lean/lake-manifest.json
+lean/**/*.olean
+lean/**/*.ilean
+lean/**/*.trace

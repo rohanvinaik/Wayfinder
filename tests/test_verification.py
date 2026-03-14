@@ -21,12 +21,12 @@ class TestStubVerifier(unittest.TestCase):
 
     def test_valid_proof_passes(self):
         result = self.verifier.verify("theorem t : True", "trivial")
-        self.assertTrue(result.verified)
+        self.assertEqual(result.verified, True)
         self.assertEqual(result.steps_used, 1)
 
     def test_multi_tactic_proof(self):
         result = self.verifier.verify("theorem t : P -> P", "intro h\nexact h")
-        self.assertTrue(result.verified)
+        self.assertEqual(result.verified, True)
         self.assertEqual(result.steps_used, 2)
 
     def test_tactic_verify_requires_pantograph(self):

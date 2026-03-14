@@ -71,6 +71,60 @@ class TestNavigationalExample(unittest.TestCase):
         self.assertEqual(loaded.bank_positions, ex.bank_positions)
         self.assertEqual(loaded.metadata, ex.metadata)
 
+    def test_full_roundtrip_all_fields(self):
+        """Every field survives a to_dict → from_dict cycle with exact values."""
+        ex = self._make_example(
+            goal_state="⊢ ∀ n, n + 0 = n",
+            theorem_id="Nat.add_zero",
+            step_index=1,
+            total_steps=3,
+            nav_directions={"structure": -1, "domain": 1, "automation": 0},
+            anchor_labels=["Nat.add_zero", "Nat.succ"],
+            ground_truth_tactic="induction",
+            ground_truth_premises=["n", "ih"],
+            remaining_steps=2,
+            bank_positions={"structure": [0, 1, 2], "depth": [2]},
+            proof_history=["intro n"],
+            metadata={"source": "mathlib", "difficulty": 3},
+        )
+        loaded = NavigationalExample.from_dict(ex.to_dict())
+        self.assertEqual(loaded.goal_state, "⊢ ∀ n, n + 0 = n")
+        self.assertEqual(loaded.theorem_id, "Nat.add_zero")
+        self.assertEqual(loaded.step_index, 1)
+        self.assertEqual(loaded.total_steps, 3)
+        self.assertEqual(loaded.nav_directions, {"structure": -1, "domain": 1, "automation": 0})
+        self.assertEqual(loaded.anchor_labels, ["Nat.add_zero", "Nat.succ"])
+        self.assertEqual(loaded.ground_truth_tactic, "induction")
+        self.assertEqual(loaded.ground_truth_premises, ["n", "ih"])
+        self.assertEqual(loaded.remaining_steps, 2)
+        self.assertEqual(loaded.bank_positions, {"structure": [0, 1, 2], "depth": [2]})
+        self.assertEqual(loaded.proof_history, ["intro n"])
+        self.assertEqual(loaded.metadata, {"source": "mathlib", "difficulty": 3})
+
+    def test_to_dict_key_completeness(self):
+        """to_dict produces exactly the expected keys."""
+        ex = self._make_example(
+            bank_positions={"s": [1]},
+            metadata={"k": "v"},
+            proof_history=["intro"],
+        )
+        d = ex.to_dict()
+        required_keys = {
+            "goal_state",
+            "theorem_id",
+            "step_index",
+            "total_steps",
+            "nav_directions",
+            "anchor_labels",
+            "ground_truth_tactic",
+            "ground_truth_premises",
+            "remaining_steps",
+            "solvable",
+            "proof_history",
+        }
+        for key in required_keys:
+            self.assertIn(key, d, f"Missing required key: {key}")
+
     def test_from_dict_defaults_for_optional_fields(self):
         minimal = {
             "goal_state": "g",
@@ -84,7 +138,7 @@ class TestNavigationalExample(unittest.TestCase):
         self.assertEqual(loaded.ground_truth_tactic, "")
         self.assertEqual(loaded.ground_truth_premises, [])
         self.assertEqual(loaded.remaining_steps, 0)
-        self.assertTrue(loaded.solvable)
+        self.assertEqual(loaded.solvable, True)
         self.assertEqual(loaded.proof_history, [])
         self.assertIsNone(loaded.bank_positions)
         self.assertEqual(loaded.metadata, {})
@@ -164,6 +218,59 @@ class TestScoredEntityAndNavOutput(unittest.TestCase):
         tr = TacticResult(success=False, tactic="omega", premises=[])
         self.assertEqual(tr.new_goals, [])
         self.assertEqual(tr.error_message, "")
+
+    def test_scored_entity_to_dict_completeness(self):
+        """to_dict contains exactly 6 keys with exact values."""
+        se = ScoredEntity(
+            entity_id=7,
+            name="rfl",
+            final_score=0.85,
+            bank_score=0.4,
+            anchor_score=0.25,
+            seed_score=0.2,
+        )
+        d = se.to_dict()
+        self.assertEqual(len(d), 6)
+        self.assertEqual(d["entity_id"], 7)
+        self.assertEqual(d["name"], "rfl")
+        self.assertAlmostEqual(d["final_score"], 0.85, places=10)
+        self.assertAlmostEqual(d["bank_score"], 0.4, places=10)
+        self.assertAlmostEqual(d["anchor_score"], 0.25, places=10)
+        self.assertAlmostEqual(d["seed_score"], 0.2, places=10)
+
+    def test_nav_output_to_dict_completeness(self):
+        """to_dict contains exactly 5 keys."""
+        nav = NavOutput(
+            directions={"structure": 1, "domain": -1},
+            direction_confidences={"structure": 0.95, "domain": 0.6},
+            anchor_scores={"simp": 0.8, "rfl": 0.3},
+            progress=0.65,
+            critic_score=0.72,
+        )
+        d = nav.to_dict()
+        self.assertEqual(len(d), 5)
+        self.assertEqual(d["directions"], {"structure": 1, "domain": -1})
+        self.assertEqual(d["direction_confidences"], {"structure": 0.95, "domain": 0.6})
+        self.assertEqual(d["anchor_scores"], {"simp": 0.8, "rfl": 0.3})
+        self.assertAlmostEqual(d["progress"], 0.65, places=10)
+        self.assertAlmostEqual(d["critic_score"], 0.72, places=10)
+
+    def test_tactic_result_to_dict_completeness(self):
+        """to_dict contains exactly 5 keys with exact values."""
+        tr = TacticResult(
+            success=False,
+            tactic="apply h",
+            premises=["h", "h2"],
+            new_goals=["sub1"],
+            error_message="unknown identifier",
+        )
+        d = tr.to_dict()
+        self.assertEqual(len(d), 5)
+        self.assertFalse(d["success"])
+        self.assertEqual(d["tactic"], "apply h")
+        self.assertEqual(d["premises"], ["h", "h2"])
+        self.assertEqual(d["new_goals"], ["sub1"])
+        self.assertEqual(d["error_message"], "unknown identifier")
 
 
 class TestStructuredQuery(unittest.TestCase):

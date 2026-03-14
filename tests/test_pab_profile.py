@@ -278,5 +278,209 @@ class TestPABProfileSaveLoad(unittest.TestCase):
         self.assertIsNone(loaded.summary.early_stop_epoch)
 
 
+class TestSerializeProfileExactDict(unittest.TestCase):
+    """Exact key/value assertions on the serialized dict from _make_profile."""
+
+    def _make_profile(self):
+        return PABProfile(
+            experiment_id="SER",
+            config_hash="hash123",
+            checkpoints=[50, 100, 150],
+            core=PABCoreSeries(
+                stability=[0.0, 0.5, 0.3],
+                predictability=[0.0, 0.0, 0.01],
+                generalization_gap=[0.2, 0.3, 0.25],
+                representation_evolution=[1.0, 0.1, 0.05],
+            ),
+            tiers=PABTierSeries(
+                tier1_accuracy=[0.4, 0.6, 0.75],
+                tier2_accuracy=[0.3, 0.5, 0.65],
+                tier3_accuracy=[0.2, 0.35, 0.5],
+                ternary_crystallization=[0.0, 0.8, 0.9],
+            ),
+            domains=PABDomainData(
+                domain_progression={"algebra": [0.7, 0.8]},
+                domain_classification={"algebra": "early"},
+                tactic_progression={"simp": [0.9, 0.95]},
+            ),
+            losses=PABLossSeries(
+                loss_ce=[1.5, 0.7, 0.3],
+                loss_margin=[0.3, 0.2, 0.1],
+                loss_repair=[0.2, 0.1, 0.1],
+                loss_adaptive_weights=[{"ce": 0.5}, {"ce": 0.6}, {"ce": 0.7}],
+            ),
+            summary=PABSummary(
+                stability_mean=0.267,
+                stability_std=0.205,
+                predictability_final=0.01,
+                early_stop_epoch=None,
+                convergence_epoch=100,
+                stability_regime="moderate",
+                tier1_convergence_step=150,
+                tier2_convergence_step=100,
+                crystallization_rate=0.45,
+                feature_importance_L=0.12,
+            ),
+        )
+
+    def test_serialized_dict_has_exactly_expected_top_keys(self):
+        p = self._make_profile()
+        d = _serialize_profile(p)
+        expected_keys = {
+            "experiment_id",
+            "config_hash",
+            "checkpoints",
+            "stability",
+            "predictability",
+            "generalization_gap",
+            "representation_evolution",
+            "tier1_accuracy",
+            "tier2_accuracy",
+            "tier3_accuracy",
+            "ternary_crystallization",
+            "domain_progression",
+            "domain_classification",
+            "tactic_progression",
+            "loss_ce",
+            "loss_margin",
+            "loss_repair",
+            "loss_adaptive_weights",
+            "summary",
+        }
+        self.assertEqual(set(d.keys()), expected_keys)
+
+    def test_serialized_dict_every_value_exact(self):
+        """Assert every single value in the serialized dict."""
+        p = self._make_profile()
+        d = _serialize_profile(p)
+        # Scalars
+        self.assertEqual(d["experiment_id"], "SER")
+        self.assertEqual(d["config_hash"], "hash123")
+        # Lists
+        self.assertEqual(d["checkpoints"], [50, 100, 150])
+        self.assertEqual(d["stability"], [0.0, 0.5, 0.3])
+        self.assertEqual(d["predictability"], [0.0, 0.0, 0.01])
+        self.assertEqual(d["generalization_gap"], [0.2, 0.3, 0.25])
+        self.assertEqual(d["representation_evolution"], [1.0, 0.1, 0.05])
+        self.assertEqual(d["tier1_accuracy"], [0.4, 0.6, 0.75])
+        self.assertEqual(d["tier2_accuracy"], [0.3, 0.5, 0.65])
+        self.assertEqual(d["tier3_accuracy"], [0.2, 0.35, 0.5])
+        self.assertEqual(d["ternary_crystallization"], [0.0, 0.8, 0.9])
+        self.assertEqual(d["loss_ce"], [1.5, 0.7, 0.3])
+        self.assertEqual(d["loss_margin"], [0.3, 0.2, 0.1])
+        self.assertEqual(d["loss_repair"], [0.2, 0.1, 0.1])
+        self.assertEqual(d["loss_adaptive_weights"], [{"ce": 0.5}, {"ce": 0.6}, {"ce": 0.7}])
+        # Dicts
+        self.assertEqual(d["domain_progression"], {"algebra": [0.7, 0.8]})
+        self.assertEqual(d["domain_classification"], {"algebra": "early"})
+        self.assertEqual(d["tactic_progression"], {"simp": [0.9, 0.95]})
+
+    def test_serialized_summary_every_field_exact(self):
+        """Assert every field inside the summary sub-dict."""
+        p = self._make_profile()
+        d = _serialize_profile(p)
+        s = d["summary"]
+        expected_summary_keys = {
+            "stability_mean",
+            "stability_std",
+            "predictability_final",
+            "early_stop_epoch",
+            "convergence_epoch",
+            "stability_regime",
+            "tier1_convergence_step",
+            "tier2_convergence_step",
+            "crystallization_rate",
+            "feature_importance_L",
+        }
+        self.assertEqual(set(s.keys()), expected_summary_keys)
+        self.assertAlmostEqual(s["stability_mean"], 0.267, places=6)
+        self.assertAlmostEqual(s["stability_std"], 0.205, places=6)
+        self.assertAlmostEqual(s["predictability_final"], 0.01, places=6)
+        self.assertIsNone(s["early_stop_epoch"])
+        self.assertEqual(s["convergence_epoch"], 100)
+        self.assertEqual(s["stability_regime"], "moderate")
+        self.assertEqual(s["tier1_convergence_step"], 150)
+        self.assertEqual(s["tier2_convergence_step"], 100)
+        self.assertAlmostEqual(s["crystallization_rate"], 0.45, places=6)
+        self.assertAlmostEqual(s["feature_importance_L"], 0.12, places=6)
+
+    def test_empty_profile_serialized_dict_exact(self):
+        """Every value from an empty profile serialization."""
+        p = PABProfile()
+        d = _serialize_profile(p)
+        self.assertEqual(d["experiment_id"], "")
+        self.assertEqual(d["config_hash"], "")
+        self.assertEqual(d["checkpoints"], [])
+        self.assertEqual(d["stability"], [])
+        self.assertEqual(d["predictability"], [])
+        self.assertEqual(d["generalization_gap"], [])
+        self.assertEqual(d["representation_evolution"], [])
+        self.assertEqual(d["tier1_accuracy"], [])
+        self.assertEqual(d["tier2_accuracy"], [])
+        self.assertEqual(d["tier3_accuracy"], [])
+        self.assertEqual(d["ternary_crystallization"], [])
+        self.assertEqual(d["domain_progression"], {})
+        self.assertEqual(d["domain_classification"], {})
+        self.assertEqual(d["tactic_progression"], {})
+        self.assertEqual(d["loss_ce"], [])
+        self.assertEqual(d["loss_margin"], [])
+        self.assertEqual(d["loss_repair"], [])
+        self.assertEqual(d["loss_adaptive_weights"], [])
+        s = d["summary"]
+        self.assertAlmostEqual(s["stability_mean"], 0.0)
+        self.assertAlmostEqual(s["stability_std"], 0.0)
+        self.assertAlmostEqual(s["predictability_final"], 0.0)
+        self.assertIsNone(s["early_stop_epoch"])
+        self.assertIsNone(s["convergence_epoch"])
+        self.assertEqual(s["stability_regime"], "unknown")
+        self.assertIsNone(s["tier1_convergence_step"])
+        self.assertIsNone(s["tier2_convergence_step"])
+        self.assertAlmostEqual(s["crystallization_rate"], 0.0)
+        self.assertAlmostEqual(s["feature_importance_L"], 0.0)
+
+    def test_deserialize_reconstructs_every_field(self):
+        """Serialize then deserialize; assert every field on the reconstructed profile."""
+        p = self._make_profile()
+        d = _serialize_profile(p)
+        loaded = _deserialize_profile(d)
+        # Top-level
+        self.assertEqual(loaded.experiment_id, "SER")
+        self.assertEqual(loaded.config_hash, "hash123")
+        self.assertEqual(loaded.checkpoints, [50, 100, 150])
+        # Core
+        self.assertEqual(loaded.core.stability, [0.0, 0.5, 0.3])
+        self.assertEqual(loaded.core.predictability, [0.0, 0.0, 0.01])
+        self.assertEqual(loaded.core.generalization_gap, [0.2, 0.3, 0.25])
+        self.assertEqual(loaded.core.representation_evolution, [1.0, 0.1, 0.05])
+        # Tiers
+        self.assertEqual(loaded.tiers.tier1_accuracy, [0.4, 0.6, 0.75])
+        self.assertEqual(loaded.tiers.tier2_accuracy, [0.3, 0.5, 0.65])
+        self.assertEqual(loaded.tiers.tier3_accuracy, [0.2, 0.35, 0.5])
+        self.assertEqual(loaded.tiers.ternary_crystallization, [0.0, 0.8, 0.9])
+        # Domains
+        self.assertEqual(loaded.domains.domain_progression, {"algebra": [0.7, 0.8]})
+        self.assertEqual(loaded.domains.domain_classification, {"algebra": "early"})
+        self.assertEqual(loaded.domains.tactic_progression, {"simp": [0.9, 0.95]})
+        # Losses
+        self.assertEqual(loaded.losses.loss_ce, [1.5, 0.7, 0.3])
+        self.assertEqual(loaded.losses.loss_margin, [0.3, 0.2, 0.1])
+        self.assertEqual(loaded.losses.loss_repair, [0.2, 0.1, 0.1])
+        self.assertEqual(
+            loaded.losses.loss_adaptive_weights,
+            [{"ce": 0.5}, {"ce": 0.6}, {"ce": 0.7}],
+        )
+        # Summary
+        self.assertAlmostEqual(loaded.summary.stability_mean, 0.267, places=6)
+        self.assertAlmostEqual(loaded.summary.stability_std, 0.205, places=6)
+        self.assertAlmostEqual(loaded.summary.predictability_final, 0.01, places=6)
+        self.assertIsNone(loaded.summary.early_stop_epoch)
+        self.assertEqual(loaded.summary.convergence_epoch, 100)
+        self.assertEqual(loaded.summary.stability_regime, "moderate")
+        self.assertEqual(loaded.summary.tier1_convergence_step, 150)
+        self.assertEqual(loaded.summary.tier2_convergence_step, 100)
+        self.assertAlmostEqual(loaded.summary.crystallization_rate, 0.45, places=6)
+        self.assertAlmostEqual(loaded.summary.feature_importance_L, 0.12, places=6)
+
+
 if __name__ == "__main__":
     unittest.main()

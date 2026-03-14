@@ -190,7 +190,7 @@ class TestRoundtripValidate(unittest.TestCase):
             tier3_slots=[],
         )
         ok, err = roundtrip_validate(ex)
-        self.assertTrue(ok)
+        self.assertEqual(ok, True)
         self.assertEqual(err, "")
 
     def test_empty_proof_text_returns_false(self):

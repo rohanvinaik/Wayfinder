@@ -2,8 +2,8 @@
 
 **Principal Investigator:** Rohan Vinaik
 **Research Partner:** Claude (Opus 4.6), Anthropic
-**Date:** March 6, 2026
-**Status:** Implementation complete, pre-experimental (v1.1)
+**Date:** March 10, 2026
+**Status:** v2.0 — Society of Mind architecture. v1.1 monolithic navigator trained (NAV-001/002). Pivoting to specialist decomposition.
 **Project:** Wayfinder — Navigational theorem proving for Lean 4
 
 ---
@@ -15,6 +15,8 @@ We propose a novel approach to neural theorem proving that treats proof search a
 **Navigational claim.** A structured semantic network — where mathematical entities (lemmas, tactics, proof states) are positioned along orthogonal signed dimensions and connected through a shared anchor dictionary — enables premise selection and proof search via deterministic symbolic operations (IDF-weighted set intersection, Bellman-Ford spreading activation, multiplicative bank alignment) that are faster, more auditable, and more precise than dense embedding retrieval.
 
 **Architectural claim.** A hybrid continuous-ternary architecture — with a continuous goal encoder, a learned information bottleneck, and a ternary {-1, 0, +1} navigational decoder — produces *directional coordinates in proof space* rather than vocabulary indices. These coordinates resolve to concrete tactics and premises through the semantic network. The neural network runs once per proof state; all subsequent search operations are pure arithmetic on structured data.
+
+**Decomposition claim (v2).** Specification complexity theory provides a formal criterion for decomposing a monolithic proof search system into a *Society of Mind* architecture — multiple specialist models operating in typed temporal slots (PERCEPTION → RECOGNITION → PLANNING → EXECUTION → VERIFICATION). The composition gap theorem (σ(A∘B) ≤ σ(A) + σ(B) + γ(A,B)) guarantees that when γ vanishes (independent specialists), total specification complexity is additive, not multiplicative. PAB stability per specialist serves as the empirical proxy for specification complexity, guiding decomposition until every component reaches the "stable" regime. Narrative construction converts hard proof structure prediction (Regime B, low symmetry, exponential σ) into tractable template classification (Regime A, high symmetry, polynomial σ).
 
 **Epistemological claim.** The architecture produces measurable learning trajectories, enabling Process-Aware Benchmarking (PAB) to evaluate *how* it learns to navigate, not just whether proofs close. Progress prediction — estimating remaining proof steps — connects PAB's trajectory analysis to actionable training signals and search heuristics.
 
@@ -371,7 +373,151 @@ The Mutation Theory connections above are stronger than typical "ML meets formal
 
 The implication is practical: formal learning theory should not be treated as an aspirational connection but as an *engineering tool* for this domain. Teaching dimension bounds should inform retrieval parameters. Convergence theorems should inform search budgets. Decomposition theorems should inform subgoal strategies. Wayfinder is designed to close this loop.
 
-### 2.9 PAC Learning and Process-Aware Evaluation
+### 2.9 Specification Complexity and the Society of Mind Architecture
+
+NAV-001 and NAV-002 training runs revealed a fundamental limitation of monolithic proof search: the PAB stability regime remains "chaotic" (stability_mean > 0.30) even with full instrumentation and cosine LR scheduling. This is not a training failure — it is the expected behavior when a single model attempts to jointly optimize six bank dimensions with heterogeneous difficulty. Analysis through the lens of specification complexity theory reveals why, and prescribes the architectural response.
+
+#### 2.9.1 Specification Complexity σ(P, μ)
+
+Specification complexity (Vinaik, 2026; see `/Users/rohanvinaik/resume/Specification_Complexity_Paper/`) defines σ(P, μ) as the minimum number of tests required to achieve complete specification of a program P under mutation operator μ. It satisfies the Blum axioms (Theorem 2.5), admits exponential separation between programs with identical mutation counts (Theorem 2.6), and connects to five independent fields via identification theorems:
+
+- **Teaching dimension** (Theorem 4.2): TD(P) = σ(P) — the minimum teaching set equals specification complexity
+- **Query complexity** (Theorem 4.3): σ(P) = Q_exact(P) — the minimum queries for exact identification
+- **Identity testing** (Theorem 4.4): σ(P) = IT(P) — the minimum tests for identity verification
+- **Local testability** (Theorem 4.5): σ(P) ≤ LT(P) — specification complexity lower-bounds local test count
+- **SpecP** (Theorem 4.6): σ(P) = SpecP(P) — specification complexity equals SpecP
+
+These identifications mean that specification complexity is not merely an analogy for proof search — it is the exact mathematical quantity that determines the minimum information needed to uniquely identify a proof strategy.
+
+#### 2.9.2 Composition Gap γ and the Formal Basis for Decomposition
+
+**Theorem (Composition Gap, 3.15).** For composed programs A∘B:
+
+```
+σ(A∘B) ≤ σ(A) + σ(B) + γ(A,B)
+```
+
+where γ(A,B) counts "interface mutants" — mutations that are undetectable by testing A or B in isolation but are detectable when tested in composition. The interface mutant bound (Theorem 3.16) gives:
+
+```
+|γ(A,B)| ≤ |M_A^interface| × |M_B^interface|
+```
+
+**Critical insight:** γ vanishes for independent components. When A and B share no interface — when they can be tested (trained) independently — specification complexity is strictly additive: σ(A∘B) = σ(A) + σ(B). This is the formal justification for the Society of Mind architecture: decompose proof search into independent specialists until γ ≈ 0, making total training complexity additive rather than multiplicative.
+
+**Application to NAV-001/002:** The monolithic 6-bank navigator has high γ because all banks share the bridge bottleneck. The bridge is the interface — mutations (weight perturbations) in one bank's representation interact with all other banks through the shared 128-dim bridge. PAB stability_mean = 0.34 is the empirical measurement of |γ|. Decomposing into per-bank (or per-bank-cluster) specialists eliminates the bridge as shared interface, driving γ → 0.
+
+#### 2.9.3 Mutation Symmetry and Bank Difficulty Regimes
+
+**Theorem (Symmetry Determines Regime, 4.1).** The mutation symmetry group G_μ determines the specification complexity regime:
+
+- **|G_μ| large → Regime A**: polynomial σ, easy to specify
+- **|G_μ| small → Regime B**: exponential σ, hard to specify
+
+NAV-002 empirically confirms this partition across the six banks:
+
+| Bank | Accuracy Range | |G_μ| | Regime | Interpretation |
+|------|---------------|-------|--------|----------------|
+| DOMAIN | 0.95+ | Large | A | Permuting theorems within a domain preserves label → many equivalent mutations → easy |
+| CONTEXT | 0.73-0.88 | Large | A | Context patterns are locally similar → moderate symmetry |
+| DECOMPOSITION | 0.63-0.88 | Medium | A/B | Some structural variation but recurring patterns |
+| STRUCTURE | 0.43-0.66 | Small | B | Each proof tree is nearly unique → few equivalent mutations → hard |
+| AUTOMATION | 0.25-0.60 | Small | B | Automation decisions are highly specific → minimal symmetry |
+| DEPTH | 0.24-0.60 | Small | B | Depth is a continuous property poorly captured by ternary bins |
+
+**The difficulty hierarchy is not noise — it is a structural consequence of mutation symmetry.** Easy banks (DOMAIN, CONTEXT) have massive symmetry groups: permuting theorems within the same domain doesn't change the domain label. Hard banks (STRUCTURE, AUTOMATION, DEPTH) have minimal symmetry: each proof tree is nearly unique, each automation decision is highly specific.
+
+#### 2.9.4 Bulk-to-Tail Phase Transition
+
+**Theorem (Bulk-to-Tail, 3.4).** There exists a critical step i* in any specification trajectory where the process transitions from correlated mutant elimination (bulk phase — cheap, high symmetry exploited) to individual mutant targeting (tail phase — expensive, each remaining mutant requires a dedicated test).
+
+NAV-002 exhibits this transition empirically:
+- **Phase A (steps 0-500)**: Bulk regime — easy banks saturate rapidly (DOMAIN reaches 0.95+), representation evolves quickly
+- **Phase B (steps 500-1500)**: Transition — bridge representations begin to freeze
+- **Phase C (steps 1500-5000)**: Tail regime — hard banks destabilize (DEPTH crashes 0.60→0.24), accuracy on easy banks degrades as the model contorts to improve hard banks
+
+The Phase C accuracy crash on DEPTH is the tail phase beginning. The remaining low-symmetry errors (Regime B banks) resist elimination by the monolithic architecture because each requires a specialized representation that conflicts with the representations needed for other banks through the shared bridge.
+
+#### 2.9.5 Narrative Construction: Regime B → Regime A Conversion
+
+The deepest architectural insight from specification complexity theory is that the regime classification is not fixed — it depends on the mutation operator. A problem that is Regime B under one μ may be Regime A under a different μ that introduces symmetry.
+
+**Story templates introduce symmetry.** Raw proof structure prediction is Regime B: each proof tree is nearly unique, giving |G_μ| ≈ 1. But *proof strategy templates* — recurring narrative patterns like "induction on the primary variable, with base case handled by simp and inductive step by rewriting" — have high symmetry: many proofs instantiate the same template, giving |G_μ| >> 1.
+
+This is the computational content of Winston's Strong Story Hypothesis: stories are compression mechanisms that convert low-symmetry instances into high-symmetry classes. A proof's raw structure has exponential specification complexity; its *narrative type* (which story template it instantiates) has polynomial specification complexity.
+
+**Cross-project evidence for narrative regime conversion:**
+
+| Project | Low-Symmetry Input (Regime B) | Story Template (Regime A) | Mechanism |
+|---------|------------------------------|--------------------------|-----------|
+| **ARC** | Raw grid transformations | 16+ story templates (PERCEIVE→IDENTIFY→TRANSFORM→VERIFY) | Compass typed-zero goal encoding |
+| **ARC-AGI-3** | Arbitrary puzzle solutions | RECOGNIZE→PROBE→PLAY methodology | 9 specialist networks with Kuramoto sync |
+| **Ralph Loop** | Unconstrained LLM outputs | StoryFrame types (COMPARISON, CREATION, TRANSFORMATION, etc.) | 8-network SoM voting, Noether invariants as frozen specs |
+| **Relational-AI** | Specialist disagreements | 6-lens narrative pipeline (dramatic, worldbuilding, structural, causal, inferential, stylistic) | 3-model ensemble, collision dynamics |
+| **ShortcutForge** | Raw user macros | 6-phase deterministic linter, 31 templates | LALR(1) grammar + execution planner complexity tiers |
+| **Wayfinder** | Raw proof structure | Proof strategy templates (induction-then-simp, decompose-and-conquer, etc.) | Narrative constructor (NEW) |
+
+#### 2.9.6 Five Typed Temporal Slots
+
+The Society of Mind architecture for proof search consists of five typed temporal slots, each operating at a different specification complexity:
+
+```
+Slot 1: PERCEPTION (Symbolic Representation)
+  σ ≈ O(1). Deterministic encoding of goal state.
+  Analogous to ShortcutForge's DSL parsing.
+  Implementation: Goal encoder (already implemented, frozen).
+
+Slot 2: RECOGNITION (Story Template Selection)
+  σ ≈ O(log k) where k = number of templates.
+  Winston-style story matching: classify the proof into a narrative template.
+  Converts Regime B (raw structure) → Regime A (template class).
+  ARC's step-zero hypothesis collapse. Ralph's StoryFrame selection.
+  Implementation: Template classifier over proof features (NEW).
+
+Slot 3: PLANNING (Narrative Construction)
+  σ ≈ O(poly(n)). Story-writing model instantiates the selected template.
+  Produces a proof sketch: sequence of abstract steps, key lemma targets.
+  Relational-AI's 6-lens narrative pipeline.
+  Implementation: Proof sketch generator, possibly story-writing LLM (NEW).
+
+Slot 4: EXECUTION (Bank-Specific Navigation)
+  σ varies by bank. Specialist models per bank cluster.
+  PAB stability per specialist must reach "stable".
+  This is the existing v1 Wayfinder pipeline, decomposed.
+  Implementation: Bank-cluster specialists (v1 navigator → multiple specialists).
+
+Slot 5: VERIFICATION (Constraint Satisfaction)
+  σ ≈ O(1). Lean kernel is an exact verification oracle.
+  Censor network learns negatives (what NOT to try).
+  Implementation: Lane A/B/C verification (already implemented).
+```
+
+**Key property:** Each slot has bounded specification complexity. The total system σ is additive across slots (composition gap γ ≈ 0 because slots communicate through typed interfaces, not shared weights). The monolithic NAV-001/002 navigator tried to learn all five functions simultaneously through a shared bridge — producing high γ and chaotic PAB dynamics.
+
+#### 2.9.7 PAB as Decomposition Optimization Signal
+
+The connection between PAB stability and specification complexity provides a practical optimization loop:
+
+1. Train a specialist model for a candidate scope (e.g., "STRUCTURE + AUTOMATION banks")
+2. Measure PAB stability_regime
+3. If "stable" → scope is correctly sized; σ is bounded for this specialist
+4. If "chaotic" → scope too broad; γ between internal components is high; decompose further
+5. Iterate until every specialist reaches "stable"
+
+The free energy bound (Theorem 3.10 of the specification complexity paper) guarantees monotonic improvement: each decomposition step that reduces γ also reduces total specification complexity. There is no risk of over-decomposition making things worse, because σ is additive for independent components and sub-additive for dependent ones.
+
+**Cross-project convergence.** All user projects independently converge on this pattern:
+
+| Project | "Mutants" | "Tests" | "σ" | "γ" |
+|---------|-----------|---------|-----|-----|
+| Spec Complexity Paper | Program variants | Test cases | min tests for SC=1 | Interface mutants |
+| Wayfinder PAB | Training checkpoints | Eval examples | Stability regime | Bridge coupling |
+| ARC | Candidates | Constraints | Typed-zero count | Scale×Lens cross-talk |
+| Ralph Loop | LLM outputs | Validation layers | Noether invariant count | Cross-modal binding cost |
+| Relational-AI | Specialist outputs | Collision dynamics | Agreement threshold | Destructive interference |
+| ShortcutForge | LLM DSL | Linter phases | Lint repair count | Phase interaction |
+
+### 2.10 PAC Learning and Process-Aware Evaluation
 
 Process-Aware Benchmarking (PAB), introduced by Pal (2025), evaluates *how* models learn, not just what they achieve. PAB defines quality functions over learning trajectories: stability (smoothness of loss), predictability (variance of loss deltas), generalization efficiency, and class-wise progression.
 
@@ -383,11 +529,124 @@ In Wayfinder, PAB is extended with two domain-specific metrics:
 
 **Ternary-PAB synergy (from Balanced Sashimi).** Ternary weights force discrete commitment. A weight that crystallizes to +1 is *provably* committed to that direction. PAB can track crystallization directly: the fraction of weights whose ternary sign is stable across checkpoints. As crystallization increases, the decoder's navigational output stabilizes, and PAB can measure whether stable navigation correlates with better proof search performance.
 
+### 2.11 Orthogonal Ternary Projection, Constraint-Oriented Computation, and Energy-Based Refinement
+
+*This section synthesizes three theoretical streams that ground Phase 7 (v3). §2.11a-b are mature theory informing v3A. §2.11c is speculative, informing v3B.*
+
+#### 2.11a Orthogonal Ternary Projection (OTP) [v3A — mature]
+
+**Source**: Vinaik (2025), formalized in the data geometry research program.
+
+**Core claim**: The ternary alphabet {-1, 0, +1} is not a quantization approximation — it is a geometrically complete projection system. The three values have distinct informational roles:
+
+- **+1 (support)**: Positive alignment along the observation axis. "This direction contributes."
+- **-1 (contradiction)**: Negative alignment. "This direction opposes." The censor's explicit rejection.
+- **0 (orthogonality)**: Not "unknown" or "absent" but *transparent* — the position is orthogonal to the observation axis. The **Informational Zero**: a third informational state that creates geometric structure making projection meaningful.
+
+**Direct application to Wayfinder**: The 6-bank ternary decoder already IS an OTP projection. A proof step with bank target `[+1, 0, 0, -1, 0, 0]` operates in a 2-dimensional subspace (STRUCTURE and AUTOMATION), with the other four banks orthogonal/transparent. This is not a limitation — it is the mechanism. Most proof steps don't need all six navigational dimensions simultaneously.
+
+**Minority Channel Advantage (MCA)**: When most of a ternary vector is zero, the few non-zero positions carry maximum information density. The rare signal is the valuable signal. This maps directly to IDF weighting — banks that rarely fire non-zero carry more information per activation. MCA predicts that STRUCTURE and AUTOMATION (sparse activators) should carry disproportionate retrieval value vs DOMAIN (frequent activator).
+
+**Zero-Sparsity as Dimensionality**: The count of zeros in a ternary target is a direct measure of the proof step's OTP dimensionality. Steps with more zeros are "simpler" — fewer simultaneous navigational decisions. This grounds the curriculum training strategy: train on low-dimensionality (high-zero) examples first, progressively reveal higher-dimensional steps.
+
+#### 2.11b Constraint-Oriented Emergent Computation (COEC) [v3A — mature]
+
+**Source**: Vinaik (2025), formalized as a 7-tuple framework.
+
+**Core claim**: Specify what a system CANNOT do; behavior emerges from the interaction of constraints. Rather than designing positive behavior, define a constraint system and let valid behavior emerge as the feasible region.
+
+**Application to Wayfinder**: Wayfinder's bank scores, critic, and censor already form a constraint system:
+- **Bank alignment constraints**: Each bank score constrains the tactic to align with a navigational direction.
+- **Critic constraint**: The distance-to-completion estimate constrains which goal states are worth pursuing.
+- **Censor constraint**: The failure predictor (OTP -1 channel) constrains which tactics to avoid.
+- **Anchor matching constraint**: IDF-weighted anchor overlap constrains premises to pattern-relevant candidates.
+
+The v3A Censor is the explicit realization of COEC — it specifies what the system CANNOT do (invalid tactics), and valid proof behavior emerges from the remaining feasible region. The asymmetric loss (MCA-motivated: missed suppressions penalized 2× vs false suppressions) reflects that constraint violations carry more information than satisfactions.
+
+#### 2.11c Energy-Based Refinement (EBM) [v3B — speculative, gated on v3A]
+
+**Source**: Logical Intelligence/Kona (2026), energy-based models for constraint satisfaction.
+
+**Core claim**: Define a scalar energy function over entire solutions, then minimize via gradient-based refinement in continuous latent space. Avoids the autoregressive failure mode where sequential commitment prevents revision of earlier decisions.
+
+**Empirical validation**: Kona achieves 96.2% on Sudoku at 313ms vs 2% for frontier LLMs — because it evaluates all constraints holistically rather than committing token-by-token. The 50× performance gap demonstrates the cost of sequential commitment in constraint-rich domains.
+
+**Application to Wayfinder (speculative)**: The four constraint channels (bank + critic + censor + anchor) can be composed into a differentiable energy function: `E(sketch) = α·E_bank + β·E_critic + γ·E_censor + δ·E_anchor`. Continuous ternary relaxation via Gumbel-softmax bridges the discrete OTP decoder to gradient-based optimization. The temperature annealing schedule (τ: 1.0→0.1) IS OTP's Progressive Revelation in the energy landscape — high temperature favors Informational Zeros; low temperature hardens non-zero activations.
+
+**Learning-theoretic framing**: Navigation (Slots 1-4) is PAC learning. Verification (Slot 5 + Lean kernel) is an exact oracle. Negative learning exploits the oracle to construct version-space boundaries from both sides. The energy function (v3B) unifies all constraint channels into a single differentiable objective, enabling whole-sketch revision rather than step-by-step commitment.
+
+**Maturity gate**: Energy refinement requires a trained censor (v3A 7.3) to provide E_censor. It ships only after v3A demonstrates value on real proof outcomes. If discrete v3A scoring matches or exceeds energy-refined scoring, the energy function remains a theoretical tool for analysis, not a shipping component.
+
+**Convergence with external programs**: AMI Labs (LeCun, 2026) validates structured representations + constrained prediction + planning over autoregressive generation. Logical Intelligence validates energy-based constraint satisfaction over sequential search. Both confirm the same architectural bet Wayfinder makes — but Wayfinder integrates these ideas in a domain (theorem proving) with an exact verification oracle, making empirical validation possible.
+
 ---
 
 ## 3. Architecture Specification
 
 ### 3.1 System Overview
+
+**Wayfinder v2 (Society of Mind)** decomposes the monolithic v1 pipeline into five typed temporal slots, each with bounded specification complexity. The v1 architecture becomes the EXECUTION slot.
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│                      WAYFINDER v2 (Society of Mind)                   │
+│                                                                      │
+│  [Lean Goal State Text]                                              │
+│          │                                                           │
+│          ▼                                                           │
+│  ┌─────────────────────────────────────────────────────────┐        │
+│  │  SLOT 1: PERCEPTION          σ ≈ O(1)                    │        │
+│  │  Goal Encoder (frozen) + Domain Gate                     │        │
+│  │  Output: h_enc ∈ ℝ^384, in_domain: bool                │        │
+│  └──────────────────────────┬──────────────────────────────┘        │
+│                              │                                       │
+│  ┌──────────────────────────▼──────────────────────────────┐        │
+│  │  SLOT 2: RECOGNITION        σ ≈ O(log k)                │        │
+│  │  Story Template Classifier                               │        │
+│  │  Classifies proof into k narrative templates             │        │
+│  │  (induction-then-simp, decompose-and-conquer, etc.)     │        │
+│  │  Converts Regime B (raw structure) → Regime A (template) │        │
+│  │  Output: template_id, template_confidence                │        │
+│  └──────────────────────────┬──────────────────────────────┘        │
+│                              │                                       │
+│  ┌──────────────────────────▼──────────────────────────────┐        │
+│  │  SLOT 3: PLANNING           σ ≈ O(poly(n))              │        │
+│  │  Narrative Constructor (Proof Sketch Generator)          │        │
+│  │  Instantiates template with proof-specific details       │        │
+│  │  Output: proof_sketch (ordered subgoal sequence),        │        │
+│  │          key_lemma_targets, estimated_depth               │        │
+│  └──────────────────────────┬──────────────────────────────┘        │
+│                              │ (per subgoal in sketch)               │
+│  ┌──────────────────────────▼──────────────────────────────┐        │
+│  │  SLOT 4: EXECUTION          σ varies by bank cluster     │        │
+│  │  Bank-Cluster Specialists (decomposed v1 navigator)      │        │
+│  │  ┌─────────────────────┐  ┌───────────────────────┐     │        │
+│  │  │ Specialist A        │  │ Specialist B           │     │        │
+│  │  │ (DOMAIN, CONTEXT)   │  │ (STRUCTURE, AUTOMATION │     │        │
+│  │  │ PAB: stable         │  │  DEPTH, DECOMPOSITION) │     │        │
+│  │  │ Regime A banks      │  │ PAB: → stable          │     │        │
+│  │  └─────────┬───────────┘  └──────────┬────────────┘     │        │
+│  │            └──────────┬──────────────┘                   │        │
+│  │                       ▼                                  │        │
+│  │  Structured Resolution (navigate + spread, deterministic)│        │
+│  │  Output: ranked (tactic, premise_list) pairs             │        │
+│  └──────────────────────────┬──────────────────────────────┘        │
+│                              │                                       │
+│  ┌──────────────────────────▼──────────────────────────────┐        │
+│  │  SLOT 5: VERIFICATION      σ ≈ O(1)                     │        │
+│  │  Lane A: Pantograph (local, step-wise)                   │        │
+│  │  Lane B: Axle API (cloud, verify/repair/decompose)       │        │
+│  │  Lane C: lean4checker (high-assurance, leaderboard)      │        │
+│  │  Censor: learns negatives (what NOT to try next)         │        │
+│  └──────────────────────────┬──────────────────────────────┘        │
+│                              │                                       │
+│                      [Arbiter / Orchestrator]                        │
+│                  Selects next goal, routes to specialist,            │
+│                  updates proof state, terminates search              │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+**v1 architecture (EXECUTION slot detail):**
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -895,6 +1154,22 @@ If navigational proof search works — if structured semantic networks can compe
 
 The thesis of Wayfinder is not specific to theorem proving. It is a general claim about the relationship between structured knowledge and neural prediction: **when the knowledge structure is known, encode it explicitly and let the neural network navigate it. Don't force the neural network to learn what you already know.**
 
+### 7.5 The Society of Mind Vision
+
+NAV-001/002 results demonstrate that the navigational paradigm works (v1 thesis validated) but that a monolithic navigator cannot simultaneously master all six bank dimensions (v2 motivation). The specification complexity analysis (§2.9) explains why: the composition gap γ through the shared bridge forces multiplicative rather than additive complexity, and the mutation symmetry hierarchy (§2.9.3) means that Regime B banks (STRUCTURE, AUTOMATION, DEPTH) require fundamentally different representations than Regime A banks (DOMAIN, CONTEXT).
+
+The Society of Mind architecture (§2.9.6) is the response: decompose proof search into typed temporal slots where each specialist operates at bounded σ, communicating through typed interfaces rather than shared weights. The composition gap theorem guarantees that total complexity is additive when γ ≈ 0 — which holds when specialists share only structured data (navigational coordinates, proof sketches, template IDs), not learned representations.
+
+**Three concrete architectural advances over v1:**
+
+1. **Narrative regime conversion.** The RECOGNITION slot classifies proofs into story templates, converting Regime B structure prediction into Regime A template classification. This is the single highest-leverage change: it introduces massive symmetry (|G_μ| >> 1) into a problem that otherwise has |G_μ| ≈ 1. Evidence from ARC (16+ templates), Ralph Loop (StoryFrame types), and Relational-AI (6-lens narrative pipeline) demonstrates that narrative templates are learnable and generalizable across diverse domains.
+
+2. **PAB-guided specialist decomposition.** Rather than hand-designing the specialist scope, use PAB stability as the optimization signal. Train a candidate specialist, measure stability_regime, decompose if "chaotic." The free energy bound (Theorem 3.10) guarantees monotonic improvement. This creates a principled, data-driven decomposition procedure rather than an architectural guess.
+
+3. **Proof sketch planning.** The PLANNING slot produces explicit proof sketches (ordered subgoal sequences with key lemma targets) before the EXECUTION slot attempts navigation. This separates *what to prove* (strategic, narrative) from *how to prove it* (tactical, navigational). DeepSeek-Prover-V2 demonstrated the power of this separation with its 671B decomposer + 7B prover architecture. Wayfinder achieves it at orders of magnitude smaller scale via story templates.
+
+**The fundamental claim remains the same as v1** — navigate, don't predict — but now applied at the meta-level: the system navigates not just through proof space, but through *the space of proof strategies*, using narrative templates as the coordinate system for strategy selection.
+
 ---
 
 ## 8. Communication Architecture
@@ -957,7 +1232,11 @@ A reader who misses one angle catches it in another. Each stream feels like prog
 - Trinh, T., et al. (2024). Solving Olympiad Geometry without Human Demonstrations. *Nature*.
 - Valiant, L. (1984). A Theory of the Learnable. *Communications of the ACM*.
 - Vinaik, R. (2025). ModelAtlas: A Navigable Semantic Network of ML Models.
+- Vinaik, R. (2025). Orthogonal Ternary Projection: Informational Zeros and the Minority Channel Advantage. Data geometry research program.
+- Vinaik, R. (2025). Constraint-Oriented Emergent Computation (COEC): A 7-Tuple Framework.
 - Vinaik, R. (2025-2026). Mutation Theory. Formalized in Lean 4.
+- Vinaik, R. (2026). Specification Complexity: A Five-Field Identification Theorem. Composition gap, regime classification, bulk-to-tail phase transitions.
+- Winston, P. H. (2011). The Strong Story Hypothesis and the Directed Perception Hypothesis. *AAAI Fall Symposium*.
 - Xin, H., et al. (2024). BFS-Prover: Scalable Best-First Proof Search for LLMs. *arXiv*.
 - Yang, K., et al. (2024). LeanDojo: Theorem Proving with Retrieval-Augmented Language Models. *NeurIPS*.
 - Zhang, Y., et al. (2025). LeanHammer: An Automated Reasoning Tool for Lean 4. *arXiv*.
