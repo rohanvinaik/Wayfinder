@@ -20,6 +20,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import re
 import sys
@@ -54,7 +55,8 @@ def _extract_tactic_name(tactic_text: str) -> str:
     return match.group(1) if match else text.split()[0]
 
 
-def _classify_domain(namespace: str) -> tuple[int, list[str]]:
+@functools.lru_cache(maxsize=1024)
+def _classify_domain(namespace: str) -> tuple[int, tuple[str, ...]]:
     """Classify theorem domain from namespace. Returns (sign, anchors).
 
     Tries matching against the raw namespace first, then with common
@@ -69,8 +71,8 @@ def _classify_domain(namespace: str) -> tuple[int, list[str]]:
     for ns in candidates:
         for prefix, sign, anchors in DOMAIN_PATTERNS:
             if ns.startswith(prefix):
-                return sign, anchors
-    return 0, ["general"]
+                return sign, tuple(anchors)
+    return 0, ("general",)
 
 
 def _compute_structure_position(theorem_type: str, tactic_names: list[str]) -> tuple[int, int]:
@@ -183,6 +185,7 @@ def _extract_type_anchors(theorem_type: str) -> list[str]:
     return anchors
 
 
+@functools.lru_cache(maxsize=4096)
 def _infer_namespace(theorem_id: str) -> str:
     """Infer namespace from fully qualified theorem name."""
     parts = theorem_id.rsplit(".", 1)
@@ -204,7 +207,7 @@ def _count_hypotheses(goal_state: str) -> int:
 
 def _compute_all_positions(
     theorem_type: str, tactic_names: list[str], namespace: str, goal_states: list[str]
-) -> tuple[dict, list[str], int]:
+) -> tuple[dict, tuple[str, ...], int]:
     """Compute all 6-bank positions. Returns (positions, domain_anchors, hyp_count)."""
     positions: dict[str, dict[str, int]] = {}
 

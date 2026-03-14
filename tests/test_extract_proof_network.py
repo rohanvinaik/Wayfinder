@@ -55,18 +55,18 @@ class TestClassifyDomain(unittest.TestCase):
     def test_algebra(self):
         sign, anchors = _classify_domain("Mathlib.Algebra.Group")
         self.assertIsInstance(sign, int)
-        self.assertIsInstance(anchors, list)
+        self.assertIsInstance(anchors, tuple)
         self.assertTrue(len(anchors) > 0)
 
     def test_unknown_namespace(self):
         sign, anchors = _classify_domain("SomeRandom.Module")
         self.assertEqual(sign, 0)
-        self.assertEqual(anchors, ["general"])
+        self.assertEqual(anchors, ("general",))
 
     def test_empty_namespace(self):
         sign, anchors = _classify_domain("")
         self.assertEqual(sign, 0)
-        self.assertEqual(anchors, ["general"])
+        self.assertEqual(anchors, ("general",))
 
 
 class TestComputeStructurePosition(unittest.TestCase):

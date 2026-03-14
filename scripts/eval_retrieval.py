@@ -14,6 +14,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sqlite3
 import time
@@ -125,6 +126,14 @@ def compute_conditional_recall_at_k(
     gt_set = set(reachable_gt)
     hits = sum(1 for p in retrieved[:k] if p in gt_set)
     return hits / len(gt_set)
+
+
+def _premise_cache_key(db_path: str, conn: sqlite3.Connection) -> str:
+    """Build a cache key from DB path + entity count to detect DB changes."""
+    row = conn.execute("SELECT COUNT(*) FROM entities WHERE entity_type = 'lemma'").fetchone()
+    entity_count = row[0] if row else 0
+    raw = f"{db_path}::{entity_count}"
+    return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 
 def _encode_all_premises(conn: sqlite3.Connection, modules: dict) -> tuple[torch.Tensor, list[str]]:
@@ -278,6 +287,7 @@ def evaluate(
     checkpoint_path: Path,
     samples: int,
     device: str,
+    premise_cache: Path | None = None,
 ) -> dict:
     """Run the full retrieval comparison evaluation."""
     modules = load_checkpoint(checkpoint_path, config, device)
@@ -292,10 +302,28 @@ def evaluate(
         examples = [examples[int(i)] for i in indices]
     print(f"Evaluating on {len(examples)} examples")
 
-    conn = sqlite3.connect(config["data"]["proof_network_db"])
+    db_path = config["data"]["proof_network_db"]
+    conn = sqlite3.connect(db_path)
     ks = [1, 4, 8, 16]
 
-    premise_emb, premise_names = _encode_all_premises(conn, modules)
+    # Premise embedding caching: skip 20+ min encode when DB unchanged
+    cache_path = premise_cache if premise_cache is not None else Path("data/premise_embeddings.pt")
+    cache_hit = False
+    if cache_path.exists():
+        current_key = _premise_cache_key(db_path, conn)
+        cached = torch.load(cache_path, weights_only=False)  # nosec B614
+        if isinstance(cached, tuple) and len(cached) == 3 and cached[0] == current_key:
+            premise_emb, premise_names = cached[1], cached[2]
+            cache_hit = True
+            print(f"  Loaded premise embeddings from cache: {cache_path}")
+
+    if not cache_hit:
+        premise_emb, premise_names = _encode_all_premises(conn, modules)
+        cache_key = _premise_cache_key(db_path, conn)
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        torch.save((cache_key, premise_emb, premise_names), cache_path)
+        print(f"  Saved premise embeddings to cache: {cache_path}")
+
     comparison = _compare_retrieval(examples, modules, conn, premise_emb, premise_names, ks)
     conn.close()
 
@@ -309,10 +337,16 @@ def main() -> None:
     parser.add_argument("--samples", type=int, default=500)
     parser.add_argument("--device", type=str, default="mps")
     parser.add_argument("--output", type=Path, default=None)
+    parser.add_argument(
+        "--premise-cache",
+        type=Path,
+        default=Path("data/premise_embeddings.pt"),
+        help="Path to cache premise embeddings (default: data/premise_embeddings.pt)",
+    )
     args = parser.parse_args()
 
     config = load_config(args.config)
-    report = evaluate(config, args.checkpoint, args.samples, args.device)
+    report = evaluate(config, args.checkpoint, args.samples, args.device, args.premise_cache)
 
     output = args.output or Path(f"runs/eval_retrieval_{args.samples}.json")
     output.parent.mkdir(parents=True, exist_ok=True)

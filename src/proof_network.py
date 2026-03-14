@@ -13,12 +13,15 @@ Core operations:
 
 from __future__ import annotations
 
+import functools
 import heapq
 import math
 import sqlite3
 from collections import defaultdict
 from pathlib import Path
 from typing import Sequence
+
+import numpy as np
 
 from src.nav_contracts import BANK_NAMES, ScoredEntity, StructuredQuery
 
@@ -115,6 +118,7 @@ def clear_caches() -> None:
     _idf_cache.clear()
     _accessible_cache.clear()
     _entity_id_cache.clear()
+    bank_score.cache_clear()
 
 
 # ---------------------------------------------------------------------------
@@ -136,6 +140,7 @@ def init_db(path: str | Path) -> sqlite3.Connection:
 # ---------------------------------------------------------------------------
 
 
+@functools.lru_cache(maxsize=256)
 def bank_score(entity_signed_pos: int, query_direction: int) -> float:
     """Score a single bank alignment between entity position and query direction."""
     if query_direction == 0:
@@ -192,6 +197,73 @@ def compose_bank_scores(
 # ---------------------------------------------------------------------------
 
 
+def _vectorized_bank_scores(
+    candidate_ids: list[int],
+    positions: dict[int, dict[str, int]],
+    query: StructuredQuery,
+) -> np.ndarray:
+    """Compute bank scores for all candidates using NumPy vectorization.
+
+    Returns 1D array of composite bank scores (one per candidate).
+    Uses the confidence_weighted mechanism: prod(score_i^confidence_i).
+    Falls back to per-entity computation for non-standard mechanisms.
+    """
+    n = len(candidate_ids)
+    if n == 0:
+        return np.array([], dtype=np.float64)
+
+    # Build position matrix: (n_candidates, n_banks) of signed positions
+    n_banks = len(BANK_NAMES)
+    pos_matrix = np.full((n, n_banks), np.nan, dtype=np.float64)
+    for i, eid in enumerate(candidate_ids):
+        epos = positions.get(eid, {})
+        for j, bank in enumerate(BANK_NAMES):
+            if bank in epos:
+                pos_matrix[i, j] = epos[bank]
+
+    # Query direction vector
+    directions = np.array(
+        [query.bank_directions.get(b, 0) for b in BANK_NAMES], dtype=np.float64
+    )
+    confidences = np.array(
+        [query.bank_confidences.get(b, 1.0) for b in BANK_NAMES], dtype=np.float64
+    )
+
+    # Vectorized bank_score computation
+    # For each (entity_pos, query_dir) pair:
+    #   dir == 0: 1.0 / (1.0 + abs(pos))
+    #   alignment > 0: 1.0
+    #   alignment == 0: 0.5
+    #   alignment < 0: 1.0 / (1.0 + abs(alignment))
+    alignment = pos_matrix * directions  # (n, n_banks)
+
+    scores = np.where(
+        np.isnan(pos_matrix),
+        _MISSING_BANK_SCORE,  # missing position
+        np.where(
+            directions == 0,
+            1.0 / (1.0 + np.abs(np.nan_to_num(pos_matrix, nan=0.0))),  # query doesn't care
+            np.where(
+                alignment > 0, 1.0,  # right side
+                np.where(
+                    alignment == 0, 0.5,  # neutral
+                    1.0 / (1.0 + np.abs(alignment)),  # wrong side
+                ),
+            ),
+        ),
+    )  # (n, n_banks)
+
+    # Skip banks where direction==0 AND position is missing (don't penalize)
+    skip_mask = (directions == 0) & np.isnan(pos_matrix)
+    scores[skip_mask] = 1.0  # neutral contribution
+
+    # Confidence-weighted composition: prod(score_i^confidence_i)
+    log_scores = np.log(np.maximum(scores, 1e-10)) * confidences  # (n, n_banks)
+    composite = np.exp(np.sum(log_scores, axis=1))  # (n,)
+
+    return composite
+
+
 def _score_candidates(
     candidate_ids: list[int],
     positions: dict[int, dict[str, int]],
@@ -204,13 +276,34 @@ def _score_candidates(
 ) -> list[ScoredEntity]:
     """Score and rank candidate entities against a navigational query.
 
-    Pure computation — no DB access. Takes pre-fetched data and returns
-    scored entities sorted by final_score descending.
+    Uses NumPy vectorization for bank scoring (the hot inner loop),
+    with per-entity anchor/seed scoring. Only constructs ScoredEntity
+    objects for candidates with final_score > 0.
     """
+    if not candidate_ids:
+        return []
+
+    # Vectorized bank scoring (replaces 242K × 6 Python calls)
+    if mechanism == "confidence_weighted":
+        bank_scores = _vectorized_bank_scores(candidate_ids, positions, query)
+    else:
+        # Fallback for non-standard mechanisms
+        bank_scores = np.array([
+            _compute_bank_score(positions.get(eid, {}), query, mechanism)
+            for eid in candidate_ids
+        ])
+
+    # Early pruning: skip candidates with zero bank score
+    nonzero_mask = bank_scores > 0
+    nonzero_indices = np.nonzero(nonzero_mask)[0]
+
     results: list[ScoredEntity] = []
-    for eid in candidate_ids:
-        b_score = _compute_bank_score(positions.get(eid, {}), query, mechanism)
+    for idx in nonzero_indices:
+        eid = candidate_ids[idx]
+        b_score = float(bank_scores[idx])
         a_score = _compute_anchor_score(entity_anchor_sets.get(eid, set()), query, idf_cache)
+        if a_score <= 0:
+            continue
         s_score = _compute_seed_score(entity_anchor_sets.get(eid, set()), seed_anchors, idf_cache)
         final = b_score * a_score * s_score
         if final > 0:
