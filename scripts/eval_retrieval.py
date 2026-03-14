@@ -311,7 +311,7 @@ def evaluate(
     cache_hit = False
     if cache_path.exists():
         current_key = _premise_cache_key(db_path, conn)
-        cached = torch.load(cache_path, weights_only=False)  # nosec B614
+        cached = torch.load(cache_path, weights_only=True)
         if isinstance(cached, tuple) and len(cached) == 3 and cached[0] == current_key:
             premise_emb, premise_names = cached[1], cached[2]
             cache_hit = True

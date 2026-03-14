@@ -60,7 +60,7 @@ def _build_pipeline(config: dict, checkpoint_path: Path, vocab: _VocabInfo) -> _
     from src.goal_analyzer import GoalAnalyzer
     from src.ternary_decoder import TernaryDecoder
 
-    ckpt = torch.load(checkpoint_path, map_location="cpu", weights_only=False)  # nosec B614 — trusted local checkpoints
+    ckpt = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
     checkpoint_config = ckpt.get("config", {})
     if isinstance(checkpoint_config, dict) and isinstance(checkpoint_config.get("model"), dict):
         model_cfg = checkpoint_config["model"]

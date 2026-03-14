@@ -76,7 +76,7 @@ def load_navigational_checkpoint(
     device: str,
 ) -> tuple[dict[str, Any], dict[str, torch.nn.Module]]:
     """Load a navigational checkpoint and rebuild the matching module stack."""
-    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)  # nosec B614 — trusted local checkpoints
+    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=True)
     modules = build_navigational_modules(resolve_model_config(config, checkpoint), device)
 
     for name, module in modules.items():
