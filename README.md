@@ -1,7 +1,7 @@
 # Wayfinder
 
 [![CI](https://github.com/rohanvinaik/Wayfinder/actions/workflows/ci.yml/badge.svg)](https://github.com/rohanvinaik/Wayfinder/actions/workflows/ci.yml)
-[![Mutation Testing](https://github.com/rohanvinaik/Wayfinder/actions/workflows/mutation.yml/badge.svg)](https://github.com/rohanvinaik/Wayfinder/actions/workflows/mutation.yml)
+[![Mutation Score](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/rohanvinaik/52acfed02cbb67c88482b37074809fc2/raw/wayfinder-mutation-badge.json)](https://github.com/rohanvinaik/Wayfinder/actions/workflows/mutation.yml)
 [![Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=rohanvinaik_Wayfinder&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=rohanvinaik_Wayfinder)
 [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=rohanvinaik_Wayfinder&metric=coverage)](https://sonarcloud.io/summary/new_code?id=rohanvinaik_Wayfinder)
 [![Maintainability](https://sonarcloud.io/api/project_badges/measure?project=rohanvinaik_Wayfinder&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=rohanvinaik_Wayfinder)
