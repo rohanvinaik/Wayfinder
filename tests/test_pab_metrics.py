@@ -243,5 +243,73 @@ class TestLinearSlope(unittest.TestCase):
         self.assertAlmostEqual(linear_slope([5.0, 5.0, 5.0]), 0.0)
 
 
+class TestFindTierConvergenceBoundary(unittest.TestCase):
+    """BOUNDARY prescriptions for find_tier_convergence."""
+
+    def test_exact_threshold(self):
+        """BOUNDARY: value exactly at threshold should pass."""
+        result = find_tier_convergence([0.5, 0.7, 0.8], threshold=0.8)
+        self.assertEqual(result, 2)
+
+    def test_just_below_threshold(self):
+        """BOUNDARY: value just below threshold should not pass."""
+        result = find_tier_convergence([0.5, 0.7, 0.799], threshold=0.8)
+        self.assertIsNone(result)
+
+    def test_first_element_passes(self):
+        result = find_tier_convergence([0.9, 0.5, 0.3], threshold=0.8)
+        self.assertEqual(result, 0)
+
+    def test_with_checkpoints(self):
+        result = find_tier_convergence([0.3, 0.9], threshold=0.8, checkpoints=[100, 200])
+        self.assertEqual(result, 200)
+
+    def test_empty_list(self):
+        result = find_tier_convergence([], threshold=0.5)
+        self.assertIsNone(result)
+
+
+class TestIsOscillatingBoundary(unittest.TestCase):
+    """BOUNDARY prescriptions for is_oscillating."""
+
+    def test_exact_min_reversals(self):
+        """BOUNDARY: exactly min_reversals should return True."""
+        # 3 reversals: up, down, up, down
+        values = [0.0, 1.0, 0.0, 1.0, 0.0]
+        self.assertTrue(is_oscillating(values, min_reversals=3))
+
+    def test_one_below_min_reversals(self):
+        """BOUNDARY: min_reversals-1 should return False."""
+        values = [0.0, 1.0, 0.0, 1.0]  # 2 reversals
+        self.assertFalse(is_oscillating(values, min_reversals=3))
+
+    def test_two_elements(self):
+        self.assertFalse(is_oscillating([0.0, 1.0]))
+
+    def test_monotonic_no_oscillation(self):
+        self.assertFalse(is_oscillating([1.0, 2.0, 3.0, 4.0, 5.0]))
+
+
+class TestMonotonicTrendBoundary(unittest.TestCase):
+    """BOUNDARY prescriptions for monotonic_trend."""
+
+    def test_all_increasing(self):
+        self.assertAlmostEqual(monotonic_trend([1.0, 2.0, 3.0, 4.0]), 1.0)
+
+    def test_all_decreasing(self):
+        self.assertAlmostEqual(monotonic_trend([4.0, 3.0, 2.0, 1.0]), 0.0)
+
+    def test_single_element(self):
+        self.assertAlmostEqual(monotonic_trend([5.0]), 0.0)
+
+    def test_two_equal(self):
+        """BOUNDARY: equal values are NOT increases."""
+        self.assertAlmostEqual(monotonic_trend([1.0, 1.0]), 0.0)
+
+    def test_mixed(self):
+        # 1→2 (up), 2→1 (down), 1→3 (up) = 2/3
+        self.assertAlmostEqual(monotonic_trend([1.0, 2.0, 1.0, 3.0]), 2.0 / 3.0, places=4)
+
+
 if __name__ == "__main__":
     unittest.main()
