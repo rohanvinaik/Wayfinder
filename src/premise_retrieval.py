@@ -27,7 +27,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 
 from src.nav_contracts import ScoredEntity, StructuredQuery
-from src.proof_network import _get_data_cache, _get_idf_cache
+from src.proof_network import _DataCache, _get_data_cache, _get_idf_cache
 from src.proof_scoring import (
     LENS_CATEGORIES,
     _vectorized_bank_scores,
@@ -165,32 +165,102 @@ def _compute_primary_seed_score(
     return seed_primary * support_bonus
 
 
+# Module-level cache for neighborhood signatures (cleared with proof_network caches)
+_neighborhood_cache: dict[int, dict[int, set[int]]] = {}
+
+
+def _get_neighborhood_signatures(
+    conn: sqlite3.Connection,
+    data: _DataCache,
+) -> dict[int, set[int]]:
+    """Precompute dependency-neighborhood anchor signatures for traced theorems.
+
+    For each traced theorem, collect the union of anchor IDs from its
+    depends_on neighbors. This is the "what can this landmark provide?"
+    signature — matching query anchors against this tells us bridge potential.
+
+    Cached per connection.
+    """
+    conn_id = id(conn)
+    if conn_id in _neighborhood_cache:
+        return _neighborhood_cache[conn_id]
+
+    # Get all depends_on edges
+    dep_rows = conn.execute(
+        "SELECT source_id, target_id FROM entity_links WHERE relation = 'depends_on'"
+    ).fetchall()
+
+    # Build source → set of neighbor anchor IDs
+    nbr_anchors: dict[int, set[int]] = defaultdict(set)
+    for src, tgt in dep_rows:
+        tgt_anchors = data.anchor_sets.get(tgt, set())
+        nbr_anchors[src].update(tgt_anchors)
+
+    result = dict(nbr_anchors)
+    _neighborhood_cache[conn_id] = result
+    return result
+
+
+def _compute_bridge_potential(
+    nbr_anchor_sig: set[int],
+    query_anchors: list[int],
+    query_weights: list[float],
+    idf_cache: dict[int, float],
+) -> float:
+    """Score how well a landmark's neighborhood matches the query.
+
+    IDF-weighted overlap between query anchors and the union of
+    anchors from the landmark's depends_on neighbors.
+    """
+    if not nbr_anchor_sig or not query_anchors:
+        return 0.0
+
+    total_idf = 0.0
+    matched_idf = 0.0
+    for aid, weight in zip(query_anchors, query_weights):
+        idf = idf_cache.get(aid, 1.0) * weight
+        total_idf += idf
+        if aid in nbr_anchor_sig:
+            matched_idf += idf
+
+    return matched_idf / total_idf if total_idf > 0 else 0.0
+
+
 def retrieve_landmarks(
     query: StructuredQuery,
     conn: sqlite3.Connection,
     config: dict | None = None,
 ) -> tuple[list[ScoredEntity], RetrievalTrace]:
-    """Stage 1: retrieve high-confidence landmark entities.
+    """Stage 1: retrieve bridge theorems whose neighborhoods contain useful premises.
 
-    Scores traced entities using primary lens scoring, plus any entities
-    reachable via direct depends_on links from accessible premises.
-    Locality/lexical alone cannot seed a landmark.
+    Landmarks are NOT premises. They are traced theorems whose depends_on
+    frontier is likely to contain the query's needed premises. Scored by
+    bridge potential (query-to-neighborhood match), not self-match.
+
+    Hard filters:
+        - entity_type = 'lemma', provenance = 'traced'
+        - nonzero depends_on outdegree (structurally useful bridge)
+
+    Scoring:
+        landmark_score = bank_score * bridge_potential * observability
+
+    Diversity: greedy selection with neighborhood overlap penalty to avoid
+    redundant landmarks from the same dependency basin.
     """
     cfg = {**DEFAULT_CONFIG, **(config or {})}
     limit = cfg["landmark_limit"]
-    traced_bias = cfg["landmark_traced_bias"]
 
     data = _get_data_cache(conn)
     idf_cache = _get_idf_cache(conn)
 
-    # Get candidate IDs — prefer traced entities for landmark seeding
-    if traced_bias:
-        candidate_ids = [
-            eid for eid, prov in data.provenances.items()
-            if prov == "traced"
-        ]
-    else:
-        candidate_ids = list(data.names.keys())
+    # Precompute neighborhood signatures
+    nbr_sigs = _get_neighborhood_signatures(conn, data)
+
+    # Hard-filter: traced lemmas with nonzero depends_on outdegree
+    candidate_ids = [
+        eid for eid, prov in data.provenances.items()
+        if prov == "traced" and eid in nbr_sigs
+    ]
 
     if not candidate_ids:
         return [], RetrievalTrace()
@@ -198,55 +268,65 @@ def retrieve_landmarks(
     # Bank scores (vectorized)
     bank_scores = _vectorized_bank_scores(candidate_ids, data.positions, query)
 
-    results: list[ScoredEntity] = []
+    # Score all candidates by bridge potential
+    scored: list[tuple[float, int, float, float]] = []  # (score, eid, bridge, bank)
     for i, eid in enumerate(candidate_ids):
         b_score = float(bank_scores[i])
         if b_score <= 0:
             continue
 
-        ea_set = data.anchor_sets.get(eid, set())
-        entity_confs = data.anchor_confidences.get(eid)
-
-        primary = _compute_primary_seed_score(
-            ea_set,
-            query.prefer_anchors,
-            query.prefer_weights,
-            idf_cache,
-            data.anchor_categories,
-            entity_confs,
+        nbr_sig = nbr_sigs.get(eid, set())
+        bridge = _compute_bridge_potential(
+            nbr_sig, query.prefer_anchors, query.prefer_weights, idf_cache
         )
+        if bridge <= 0:
+            continue
 
         obs = compute_observability_score(
             data.positions.get(eid, {}),
-            ea_set,
-            data.provenances.get(eid, "traced"),
+            data.anchor_sets.get(eid, set()),
+            "traced",
             data.anchor_categories,
         )
 
-        # Primary is a bonus, not a gate — bank alignment is the
-        # primary landmark signal. Observability separates traced from
-        # premise-only. Primary lens boosts when available.
-        final = b_score * obs * (1.0 + primary)
-        results.append(ScoredEntity(
+        final = b_score * bridge * obs
+        scored.append((final, eid, bridge, b_score))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+
+    # Greedy diversity selection: penalize landmarks with highly
+    # overlapping depends_on neighborhoods (same dependency basin)
+    selected: list[ScoredEntity] = []
+    selected_nbrs: set[int] = set()
+
+    for final, eid, bridge, b_score in scored:
+        if len(selected) >= limit:
+            break
+
+        nbr_sig = nbr_sigs.get(eid, set())
+        if selected_nbrs:
+            overlap = len(nbr_sig & selected_nbrs) / max(len(nbr_sig), 1)
+            if overlap > 0.8:
+                continue  # too similar to already-selected landmarks
+
+        selected.append(ScoredEntity(
             entity_id=eid,
             name=data.names.get(eid, ""),
             final_score=final,
             bank_score=b_score,
-            anchor_score=primary,
-            seed_score=obs,
+            anchor_score=bridge,
+            seed_score=1.0,
         ))
-
-    results.sort(key=lambda e: e.final_score, reverse=True)
-    landmarks = results[:limit]
+        selected_nbrs.update(nbr_sig)
 
     # Trace
-    trace = RetrievalTrace(landmark_count=len(landmarks))
+    trace = RetrievalTrace(landmark_count=len(selected))
     prov_counts: dict[str, int] = defaultdict(int)
-    for lm in landmarks:
+    for lm in selected:
         prov_counts[data.provenances.get(lm.entity_id, "?")] += 1
     trace.landmarks_by_provenance = dict(prov_counts)
 
-    return landmarks, trace
+    return selected, trace
 
 
 # ---------------------------------------------------------------------------
