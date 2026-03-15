@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import pytest
 from src.ternary_decoder import TernaryDecoder, TernaryLinear, ternary_quantize
 
 

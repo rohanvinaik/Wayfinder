@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import pytest
 from src.trainer_steps import TrainerStepsMixin, compute_batch_metrics
 
 

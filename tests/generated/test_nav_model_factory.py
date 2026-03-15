@@ -3,8 +3,11 @@
 
 from __future__ import annotations
 
-import pytest
-from src.nav_model_factory import build_navigational_modules, load_navigational_checkpoint, resolve_model_config
+from src.nav_model_factory import (
+    build_navigational_modules,
+    load_navigational_checkpoint,
+    resolve_model_config,
+)
 
 
 def test_resolve_model_config_returns_expected_output() -> None:

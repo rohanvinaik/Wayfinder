@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import pytest
 from src.lean_interface import LeanConfig, LeanKernel
 
 

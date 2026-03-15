@@ -3,9 +3,17 @@
 
 from __future__ import annotations
 
-import pytest
-from unittest.mock import MagicMock, patch
-from scripts.eval_retrieval import compute_conditional_recall_at_k, compute_recall_at_k, compute_universe_coverage, dense_retrieve, evaluate, load_checkpoint, load_config, main, nav_retrieve
+from scripts.eval_retrieval import (
+    compute_conditional_recall_at_k,
+    compute_recall_at_k,
+    compute_universe_coverage,
+    dense_retrieve,
+    evaluate,
+    load_checkpoint,
+    load_config,
+    main,
+    nav_retrieve,
+)
 
 
 def test_load_config_returns_expected_output() -> None:

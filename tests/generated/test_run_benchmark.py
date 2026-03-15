@@ -4,8 +4,14 @@
 from __future__ import annotations
 
 import pytest
-from unittest.mock import MagicMock, patch
-from scripts.run_benchmark import load_benchmark_theorems, load_config, load_modules, main, run_benchmark
+
+from scripts.run_benchmark import (
+    load_benchmark_theorems,
+    load_config,
+    load_modules,
+    main,
+    run_benchmark,
+)
 
 
 def test_load_config_returns_expected_output() -> None:

@@ -3,9 +3,17 @@
 
 from __future__ import annotations
 
-import pytest
-from unittest.mock import MagicMock, patch
-from scripts.train_navigator import TrainContext, _TrainState, build_pipeline, get_curriculum_phase, load_anchor_labels, load_config, main, train, train_step
+from scripts.train_navigator import (
+    TrainContext,
+    _TrainState,
+    build_pipeline,
+    get_curriculum_phase,
+    load_anchor_labels,
+    load_config,
+    main,
+    train,
+    train_step,
+)
 
 
 def test_load_config_returns_expected_output() -> None:

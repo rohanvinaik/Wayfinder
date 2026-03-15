@@ -4,8 +4,17 @@
 from __future__ import annotations
 
 import pytest
-from unittest.mock import MagicMock, patch
-from src.data import NavigationalDataset, NegativeBankDataset, OODPromptDataset, ProofDataset, load_nav_examples_jsonl, load_ood_prompts_jsonl, load_proofs_jsonl, save_proofs_jsonl
+
+from src.data import (
+    NavigationalDataset,
+    NegativeBankDataset,
+    OODPromptDataset,
+    ProofDataset,
+    load_nav_examples_jsonl,
+    load_ood_prompts_jsonl,
+    load_proofs_jsonl,
+    save_proofs_jsonl,
+)
 
 
 def test_load_proofs_jsonl_returns_expected_output() -> None:

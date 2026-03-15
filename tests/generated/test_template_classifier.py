@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import pytest
 from src.template_classifier import TemplateClassifier
 
 

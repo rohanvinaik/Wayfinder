@@ -3,8 +3,6 @@
 
 from __future__ import annotations
 
-import pytest
-from unittest.mock import MagicMock, patch
 from src.arbiter import SoMSearchParams, SoMSlots, _SoMSearchEnv, _SoMSearchState, som_search
 
 

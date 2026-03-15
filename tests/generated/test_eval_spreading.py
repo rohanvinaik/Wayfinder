@@ -3,9 +3,15 @@
 
 from __future__ import annotations
 
-import pytest
-from unittest.mock import MagicMock, patch
-from scripts.eval_spreading import compute_recall, evaluate, get_seed_entities, load_config, load_modules, main, retrieve_premises
+from scripts.eval_spreading import (
+    compute_recall,
+    evaluate,
+    get_seed_entities,
+    load_config,
+    load_modules,
+    main,
+    retrieve_premises,
+)
 
 
 def test_load_config_returns_expected_output() -> None:

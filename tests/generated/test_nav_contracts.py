@@ -3,8 +3,14 @@
 
 from __future__ import annotations
 
-import pytest
-from src.nav_contracts import NavOutput, NavigationalExample, ScoredEntity, StructuredQuery, TacticResult, _NavExampleCore
+from src.nav_contracts import (
+    NavigationalExample,
+    NavOutput,
+    ScoredEntity,
+    StructuredQuery,
+    TacticResult,
+    _NavExampleCore,
+)
 
 
 class Test_NavExampleCoreConfig:

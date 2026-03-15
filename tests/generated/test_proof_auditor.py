@@ -3,8 +3,7 @@
 
 from __future__ import annotations
 
-import pytest
-from src.proof_auditor import AuditResult, AuditorConfig, ProofAuditor, SuccessCategory
+from src.proof_auditor import AuditorConfig, AuditResult, ProofAuditor
 
 
 class TestAuditResultConfig:

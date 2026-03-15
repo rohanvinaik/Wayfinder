@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import pytest
 from src.lowering import lower_proof_to_lean, lower_to_theorem, roundtrip_validate
 
 

@@ -3,8 +3,14 @@
 
 from __future__ import annotations
 
-import pytest
-from src.v3_contracts import ActionCandidate, ConstraintReport, GoalContext, NegativeExample, SearchTrace, SketchProposal
+from src.v3_contracts import (
+    ActionCandidate,
+    ConstraintReport,
+    GoalContext,
+    NegativeExample,
+    SearchTrace,
+    SketchProposal,
+)
 
 
 class TestGoalContextConfig:

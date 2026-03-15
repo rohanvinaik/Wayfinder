@@ -3,8 +3,13 @@
 
 from __future__ import annotations
 
-import pytest
-from src.energy import EnergyFunction, RefineConfig, energy_refine, gumbel_softmax_ternary, snap_to_ternary
+from src.energy import (
+    EnergyFunction,
+    RefineConfig,
+    energy_refine,
+    gumbel_softmax_ternary,
+    snap_to_ternary,
+)
 
 
 def test_gumbel_softmax_ternary_returns_expected_output() -> None:

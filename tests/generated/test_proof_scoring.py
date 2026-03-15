@@ -4,7 +4,14 @@
 from __future__ import annotations
 
 import pytest
-from src.proof_scoring import bank_score, compose_bank_scores, compute_lens_coherence, compute_lens_scores, compute_observability_score
+
+from src.proof_scoring import (
+    bank_score,
+    compose_bank_scores,
+    compute_lens_coherence,
+    compute_lens_scores,
+    compute_observability_score,
+)
 
 
 def test_bank_score_returns_expected_output() -> None:

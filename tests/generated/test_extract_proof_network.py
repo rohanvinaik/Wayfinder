@@ -3,8 +3,6 @@
 
 from __future__ import annotations
 
-import pytest
-from unittest.mock import MagicMock, patch
 from scripts.extract_proof_network import extract_entity, extract_premise_entity, main
 
 

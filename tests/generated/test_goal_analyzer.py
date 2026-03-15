@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import pytest
 from src.goal_analyzer import GoalAnalysis, GoalAnalyzer
 
 

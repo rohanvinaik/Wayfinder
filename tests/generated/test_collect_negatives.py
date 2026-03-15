@@ -3,9 +3,13 @@
 
 from __future__ import annotations
 
-import pytest
-from unittest.mock import MagicMock, patch
-from scripts.collect_negatives import PerturbationCollector, SorryHoleCollector, SuggestionTraceCollector, collect_weak_negatives, main, write_negatives
+from scripts.collect_negatives import (
+    PerturbationCollector,
+    SorryHoleCollector,
+    collect_weak_negatives,
+    main,
+    write_negatives,
+)
 
 
 def test_collect_weak_negatives_returns_expected_output() -> None:

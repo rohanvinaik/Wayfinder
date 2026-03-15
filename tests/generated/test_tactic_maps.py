@@ -3,8 +3,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 
 def test_tactic_maps_placeholder() -> None:
     """TODO: Add tests for tactic_maps."""

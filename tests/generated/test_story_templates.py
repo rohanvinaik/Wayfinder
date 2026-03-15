@@ -3,8 +3,13 @@
 
 from __future__ import annotations
 
-import pytest
-from src.story_templates import classify_tactic_sequence, compute_bank_signature, get_num_templates, get_template_index, get_template_name
+from src.story_templates import (
+    classify_tactic_sequence,
+    compute_bank_signature,
+    get_num_templates,
+    get_template_index,
+    get_template_name,
+)
 
 
 def test_classify_tactic_sequence_returns_expected_output() -> None:

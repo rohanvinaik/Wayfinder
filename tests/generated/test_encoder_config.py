@@ -3,8 +3,6 @@
 
 from __future__ import annotations
 
-import pytest
-from unittest.mock import MagicMock, patch
 from src.encoder_config import get_encoder_model_name
 
 

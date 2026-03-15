@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import pytest
 from src.pab_tracker import CheckpointData, PABTracker, _AuxAccum, _CoreAccum, _TierAccum
 
 

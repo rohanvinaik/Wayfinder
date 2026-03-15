@@ -3,9 +3,16 @@
 
 from __future__ import annotations
 
-import pytest
-from unittest.mock import MagicMock, patch
-from scripts.anchor_gap_analysis import GapRecord, analyze_step, build_perfect_query, find_gap_anchors_from_conn, load_proof_steps, main, navigate_with_query, run_analysis
+from scripts.anchor_gap_analysis import (
+    GapRecord,
+    analyze_step,
+    build_perfect_query,
+    find_gap_anchors_from_conn,
+    load_proof_steps,
+    main,
+    navigate_with_query,
+    run_analysis,
+)
 
 
 def test_load_proof_steps_returns_expected_output() -> None:

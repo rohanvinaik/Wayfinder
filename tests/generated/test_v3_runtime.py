@@ -3,9 +3,14 @@
 
 from __future__ import annotations
 
-import pytest
-from unittest.mock import MagicMock, patch
-from src.v3_runtime import V3Config, V3SearchParams, V3Slots, _V3SearchEnv, _V3SearchState, v3_search
+from src.v3_runtime import (
+    V3Config,
+    V3SearchParams,
+    V3Slots,
+    _V3SearchEnv,
+    _V3SearchState,
+    v3_search,
+)
 
 
 def test_v3_search_returns_expected_output() -> None:

@@ -3,8 +3,19 @@
 
 from __future__ import annotations
 
-import pytest
-from src.pab_metrics import classify_domain, compute_crystallization, compute_feature_importance, compute_generalization_gap, compute_predictability, compute_repr_evolution, compute_stability, find_tier_convergence, is_oscillating, linear_slope, monotonic_trend
+from src.pab_metrics import (
+    classify_domain,
+    compute_crystallization,
+    compute_feature_importance,
+    compute_generalization_gap,
+    compute_predictability,
+    compute_repr_evolution,
+    compute_stability,
+    find_tier_convergence,
+    is_oscillating,
+    linear_slope,
+    monotonic_trend,
+)
 
 
 def test_compute_stability_returns_expected_output() -> None:

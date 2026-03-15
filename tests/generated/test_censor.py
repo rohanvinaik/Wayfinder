@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import pytest
 from src.censor import CensorNetwork, asymmetric_bce_loss, compute_false_prune_rate
 
 

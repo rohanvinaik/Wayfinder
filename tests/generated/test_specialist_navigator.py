@@ -3,8 +3,12 @@
 
 from __future__ import annotations
 
-import pytest
-from src.specialist_navigator import ExecutionSlot, SpecialistNavigator, fuse_specialist_outputs, fuse_to_nav_output
+from src.specialist_navigator import (
+    ExecutionSlot,
+    SpecialistNavigator,
+    fuse_specialist_outputs,
+    fuse_to_nav_output,
+)
 
 
 def test_fuse_specialist_outputs_returns_expected_output() -> None:

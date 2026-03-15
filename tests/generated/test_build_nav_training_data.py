@@ -3,9 +3,7 @@
 
 from __future__ import annotations
 
-import pytest
-from unittest.mock import MagicMock, patch
-from scripts.build_nav_training_data import ShardConfig, main
+from scripts.build_nav_training_data import main
 
 
 def test_main_returns_expected_output() -> None:

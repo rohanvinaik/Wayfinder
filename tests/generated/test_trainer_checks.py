@@ -3,8 +3,15 @@
 
 from __future__ import annotations
 
-import pytest
-from src.trainer_checks import build_checkpoint_data, check_gradient_abort, check_gradient_health, collect_decoder_weight_signs, log_ternary_distribution, record_pab_checkpoint, save_checkpoint
+from src.trainer_checks import (
+    build_checkpoint_data,
+    check_gradient_abort,
+    check_gradient_health,
+    collect_decoder_weight_signs,
+    log_ternary_distribution,
+    record_pab_checkpoint,
+    save_checkpoint,
+)
 
 
 def test_check_gradient_health_returns_expected_output() -> None:

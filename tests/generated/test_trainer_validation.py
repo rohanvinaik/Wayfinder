@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import pytest
 from src.trainer_validation import get_default_verifier, validate_single_proof
 
 

@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import pytest
 from scripts.similarity_metrics import compute_similarity_metrics
 
 

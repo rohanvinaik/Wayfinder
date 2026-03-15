@@ -3,8 +3,16 @@
 
 from __future__ import annotations
 
-import pytest
-from src.som_contracts import CensorPrediction, ExecutionOutput, PerceptionOutput, PlanningOutput, RecognitionOutput, SubgoalSpec, TemplateInfo, VerificationOutput
+from src.som_contracts import (
+    CensorPrediction,
+    ExecutionOutput,
+    PerceptionOutput,
+    PlanningOutput,
+    RecognitionOutput,
+    SubgoalSpec,
+    TemplateInfo,
+    VerificationOutput,
+)
 
 
 class TestPerceptionOutputConfig:

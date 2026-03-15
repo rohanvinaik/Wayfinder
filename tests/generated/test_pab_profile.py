@@ -3,9 +3,14 @@
 
 from __future__ import annotations
 
-import pytest
-from unittest.mock import MagicMock, patch
-from src.pab_profile import PABCoreSeries, PABDomainData, PABLossSeries, PABProfile, PABSummary, PABTierSeries
+from src.pab_profile import (
+    PABCoreSeries,
+    PABDomainData,
+    PABLossSeries,
+    PABProfile,
+    PABSummary,
+    PABTierSeries,
+)
 
 
 class TestPABCoreSeriesConfig:

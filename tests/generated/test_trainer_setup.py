@@ -3,8 +3,14 @@
 
 from __future__ import annotations
 
-import pytest
-from src.trainer_setup import build_losses, build_pab_tracker, build_pipeline_modules, load_datasets, load_vocabs, setup_run_dirs
+from src.trainer_setup import (
+    build_losses,
+    build_pab_tracker,
+    build_pipeline_modules,
+    load_datasets,
+    load_vocabs,
+    setup_run_dirs,
+)
 
 
 def test_load_vocabs_returns_expected_output() -> None:

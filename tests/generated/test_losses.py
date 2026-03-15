@@ -3,8 +3,7 @@
 
 from __future__ import annotations
 
-import pytest
-from src.losses import CompositeLoss, NavigationalLoss, OODLoss
+from src.losses import CompositeLoss, NavigationalLoss
 
 
 class TestCompositeLossConfig:

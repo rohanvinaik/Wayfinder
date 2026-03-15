@@ -3,8 +3,16 @@
 
 from __future__ import annotations
 
-import pytest
-from scripts.train_targets import build_anchor_targets, build_critic_targets, build_direction_targets, build_progress_targets, capture_bridge_embeddings, compute_nav_accuracy, compute_val_loss, extract_decoder_weight_signs
+from scripts.train_targets import (
+    build_anchor_targets,
+    build_critic_targets,
+    build_direction_targets,
+    build_progress_targets,
+    capture_bridge_embeddings,
+    compute_nav_accuracy,
+    compute_val_loss,
+    extract_decoder_weight_signs,
+)
 
 
 def test_build_direction_targets_returns_expected_output() -> None:

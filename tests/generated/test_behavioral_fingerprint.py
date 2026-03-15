@@ -3,9 +3,14 @@
 
 from __future__ import annotations
 
-import pytest
-from unittest.mock import MagicMock, patch
-from src.behavioral_fingerprint import BehavioralFingerprint, compute_action_distribution, compute_action_entropy, compute_discreteness, compute_variance_eigenvalues, fingerprint_stability
+from src.behavioral_fingerprint import (
+    BehavioralFingerprint,
+    compute_action_distribution,
+    compute_action_entropy,
+    compute_discreteness,
+    compute_variance_eigenvalues,
+    fingerprint_stability,
+)
 
 
 def test_compute_action_entropy_returns_expected_output() -> None:

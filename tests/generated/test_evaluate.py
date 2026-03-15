@@ -3,9 +3,7 @@
 
 from __future__ import annotations
 
-import pytest
-from unittest.mock import MagicMock, patch
-from src.evaluate import _EvalPipeline, _VocabInfo, evaluate_checkpoint, main
+from src.evaluate import evaluate_checkpoint, main
 
 
 def test_evaluate_checkpoint_returns_expected_output() -> None:

@@ -278,6 +278,11 @@ def _summarize_records(records: list[GapRecord], output_path: str) -> dict:
         for cat, labels in cat_gaps.items()
     } if cat_gaps else {}
 
+    gap_by_cat = {}
+    for cat, info in cat_summary.items():
+        top_anchors = [{"anchor": a, "count": c} for a, c in info["top"]]
+        gap_by_cat[cat] = {"count": info["count"], "top": top_anchors}
+
     return {
         "status": "complete",
         "records": len(records),
@@ -286,10 +291,7 @@ def _summarize_records(records: list[GapRecord], output_path: str) -> dict:
         "zero_recall_count": zero,
         "gate_passed": avg_recall >= 0.70,
         "top_gap_anchors": [{"anchor": a, "count": c} for a, c in top_gaps],
-        "gap_by_category": {
-            cat: {"count": info["count"], "top": [{"anchor": a, "count": c} for a, c in info["top"]]}
-            for cat, info in cat_summary.items()
-        },
+        "gap_by_category": gap_by_cat,
         "output_path": output_path,
     }
 

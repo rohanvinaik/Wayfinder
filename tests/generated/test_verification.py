@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import pytest
 from src.verification import ProofVerifier, VerificationConfig, check_proof_structural
 
 

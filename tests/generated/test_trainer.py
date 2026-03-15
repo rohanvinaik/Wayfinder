@@ -3,8 +3,6 @@
 
 from __future__ import annotations
 
-import pytest
-from unittest.mock import MagicMock, patch
 from src.trainer import BalancedSashimiTrainer, load_config, main
 
 

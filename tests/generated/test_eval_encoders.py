@@ -3,9 +3,14 @@
 
 from __future__ import annotations
 
-import pytest
-from unittest.mock import MagicMock, patch
-from scripts.eval_encoders import check_tokenizer_coverage, evaluate_model, load_goal_states, main, print_comparison_table, resolve_model_path
+from scripts.eval_encoders import (
+    check_tokenizer_coverage,
+    evaluate_model,
+    load_goal_states,
+    main,
+    print_comparison_table,
+    resolve_model_path,
+)
 
 
 def test_resolve_model_path_returns_expected_output() -> None:

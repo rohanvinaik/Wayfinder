@@ -3,9 +3,13 @@
 
 from __future__ import annotations
 
-import pytest
-from unittest.mock import MagicMock, patch
-from src.v3_scoring import apply_bank_idf, build_constraint_report, compute_bank_idf, compute_otp_dimensionality, nav_output_to_candidates
+from src.v3_scoring import (
+    apply_bank_idf,
+    build_constraint_report,
+    compute_bank_idf,
+    compute_otp_dimensionality,
+    nav_output_to_candidates,
+)
 
 
 def test_compute_bank_idf_returns_expected_output() -> None:

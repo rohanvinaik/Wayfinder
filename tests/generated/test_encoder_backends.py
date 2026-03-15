@@ -3,8 +3,6 @@
 
 from __future__ import annotations
 
-import pytest
-from unittest.mock import MagicMock, patch
 from scripts.encoder_backends import _ExplicitKeysWrapper, detect_model_type, encode_goals
 
 

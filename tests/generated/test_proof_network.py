@@ -3,9 +3,14 @@
 
 from __future__ import annotations
 
-import pytest
-from unittest.mock import MagicMock, patch
-from src.proof_network import _DataCache, clear_caches, get_accessible_premises, init_db, navigate, recompute_idf
+from src.proof_network import (
+    _DataCache,
+    clear_caches,
+    get_accessible_premises,
+    init_db,
+    navigate,
+    recompute_idf,
+)
 
 
 def test_clear_caches_returns_expected_output() -> None:

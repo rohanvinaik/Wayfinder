@@ -3,8 +3,15 @@
 
 from __future__ import annotations
 
-import pytest
-from src.contracts import CoverageReport, NegativeBankEntry, OODPrompt, ProofExample, Tier2Block, Tier3Slot, VerificationResult
+from src.contracts import (
+    CoverageReport,
+    NegativeBankEntry,
+    OODPrompt,
+    ProofExample,
+    Tier2Block,
+    Tier3Slot,
+    VerificationResult,
+)
 
 
 class TestTier2BlockConfig:

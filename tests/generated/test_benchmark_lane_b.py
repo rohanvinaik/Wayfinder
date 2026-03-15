@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import pytest
 from scripts.benchmark_lane_b import run_lane_b
 
 
