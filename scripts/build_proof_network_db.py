@@ -21,7 +21,9 @@ from scripts.tactic_maps import TACTIC_ANCHORS, TACTIC_DIRECTIONS
 from src.proof_network import init_db, recompute_idf
 
 
-def _get_or_create_anchor(conn, label: str, anchor_cache: dict[str, int]) -> int:
+def _get_or_create_anchor(
+    conn, label: str, anchor_cache: dict[str, int], category: str = "general"
+) -> int:
     """Get or create an anchor, using cache to avoid repeated lookups."""
     if label in anchor_cache:
         return anchor_cache[label]
@@ -29,7 +31,10 @@ def _get_or_create_anchor(conn, label: str, anchor_cache: dict[str, int]) -> int
     if row:
         anchor_cache[label] = row[0]
         return row[0]
-    conn.execute("INSERT INTO anchors (label) VALUES (?)", (label,))
+    conn.execute(
+        "INSERT INTO anchors (label, category) VALUES (?, ?)",
+        (label, category),
+    )
     aid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     anchor_cache[label] = aid
     return aid
@@ -161,12 +166,25 @@ def _insert_entity_positions(conn, eid: int, positions: dict) -> None:
 
 
 def _insert_entity_anchors(conn, eid: int, anchors: list, anchor_cache: dict[str, int]) -> None:
-    """Insert anchors for a lemma entity."""
-    for anchor_label in anchors:
-        aid = _get_or_create_anchor(conn, anchor_label, anchor_cache)
+    """Insert anchors for a lemma entity.
+
+    Supports both typed anchors ({label, category, confidence} dicts) and
+    legacy plain string anchors for backward compatibility.
+    """
+    for anchor in anchors:
+        if isinstance(anchor, dict):
+            label = anchor["label"]
+            category = anchor.get("category", "general")
+            confidence = anchor.get("confidence", 1.0)
+        else:
+            label = anchor
+            category = "general"
+            confidence = 1.0
+        aid = _get_or_create_anchor(conn, label, anchor_cache, category)
         conn.execute(
-            "INSERT OR IGNORE INTO entity_anchors (entity_id, anchor_id) VALUES (?, ?)",
-            (eid, aid),
+            "INSERT OR IGNORE INTO entity_anchors (entity_id, anchor_id, confidence) "
+            "VALUES (?, ?, ?)",
+            (eid, aid, confidence),
         )
 
 

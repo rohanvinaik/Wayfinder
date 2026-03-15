@@ -199,34 +199,130 @@ def compute_observability_score(
     positions: dict[str, int],
     entity_anchors: set[int],
     provenance: str = "traced",
+    anchor_categories: dict[int, str] | None = None,
 ) -> float:
-    """Score how well-observed an entity is (annotation confidence).
+    """Score how well-observed an entity is (channel coverage).
 
-    This is NOT a relevance score — it measures how much evidence we have
-    about the entity, not whether it matches the query. Entities with more
-    populated banks and richer anchors are better observed.
+    Observability = how many evidence channels are populated, not just
+    anchor count. An entity with semantic + structural + lexical anchors
+    is better observed than one with 20 locality anchors.
 
-    Traced entities with full proof-trace data get higher observability
-    than premise-only entities with sparse namespace-derived annotations.
+    Channel coverage model:
+        traced:       semantic + structural + lexical + locality + proof
+        premise_only: semantic + structural + lexical + locality (no proof)
+        tactic:       proof only
 
-    Returns a value in (0, 1] where 1.0 = fully observed.
+    Missing channels are uncertainty, not weak evidence.
 
-    Args:
-        positions: {bank_name: signed_position} for the entity.
-        entity_anchors: Set of anchor IDs for the entity.
-        provenance: 'traced', 'premise_only', or 'tactic'.
+    Returns a value in (0, 1] where 1.0 = all expected channels populated.
     """
-    # Factor 1: bank population (how many banks have non-zero positions)
+    # Factor 1: bank population
     populated = sum(1 for v in positions.values() if v != 0)
     bank_confidence = 0.3 + 0.7 * (populated / max(len(BANK_NAMES), 1))
 
-    # Factor 2: anchor richness (diminishing returns, floor at 0.1)
-    n_anchors = len(entity_anchors)
-    anchor_confidence = max(0.1, min(1.0, n_anchors / 10.0))
+    # Factor 2: channel coverage (which lens categories are populated)
+    if anchor_categories is not None:
+        present_cats = {anchor_categories.get(aid, "general") for aid in entity_anchors}
+        # Expected channels by provenance
+        if provenance == "traced":
+            expected = {"semantic", "structural", "lexical", "locality", "proof"}
+        elif provenance == "tactic":
+            expected = {"proof"}
+        else:  # premise_only
+            expected = {"semantic", "structural", "lexical", "locality"}
+        covered = len(present_cats & expected)
+        channel_coverage = max(0.2, covered / max(len(expected), 1))
+    else:
+        # Fallback: anchor richness (backward compat)
+        n_anchors = len(entity_anchors)
+        channel_coverage = max(0.1, min(1.0, n_anchors / 10.0))
 
-    # Factor 3: has tactic-derived anchors (proxy for proof trace quality)
-    # Tactic anchors are the ones NOT prefixed with ns:, name:, type:, file:, dir:
+    # Factor 3: proof trace quality
     has_tactic_anchors = provenance == "traced"
     trace_bonus = 1.0 if has_tactic_anchors else 0.6
 
-    return bank_confidence * anchor_confidence * trace_bonus
+    return bank_confidence * channel_coverage * trace_bonus
+
+
+# ---------------------------------------------------------------------------
+# Multi-lens coherence scoring
+# ---------------------------------------------------------------------------
+
+# Lens categories for multi-channel retrieval
+LENS_CATEGORIES = ("semantic", "structural", "lexical", "locality", "proof", "constant")
+
+
+def compute_lens_scores(
+    entity_anchors: set[int],
+    query_anchors: list[int],
+    query_weights: list[float],
+    idf_cache: dict[int, float],
+    anchor_categories: dict[int, str],
+    anchor_confidences: dict[int, float] | None = None,
+) -> dict[str, float]:
+    """Compute per-lens anchor overlap scores.
+
+    For each lens category, computes IDF-weighted overlap between the
+    entity's anchors in that category and the query's anchors in that
+    category. Confidences from entity_anchors weight the match quality.
+
+    Returns {category: score} where score in [0, 1].
+    """
+    # Partition query anchors by category
+    query_by_cat: dict[str, list[tuple[int, float]]] = {}
+    for aid, weight in zip(query_anchors, query_weights):
+        cat = anchor_categories.get(aid, "general")
+        query_by_cat.setdefault(cat, []).append((aid, weight))
+
+    scores: dict[str, float] = {}
+    for cat in LENS_CATEGORIES:
+        cat_query = query_by_cat.get(cat, [])
+        if not cat_query:
+            continue
+
+        total_idf = 0.0
+        matched_idf = 0.0
+        for aid, weight in cat_query:
+            idf = idf_cache.get(aid, 1.0) * weight
+            total_idf += idf
+            if aid in entity_anchors:
+                conf = anchor_confidences.get(aid, 1.0) if anchor_confidences else 1.0
+                matched_idf += idf * conf
+
+        scores[cat] = matched_idf / total_idf if total_idf > 0 else 0.0
+
+    return scores
+
+
+def compute_lens_coherence(
+    lens_scores: dict[str, float],
+    min_lenses: int = 2,
+) -> float:
+    """Compute coherence across populated lens channels.
+
+    Coherence = geometric mean of populated lens scores.
+    If only 1 lens matches, confidence stays low (single-channel match).
+    If multiple lenses agree, confidence jumps (multi-lens coherence).
+
+    This is the MentalAtlas principle: agreement across orthogonal
+    evidence channels = confidence. Single-channel match = uncertain.
+
+    Args:
+        lens_scores: {category: score} from compute_lens_scores.
+        min_lenses: Minimum populated lenses for full confidence.
+
+    Returns:
+        Coherence score in [0, 1].
+    """
+    populated = {cat: s for cat, s in lens_scores.items() if s > 0}
+    if not populated:
+        return 0.0
+
+    n = len(populated)
+    geo_mean = math.prod(populated.values()) ** (1.0 / n)
+
+    # Discount for insufficient lens coverage
+    if n < min_lenses:
+        geo_mean *= n / min_lenses
+
+    return geo_mean

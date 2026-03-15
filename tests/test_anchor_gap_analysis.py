@@ -207,21 +207,24 @@ class TestFindGapAnchorsFromConn(unittest.TestCase):
     def test_finds_missing_anchors(self):
         conn = _create_test_db()
         # lemma_Y has anchor "topology"; step_anchors has "ring"
-        gaps = find_gap_anchors_from_conn(conn, "lemma_Y", ["ring"])
-        self.assertEqual(gaps, ["topology"])
+        flat, by_cat = find_gap_anchors_from_conn(conn, "lemma_Y", ["ring"])
+        self.assertEqual(flat, ["topology"])
+        self.assertIn("general", by_cat)
         conn.close()
 
     def test_no_gap_when_anchors_overlap(self):
         conn = _create_test_db()
         # lemma_X has anchor "ring"; step_anchors also has "ring"
-        gaps = find_gap_anchors_from_conn(conn, "lemma_X", ["ring"])
-        self.assertEqual(gaps, [])
+        flat, by_cat = find_gap_anchors_from_conn(conn, "lemma_X", ["ring"])
+        self.assertEqual(flat, [])
+        self.assertEqual(by_cat, {})
         conn.close()
 
     def test_nonexistent_premise_returns_empty(self):
         conn = _create_test_db()
-        gaps = find_gap_anchors_from_conn(conn, "nonexistent", ["ring"])
-        self.assertEqual(gaps, [])
+        flat, by_cat = find_gap_anchors_from_conn(conn, "nonexistent", ["ring"])
+        self.assertEqual(flat, [])
+        self.assertEqual(by_cat, {})
         conn.close()
 
 

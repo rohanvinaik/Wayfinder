@@ -232,32 +232,48 @@ class TestInferNamespace(unittest.TestCase):
         )
 
 
+def _labels(typed_anchors):
+    """Extract labels from typed anchor dicts for test assertions."""
+    return [a["label"] if isinstance(a, dict) else a for a in typed_anchors]
+
+
 class TestExtractTypeAnchors(unittest.TestCase):
     def test_arrow_type(self):
         anchors = _extract_type_anchors("Nat → Nat")
-        self.assertIn("implication", anchors)
+        self.assertIn("implication", _labels(anchors))
 
     def test_universal(self):
         anchors = _extract_type_anchors("∀ x, x = x")
-        self.assertIn("universal-quantifier", anchors)
-        self.assertIn("equality", anchors)
+        labels = _labels(anchors)
+        self.assertIn("universal-quantifier", labels)
+        self.assertIn("equality", labels)
 
     def test_nat_arithmetic(self):
         anchors = _extract_type_anchors("Nat.add_comm")
-        self.assertIn("nat-arithmetic", anchors)
+        self.assertIn("nat-arithmetic", _labels(anchors))
 
     def test_empty_type(self):
         anchors = _extract_type_anchors("")
         self.assertEqual(anchors, [])
 
+    def test_typed_anchor_format(self):
+        anchors = _extract_type_anchors("Nat → Nat")
+        for a in anchors:
+            self.assertIsInstance(a, dict)
+            self.assertIn("label", a)
+            self.assertIn("category", a)
+            self.assertIn("confidence", a)
+            self.assertEqual(a["category"], "structural")
+
 
 class TestExtractNamespaceAnchors(unittest.TestCase):
     def test_multi_level(self):
         anchors = _extract_namespace_anchors("Mathlib.Algebra.Group.Basic")
-        self.assertEqual(anchors[0], "ns:Mathlib")
-        self.assertEqual(anchors[1], "ns:Mathlib.Algebra")
-        self.assertEqual(anchors[2], "ns:Mathlib.Algebra.Group")
-        self.assertEqual(anchors[3], "ns:Mathlib.Algebra.Group.Basic")
+        labels = _labels(anchors)
+        self.assertEqual(labels[0], "ns:Mathlib")
+        self.assertEqual(labels[1], "ns:Mathlib.Algebra")
+        self.assertEqual(labels[2], "ns:Mathlib.Algebra.Group")
+        self.assertEqual(labels[3], "ns:Mathlib.Algebra.Group.Basic")
         self.assertEqual(len(anchors), 4)
 
     def test_empty(self):
@@ -265,45 +281,52 @@ class TestExtractNamespaceAnchors(unittest.TestCase):
 
     def test_single_level(self):
         anchors = _extract_namespace_anchors("Init")
-        self.assertEqual(anchors, ["ns:Init"])
+        self.assertEqual(_labels(anchors), ["ns:Init"])
 
     def test_capped_at_4_levels(self):
         anchors = _extract_namespace_anchors("A.B.C.D.E.F")
         self.assertEqual(len(anchors), 4)
 
+    def test_locality_category(self):
+        anchors = _extract_namespace_anchors("Mathlib.Algebra")
+        for a in anchors:
+            self.assertEqual(a["category"], "locality")
+
 
 class TestExtractNameAnchors(unittest.TestCase):
     def test_underscore_split(self):
         anchors = _extract_name_anchors("Mathlib.Algebra.mul_comm")
-        # "mul" and "comm" should appear
-        self.assertIn("name:mul", anchors)
-        self.assertIn("name:comm", anchors)
+        labels = _labels(anchors)
+        self.assertIn("name:mul", labels)
+        self.assertIn("name:comm", labels)
 
     def test_camel_case(self):
         anchors = _extract_name_anchors("addCommGroup")
-        self.assertIn("name:add", anchors)
-        self.assertIn("name:comm", anchors)
+        labels = _labels(anchors)
+        self.assertIn("name:add", labels)
+        self.assertIn("name:comm", labels)
 
     def test_short_fragments_skipped(self):
         anchors = _extract_name_anchors("is_lt")
-        # "lt" is only 2 chars → skipped
-        self.assertNotIn("name:lt", anchors)
+        self.assertNotIn("name:lt", _labels(anchors))
 
     def test_sorted_output(self):
         anchors = _extract_name_anchors("Mathlib.zeta_beta_alpha")
-        self.assertEqual(anchors, sorted(anchors))
+        labels = _labels(anchors)
+        self.assertEqual(labels, sorted(labels))
 
 
 class TestExtractTypeTokenAnchors(unittest.TestCase):
     def test_type_tokens(self):
         anchors = _extract_type_token_anchors("Finset.sum (Group α) = Module β")
-        self.assertIn("type:Finset", anchors)
-        self.assertIn("type:Group", anchors)
-        self.assertIn("type:Module", anchors)
+        labels = _labels(anchors)
+        self.assertIn("type:Finset", labels)
+        self.assertIn("type:Group", labels)
+        self.assertIn("type:Module", labels)
 
     def test_short_tokens_skipped(self):
         anchors = _extract_type_token_anchors("Eq x y")
-        self.assertNotIn("type:Eq", anchors)  # "Eq" is only 2 chars
+        self.assertNotIn("type:Eq", _labels(anchors))
 
     def test_empty(self):
         self.assertEqual(_extract_type_token_anchors(""), [])
@@ -312,11 +335,17 @@ class TestExtractTypeTokenAnchors(unittest.TestCase):
 class TestExtractFileAnchors(unittest.TestCase):
     def test_file_anchor(self):
         anchors = _extract_file_anchors("Mathlib/Algebra/Group/Basic.lean")
-        self.assertIn("file:Mathlib/Algebra/Group/Basic", anchors)
-        self.assertIn("dir:Mathlib/Algebra", anchors)
+        labels = _labels(anchors)
+        self.assertIn("file:Mathlib/Algebra/Group/Basic", labels)
+        self.assertIn("dir:Mathlib/Algebra", labels)
 
     def test_empty(self):
         self.assertEqual(_extract_file_anchors(""), [])
+
+    def test_lake_path_low_confidence(self):
+        anchors = _extract_file_anchors(".lake/packages/lean4/src/Init.lean")
+        for a in anchors:
+            self.assertLessEqual(a["confidence"], 0.15)
 
 
 class TestComputeAllPositions(unittest.TestCase):
@@ -350,7 +379,8 @@ class TestCollectAnchors(unittest.TestCase):
             ["simp"],
             {"namespace": "Mathlib.Algebra", "theorem_id": "add_comm", "file_path": ""},
         )
-        self.assertEqual(len(anchors), len(set(anchors)))
+        labels = _labels(anchors)
+        self.assertEqual(len(labels), len(set(labels)))
 
     def test_sorted_output(self):
         anchors = _collect_anchors(
@@ -359,7 +389,31 @@ class TestCollectAnchors(unittest.TestCase):
             [],
             {"namespace": "", "theorem_id": "test", "file_path": ""},
         )
-        self.assertEqual(anchors, sorted(anchors))
+        labels = _labels(anchors)
+        self.assertEqual(labels, sorted(labels))
+
+    def test_general_has_zero_confidence(self):
+        anchors = _collect_anchors(
+            ["general"],
+            "",
+            [],
+            {"namespace": "", "theorem_id": "test", "file_path": ""},
+        )
+        general = [a for a in anchors if a["label"] == "general"]
+        self.assertEqual(len(general), 1)
+        self.assertEqual(general[0]["confidence"], 0.0)
+
+    def test_has_typed_categories(self):
+        anchors = _collect_anchors(
+            ["algebra"],
+            "Nat → Nat",
+            ["simp"],
+            {"namespace": "Mathlib.Algebra", "theorem_id": "add_comm", "file_path": ""},
+        )
+        cats = {a["category"] for a in anchors}
+        self.assertIn("semantic", cats)
+        self.assertIn("structural", cats)
+        self.assertIn("proof", cats)
 
 
 class TestExtractEntity(unittest.TestCase):
@@ -481,7 +535,8 @@ class TestExtractPremiseEntity(unittest.TestCase):
             kind="commanddeclaration",
             file_path="Mathlib/Topology/Basic.lean",
         )
-        ns_anchors = [a for a in entity["anchors"] if a.startswith("ns:")]
+        labels = _labels(entity["anchors"])
+        ns_anchors = [a for a in labels if a.startswith("ns:")]
         self.assertTrue(len(ns_anchors) > 0)
 
     def test_anchors_include_name_fragments(self):
@@ -491,9 +546,26 @@ class TestExtractPremiseEntity(unittest.TestCase):
             kind="commanddeclaration",
             file_path="",
         )
-        name_anchors = [a for a in entity["anchors"] if a.startswith("name:")]
+        labels = _labels(entity["anchors"])
+        name_anchors = [a for a in labels if a.startswith("name:")]
         self.assertTrue(len(name_anchors) > 0)
         self.assertIn("name:measurable", name_anchors)
+
+    def test_typed_anchor_format(self):
+        entity = extract_premise_entity(
+            full_name="Nat.add_comm",
+            code="theorem Nat.add_comm (n m : Nat) : n + m = m + n := by omega",
+            kind="commanddeclaration",
+            file_path="Mathlib/Data/Nat/Basic.lean",
+        )
+        for a in entity["anchors"]:
+            self.assertIsInstance(a, dict)
+            self.assertIn("label", a)
+            self.assertIn("category", a)
+            self.assertIn("confidence", a)
+        # No proof-lens anchors for premise_only
+        proof_anchors = [a for a in entity["anchors"] if a["category"] == "proof"]
+        self.assertEqual(len(proof_anchors), 0)
 
 
 if __name__ == "__main__":

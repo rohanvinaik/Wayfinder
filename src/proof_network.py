@@ -29,6 +29,8 @@ from src.proof_scoring import (  # noqa: F401
     _vectorized_bank_scores,
     bank_score,
     compose_bank_scores,
+    compute_lens_coherence,
+    compute_lens_scores,
     compute_observability_score,
 )
 
@@ -123,7 +125,14 @@ _entity_id_cache: dict[tuple[int, str | None], set[int]] = {}
 class _DataCache:
     """Typed container for pre-loaded entity data."""
 
-    __slots__ = ("positions", "anchor_sets", "names", "provenances")
+    __slots__ = (
+        "positions",
+        "anchor_sets",
+        "names",
+        "provenances",
+        "anchor_categories",
+        "anchor_confidences",
+    )
 
     def __init__(
         self,
@@ -131,11 +140,15 @@ class _DataCache:
         anchor_sets: dict[int, set[int]],
         names: dict[int, str],
         provenances: dict[int, str],
+        anchor_categories: dict[int, str] | None = None,
+        anchor_confidences: dict[int, dict[int, float]] | None = None,
     ) -> None:
         self.positions = positions
         self.anchor_sets = anchor_sets
         self.names = names
         self.provenances = provenances
+        self.anchor_categories = anchor_categories or {}
+        self.anchor_confidences = anchor_confidences or {}
 
 
 _data_cache: dict[int, _DataCache] = {}
@@ -177,11 +190,25 @@ def _get_data_cache(conn: sqlite3.Connection) -> _DataCache:
         names[eid] = name
         provenances[eid] = prov
 
+    # Load anchor categories (anchor_id → category)
+    anchor_categories: dict[int, str] = {}
+    for aid, cat in conn.execute("SELECT id, category FROM anchors").fetchall():
+        anchor_categories[aid] = cat
+
+    # Load per-entity anchor confidences (entity_id → {anchor_id: confidence})
+    anchor_confidences: dict[int, dict[int, float]] = defaultdict(dict)
+    for eid, aid, conf in conn.execute(
+        "SELECT entity_id, anchor_id, confidence FROM entity_anchors"
+    ).fetchall():
+        anchor_confidences[eid][aid] = conf
+
     cache = _DataCache(
         positions=dict(positions),
         anchor_sets=dict(anchor_sets),
         names=names,
         provenances=provenances,
+        anchor_categories=anchor_categories,
+        anchor_confidences=dict(anchor_confidences),
     )
     _data_cache[conn_id] = cache
     return cache
@@ -229,16 +256,17 @@ def _score_candidates(
     seed_anchors: set[int],
     mechanism: str,
     provenances: dict[int, str] | None = None,
+    anchor_categories: dict[int, str] | None = None,
+    anchor_confidences: dict[int, dict[int, float]] | None = None,
 ) -> list[ScoredEntity]:
     """Score and rank candidate entities against a navigational query.
 
     Uses NumPy vectorization for bank scoring (the hot inner loop),
     with per-entity anchor/seed/observability scoring.
 
-    When provenances is provided, applies an observability score that
-    penalizes partially-observed entities (premise_only with sparse
-    annotations) relative to fully-observed entities (traced with
-    proof-trace data).
+    When anchor_categories is provided, uses multi-lens coherence scoring:
+    per-category anchor overlap with geometric mean across populated lenses.
+    Otherwise falls back to flat anchor scoring.
     """
     if not candidate_ids:
         return []
@@ -255,21 +283,50 @@ def _score_candidates(
     nonzero_mask = bank_scores > 0
     nonzero_indices = np.nonzero(nonzero_mask)[0]
 
+    use_lenses = anchor_categories is not None and len(anchor_categories) > 0
+
     results: list[ScoredEntity] = []
     for idx in nonzero_indices:
         eid = candidate_ids[idx]
         b_score = float(bank_scores[idx])
-        a_score = _compute_anchor_score(entity_anchor_sets.get(eid, set()), query, idf_cache)
+        ea_set = entity_anchor_sets.get(eid, set())
+
+        if use_lenses and query.prefer_anchors:
+            # Multi-lens coherence: per-category anchor overlap
+            entity_confs = anchor_confidences.get(eid) if anchor_confidences else None
+            lens_scores = compute_lens_scores(
+                ea_set,
+                query.prefer_anchors,
+                query.prefer_weights,
+                idf_cache,
+                anchor_categories,
+                entity_confs,
+            )
+            if lens_scores:
+                a_score = compute_lens_coherence(lens_scores)
+                # Avoid anchor penalty still applies
+                for aid in query.avoid_anchors:
+                    if aid in ea_set:
+                        a_score *= 0.5
+            else:
+                # No typed categories matched — fall back to flat scoring
+                # (handles legacy DBs where all anchors have category='general')
+                a_score = _compute_anchor_score(ea_set, query, idf_cache)
+        else:
+            # Flat anchor scoring (v2 fallback)
+            a_score = _compute_anchor_score(ea_set, query, idf_cache)
+
         if a_score <= 0:
             continue
-        s_score = _compute_seed_score(entity_anchor_sets.get(eid, set()), seed_anchors, idf_cache)
+        s_score = _compute_seed_score(ea_set, seed_anchors, idf_cache)
 
-        # Observability: confidence-weight based on annotation quality
+        # Observability: channel coverage, not just anchor count
         if provenances is not None:
             o_score = compute_observability_score(
                 positions.get(eid, {}),
-                entity_anchor_sets.get(eid, set()),
+                ea_set,
                 provenances.get(eid, "traced"),
+                anchor_categories,
             )
         else:
             o_score = 1.0
@@ -319,7 +376,7 @@ def navigate(
         for sid in query.seed_entity_ids:
             seed_anchors.update(entity_anchor_sets.get(sid, set()))
 
-    # Pure scoring with observability weighting
+    # Pure scoring with multi-lens coherence + observability
     results = _score_candidates(
         candidate_ids,
         positions,
@@ -330,6 +387,8 @@ def navigate(
         seed_anchors,
         mechanism,
         provenances=data.provenances,
+        anchor_categories=data.anchor_categories,
+        anchor_confidences=data.anchor_confidences,
     )
     return results[:limit]
 
@@ -363,12 +422,18 @@ def get_accessible_premises(conn: sqlite3.Connection, theorem_id: int) -> set[in
 
 
 def recompute_idf(conn: sqlite3.Connection) -> None:
-    """Recompute IDF values for all anchors. Call after batch entity updates."""
+    """Recompute IDF values for all anchors (global + per-category).
+
+    Global IDF: log(N / df) across all entities.
+    Per-category IDF: log(N_cat / df_cat) within each anchor category,
+    so anchors are weighted relative to peers in the same lens.
+    """
     total = conn.execute("SELECT COUNT(*) FROM entities").fetchone()[0]
     if total == 0:
         return
     log_total = math.log(total)
 
+    # Global IDF (unchanged)
     conn.execute("DELETE FROM anchor_idf")
     conn.executemany(
         "INSERT INTO anchor_idf (anchor_id, idf_value) VALUES (?, ?)",
@@ -382,6 +447,54 @@ def recompute_idf(conn: sqlite3.Connection) -> None:
             (log_total,),
         ).fetchall(),
     )
+
+    # Per-category IDF table
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS anchor_category_idf (
+            anchor_id   INTEGER PRIMARY KEY,
+            category    TEXT NOT NULL,
+            idf_value   REAL NOT NULL,
+            FOREIGN KEY (anchor_id) REFERENCES anchors(id)
+        );
+    """)
+    conn.execute("DELETE FROM anchor_category_idf")
+
+    # Get per-category entity counts
+    categories = conn.execute(
+        "SELECT DISTINCT category FROM anchors"
+    ).fetchall()
+
+    for (cat,) in categories:
+        # Count entities that have at least one anchor in this category
+        cat_total_row = conn.execute(
+            """
+            SELECT COUNT(DISTINCT ea.entity_id)
+            FROM entity_anchors ea
+            JOIN anchors a ON a.id = ea.anchor_id
+            WHERE a.category = ?
+            """,
+            (cat,),
+        ).fetchone()
+        cat_total = cat_total_row[0] if cat_total_row else 0
+        if cat_total == 0:
+            continue
+        log_cat_total = math.log(cat_total)
+
+        conn.executemany(
+            "INSERT INTO anchor_category_idf (anchor_id, category, idf_value) "
+            "VALUES (?, ?, ?)",
+            conn.execute(
+                """
+                SELECT a.id, a.category, ? - LOG(MAX(COUNT(ea.entity_id), 1))
+                FROM anchors a
+                LEFT JOIN entity_anchors ea ON ea.anchor_id = a.id
+                WHERE a.category = ?
+                GROUP BY a.id
+                """,
+                (log_cat_total, cat),
+            ).fetchall(),
+        )
+
     conn.commit()
 
 

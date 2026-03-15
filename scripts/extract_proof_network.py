@@ -43,6 +43,37 @@ from scripts.tactic_maps import (
 )
 
 # ---------------------------------------------------------------------------
+# Typed anchors — multi-lens retrieval geometry
+# ---------------------------------------------------------------------------
+#
+# Anchor categories for multi-lens coherence scoring:
+#   semantic  — domain classification, typeclass/domain concepts
+#   structural — type signature shape (arrows, foralls, iff, etc.)
+#   lexical   — name fragments from theorem identifiers
+#   locality  — namespace, file path, directory
+#   proof     — tactic/proof-trace derived (traced entities only)
+#   constant  — type tokens and constants referenced in declarations
+#
+# Each anchor carries {label, category, confidence} where confidence
+# reflects evidence quality (1.0 = verified trace, 0.0 = noise).
+
+ANCHOR_CATEGORIES = frozenset(
+    {"semantic", "structural", "lexical", "locality", "proof", "constant"}
+)
+
+# Anchors that are too broad for retrieval discrimination
+_NOISE_ANCHORS = frozenset({"general"})
+
+# Locality anchors from .lake/packages are near-noise for premise retrieval
+_LAKE_PATH_PREFIX = ".lake/packages"
+
+
+def _typed_anchor(label: str, category: str, confidence: float = 1.0) -> dict:
+    """Create a typed anchor dict."""
+    return {"label": label, "category": category, "confidence": confidence}
+
+
+# ---------------------------------------------------------------------------
 # Extraction helpers
 # ---------------------------------------------------------------------------
 
@@ -155,9 +186,9 @@ def _compute_decomposition_position(tactic_names: list[str]) -> tuple[int, int]:
     return sign, min(splitters, 3)
 
 
-def _extract_type_anchors(theorem_type: str) -> list[str]:
-    """Extract semantic anchors from theorem type signature."""
-    anchors: list[str] = []
+def _extract_type_anchors(theorem_type: str) -> list[dict]:
+    """Extract structural anchors from theorem type signature shape."""
+    anchors: list[dict] = []
     type_lower = theorem_type.lower()
 
     # fmt: off
@@ -182,7 +213,7 @@ def _extract_type_anchors(theorem_type: str) -> list[str]:
 
     for condition, anchor in checks:
         if condition:
-            anchors.append(anchor)
+            anchors.append(_typed_anchor(anchor, "structural", 0.9))
     return anchors
 
 
@@ -234,39 +265,46 @@ def _compute_all_positions(
     return positions, domain_anchors, hyp_count
 
 
-def _extract_namespace_anchors(namespace: str) -> list[str]:
-    """Extract hierarchical namespace anchors for fine-grained domain matching."""
+def _extract_namespace_anchors(namespace: str) -> list[dict]:
+    """Extract hierarchical namespace anchors (locality lens)."""
     if not namespace:
         return []
-    anchors: list[str] = []
+    anchors: list[dict] = []
     parts = namespace.split(".")
     # Add each level: ns:Mathlib, ns:Mathlib.Order, ns:Mathlib.Order.Basic
+    # Deeper = more specific = higher confidence
     for i in range(1, min(len(parts) + 1, 5)):  # up to 4 levels
-        anchors.append("ns:" + ".".join(parts[:i]))
+        conf = 0.4 + 0.15 * i  # 0.55, 0.70, 0.85, 1.0
+        anchors.append(_typed_anchor("ns:" + ".".join(parts[:i]), "locality", min(conf, 1.0)))
     return anchors
 
 
-def _extract_file_anchors(file_path: str) -> list[str]:
-    """Extract file path anchors for locality-based matching.
+def _extract_file_anchors(file_path: str) -> list[dict]:
+    """Extract file path anchors (locality lens).
 
-    Premises are overwhelmingly from the same or nearby files.
+    .lake/packages paths get near-zero confidence (noise for retrieval).
     """
     if not file_path:
         return []
     # Normalize: Mathlib/Order/Basic.lean → Mathlib/Order/Basic
     path = file_path.replace(".lean", "").replace("\\", "/")
     parts = path.split("/")
-    anchors: list[str] = []
+    anchors: list[dict] = []
+
+    is_lake = path.startswith(_LAKE_PATH_PREFIX)
+
     # Full file path as anchor (strongest locality signal)
-    anchors.append(f"file:{path}")
-    # Directory levels for broader matching
+    file_conf = 0.1 if is_lake else 0.8
+    anchors.append(_typed_anchor(f"file:{path}", "locality", file_conf))
+    # Directory levels for broader matching (decreasing confidence)
     for i in range(1, min(len(parts), 4)):
-        anchors.append("dir:" + "/".join(parts[: i + 1]))
+        dir_conf = 0.05 if is_lake else max(0.3, 0.7 - 0.1 * i)
+        anchors.append(_typed_anchor("dir:" + "/".join(parts[: i + 1]), "locality", dir_conf))
     return anchors
 
 
-def _extract_name_anchors(theorem_id: str) -> list[str]:
-    """Extract semantic anchors from the theorem name's fragments."""
+def _extract_name_anchors(theorem_id: str) -> list[dict]:
+    """Extract name fragment anchors (lexical lens)."""
     # Split camelCase and underscores: "mul_comm_of_ne_zero" → {mul, comm, ne, zero}
     name = theorem_id.rsplit(".", 1)[-1] if "." in theorem_id else theorem_id
     fragments: set[str] = set()
@@ -277,23 +315,38 @@ def _extract_name_anchors(theorem_id: str) -> list[str]:
             tok_lower = tok.lower()
             if len(tok_lower) >= 3:  # skip tiny fragments
                 fragments.add(tok_lower)
-    return [f"name:{f}" for f in sorted(fragments)]
+    return [_typed_anchor(f"name:{f}", "lexical", 0.5) for f in sorted(fragments)]
 
 
 _TYPE_TOKEN_RE = re.compile(r"\b([A-Z][A-Za-z]+(?:\.[A-Z][A-Za-z]+)*)\b")
 
 
-def _extract_type_token_anchors(theorem_type: str) -> list[str]:
-    """Extract capitalized type tokens as anchors (e.g., Finset, Module, Group)."""
-    # Match capitalized identifiers (Lean type names)
+def _extract_type_token_anchors(theorem_type: str) -> list[dict]:
+    """Extract type tokens as constant anchors (e.g., Finset, Module, Group)."""
     tokens = _TYPE_TOKEN_RE.findall(theorem_type)
     unique: set[str] = set()
     for tok in tokens:
-        # Use the leaf name for qualified names
         leaf = tok.rsplit(".", 1)[-1]
         if len(leaf) >= 3:
             unique.add(leaf)
-    return [f"type:{t}" for t in sorted(unique)]
+    return [_typed_anchor(f"type:{t}", "constant", 0.8) for t in sorted(unique)]
+
+
+def _extract_constant_anchors(code: str) -> list[dict]:
+    """Extract constant-usage anchors from declaration code body.
+
+    Finds capitalized Lean 4 identifiers used in the code (beyond just the
+    type signature). Gives premise-only entities richer semantic annotations.
+    """
+    if not code:
+        return []
+    tokens = _TYPE_TOKEN_RE.findall(code)
+    unique: set[str] = set()
+    for tok in tokens:
+        leaf = tok.rsplit(".", 1)[-1]
+        if len(leaf) >= 3:
+            unique.add(leaf)
+    return [_typed_anchor(f"const:{t}", "constant", 0.6) for t in sorted(unique)]
 
 
 def _collect_anchors(
@@ -301,25 +354,53 @@ def _collect_anchors(
     theorem_type: str,
     tactic_names: list[str],
     entity_fields: dict,
-) -> list[str]:
-    """Collect and deduplicate all anchors for an entity.
+) -> list[dict]:
+    """Collect typed anchors across all lenses for an entity.
+
+    Returns list of {label, category, confidence} dicts, deduplicated by label.
+    Domain anchors from _classify_domain are categorized as 'semantic'.
+    Tactic anchors from TACTIC_ANCHORS are categorized as 'proof'.
 
     Args:
-        domain_anchors: Anchors from domain classification.
+        domain_anchors: Anchor labels from domain classification.
         theorem_type: The theorem's type signature string.
         tactic_names: List of tactic names used in the proof.
         entity_fields: Dict with 'namespace', 'theorem_id', 'file_path' keys.
     """
-    anchors: list[str] = list(domain_anchors)
+    anchors: list[dict] = []
+
+    # Semantic lens: domain classification anchors
+    for label in domain_anchors:
+        if label in _NOISE_ANCHORS:
+            anchors.append(_typed_anchor(label, "semantic", 0.0))
+        else:
+            anchors.append(_typed_anchor(label, "semantic", 0.7))
+
+    # Structural lens: type signature shape
     anchors.extend(_extract_type_anchors(theorem_type))
+
+    # Proof lens: tactic-derived anchors (traced entities only)
     for tname in set(tactic_names):
-        anchors.extend(TACTIC_ANCHORS.get(tname, []))
-    # Content-based anchors for fine-grained retrieval
+        for label in TACTIC_ANCHORS.get(tname, []):
+            anchors.append(_typed_anchor(label, "proof", 1.0))
+
+    # Locality lens: namespace + file paths
     anchors.extend(_extract_namespace_anchors(entity_fields.get("namespace", "")))
-    anchors.extend(_extract_name_anchors(entity_fields.get("theorem_id", "")))
-    anchors.extend(_extract_type_token_anchors(theorem_type))
     anchors.extend(_extract_file_anchors(entity_fields.get("file_path", "")))
-    return sorted(set(anchors))
+
+    # Lexical lens: name fragments
+    anchors.extend(_extract_name_anchors(entity_fields.get("theorem_id", "")))
+
+    # Constant lens: type tokens
+    anchors.extend(_extract_type_token_anchors(theorem_type))
+
+    # Deduplicate by label, keeping highest confidence per label
+    by_label: dict[str, dict] = {}
+    for a in anchors:
+        existing = by_label.get(a["label"])
+        if existing is None or a["confidence"] > existing["confidence"]:
+            by_label[a["label"]] = a
+    return sorted(by_label.values(), key=lambda a: a["label"])
 
 
 def extract_entity(theorem: dict) -> dict:
@@ -341,13 +422,15 @@ def extract_entity(theorem: dict) -> dict:
         "file_path": file_path,
     }
 
+    typed_anchors = _collect_anchors(domain_anchors, theorem_type, tactic_names, entity_fields)
+
     return {
         "theorem_id": theorem_id,
         "entity_type": "lemma",
         "namespace": namespace,
         "file_path": file_path,
         "positions": positions,
-        "anchors": _collect_anchors(domain_anchors, theorem_type, tactic_names, entity_fields),
+        "anchors": typed_anchors,
         "premises": theorem.get("premises", []),
         "tactic_names": tactic_names,
         "tactic_directions": [
@@ -439,15 +522,39 @@ def extract_premise_entity(
     positions["context"] = {"sign": 0, "depth": 0}
     positions["decomposition"] = {"sign": 0, "depth": 0}
 
-    # Anchors from available metadata (no tactic anchors)
-    anchors = list(domain_anchors)
+    # Typed anchors — no proof lens (no tactic traces for premise-only)
+    anchors: list[dict] = []
+
+    # Semantic lens: domain classification
+    for label in domain_anchors:
+        if label in _NOISE_ANCHORS:
+            anchors.append(_typed_anchor(label, "semantic", 0.0))
+        else:
+            anchors.append(_typed_anchor(label, "semantic", 0.7))
+
     if type_text:
+        # Structural lens: type signature shape
         anchors.extend(_extract_type_anchors(type_text))
+        # Constant lens: type tokens from signature
         anchors.extend(_extract_type_token_anchors(type_text))
+
+    # Constant lens: identifiers from full declaration code
+    anchors.extend(_extract_constant_anchors(code))
+
+    # Locality lens
     anchors.extend(_extract_namespace_anchors(namespace))
-    anchors.extend(_extract_name_anchors(full_name))
     anchors.extend(_extract_file_anchors(file_path))
-    anchors = sorted(set(anchors))
+
+    # Lexical lens
+    anchors.extend(_extract_name_anchors(full_name))
+
+    # Deduplicate by label, keeping highest confidence
+    by_label: dict[str, dict] = {}
+    for a in anchors:
+        existing = by_label.get(a["label"])
+        if existing is None or a["confidence"] > existing["confidence"]:
+            by_label[a["label"]] = a
+    typed_anchors = sorted(by_label.values(), key=lambda a: a["label"])
 
     return {
         "theorem_id": full_name,
@@ -455,7 +562,7 @@ def extract_premise_entity(
         "namespace": namespace,
         "file_path": file_path,
         "positions": positions,
-        "anchors": anchors,
+        "anchors": typed_anchors,
         "premises": [],
         "tactic_names": [],
         "tactic_directions": [],

@@ -43,9 +43,10 @@ class GapRecord:
     recall_at_16: float
     missed_premises: list[str]
     gap_anchors: list[str]
+    gap_by_category: dict | None = None
 
     def to_dict(self) -> dict:
-        return {
+        result = {
             "theorem_id": self.theorem_id,
             "goal_state": self.goal_state[:200],
             "ground_truth_premises": self.ground_truth_premises,
@@ -54,6 +55,9 @@ class GapRecord:
             "missed_premises": self.missed_premises,
             "gap_anchors": self.gap_anchors,
         }
+        if self.gap_by_category:
+            result["gap_by_category"] = self.gap_by_category
+        return result
 
 
 def load_proof_steps(db_path: str, sample_size: int) -> list[dict]:
@@ -158,15 +162,19 @@ def navigate_with_query(
 
 def find_gap_anchors_from_conn(
     conn: sqlite3.Connection, missed_premise: str, step_anchors: list[str]
-) -> list[str]:
-    """Find anchors of a missed premise that differ from the query's anchors."""
+) -> tuple[list[str], dict[str, list[str]]]:
+    """Find anchors of a missed premise that differ from the query's anchors.
+
+    Returns (flat_gap_list, {category: [gap_anchor_labels]}).
+    Excludes trivial anchors (general, broad .lake paths) from gap surfacing.
+    """
     row = conn.execute("SELECT id FROM entities WHERE name = ?", (missed_premise,)).fetchone()
     if not row:
-        return []
+        return [], {}
 
     premise_anchors = conn.execute(
         """
-        SELECT a.label
+        SELECT a.label, a.category
         FROM entity_anchors ea
         JOIN anchors a ON a.id = ea.anchor_id
         WHERE ea.entity_id = ?
@@ -174,9 +182,22 @@ def find_gap_anchors_from_conn(
         (row[0],),
     ).fetchall()
 
-    premise_labels = {a[0] for a in premise_anchors}
     step_set = set(step_anchors)
-    return sorted(premise_labels - step_set)
+    gap_flat: list[str] = []
+    gap_by_cat: dict[str, list[str]] = {}
+
+    for label, category in premise_anchors:
+        if label in step_set:
+            continue
+        # Skip trivial anchors when surfacing gaps
+        if label == "general":
+            continue
+        if label.startswith("dir:.lake/packages"):
+            continue
+        gap_flat.append(label)
+        gap_by_cat.setdefault(category, []).append(label)
+
+    return sorted(gap_flat), gap_by_cat
 
 
 def analyze_step(conn: sqlite3.Connection, step: dict) -> GapRecord:
@@ -191,8 +212,12 @@ def analyze_step(conn: sqlite3.Connection, step: dict) -> GapRecord:
 
     missed = sorted(gt_set - retrieved_set)
     gap_anchors: list[str] = []
+    merged_cats: dict[str, list[str]] = {}
     for premise in missed:
-        gap_anchors.extend(find_gap_anchors_from_conn(conn, premise, step["anchors"]))
+        flat, by_cat = find_gap_anchors_from_conn(conn, premise, step["anchors"])
+        gap_anchors.extend(flat)
+        for cat, labels in by_cat.items():
+            merged_cats.setdefault(cat, []).extend(labels)
 
     return GapRecord(
         theorem_id=step["name"],
@@ -202,6 +227,7 @@ def analyze_step(conn: sqlite3.Connection, step: dict) -> GapRecord:
         recall_at_16=recall,
         missed_premises=missed,
         gap_anchors=gap_anchors,
+        gap_by_category=merged_cats if merged_cats else None,
     )
 
 
@@ -216,8 +242,13 @@ def _summarize_records(records: list[GapRecord], output_path: str) -> dict:
     zero = sum(1 for r in records if math.isclose(r.recall_at_16, 0.0))
 
     all_gaps: list[str] = []
+    cat_gaps: dict[str, list[str]] = {}
     for r in records:
         all_gaps.extend(r.gap_anchors)
+        if r.gap_by_category:
+            for cat, labels in r.gap_by_category.items():
+                cat_gaps.setdefault(cat, []).extend(labels)
+
     top_gaps = Counter(all_gaps).most_common(20)
 
     print("\n=== Gap Analysis Summary ===")
@@ -226,9 +257,26 @@ def _summarize_records(records: list[GapRecord], output_path: str) -> dict:
     print(f"  Perfect recall: {perfect}/{len(records)} ({100 * perfect / len(records):.1f}%)")
     print(f"  Zero recall: {zero}/{len(records)} ({100 * zero / len(records):.1f}%)")
     print(f"  Gate: {'PASS' if avg_recall >= 0.70 else 'FAIL'} (target: >= 0.70)")
+
+    # Per-category gap distribution
+    if cat_gaps:
+        print("\n  Gap distribution by lens category:")
+        total_gap_count = sum(len(v) for v in cat_gaps.values())
+        for cat in sorted(cat_gaps, key=lambda c: len(cat_gaps[c]), reverse=True):
+            count = len(cat_gaps[cat])
+            pct = 100 * count / max(total_gap_count, 1)
+            top_in_cat = Counter(cat_gaps[cat]).most_common(3)
+            top_str = ", ".join(f"{a}({c})" for a, c in top_in_cat)
+            print(f"    {cat}: {count} ({pct:.0f}%) — top: {top_str}")
+
     print("\n  Top 20 gap anchors (would improve recall if added):")
     for anchor, count in top_gaps:
         print(f"    {anchor}: {count} misses")
+
+    cat_summary = {
+        cat: {"count": len(labels), "top": Counter(labels).most_common(5)}
+        for cat, labels in cat_gaps.items()
+    } if cat_gaps else {}
 
     return {
         "status": "complete",
@@ -238,6 +286,10 @@ def _summarize_records(records: list[GapRecord], output_path: str) -> dict:
         "zero_recall_count": zero,
         "gate_passed": avg_recall >= 0.70,
         "top_gap_anchors": [{"anchor": a, "count": c} for a, c in top_gaps],
+        "gap_by_category": {
+            cat: {"count": info["count"], "top": [{"anchor": a, "count": c} for a, c in info["top"]]}
+            for cat, info in cat_summary.items()
+        },
         "output_path": output_path,
     }
 
