@@ -54,15 +54,38 @@ DEFAULT_CONFIG: dict = {
 
 
 @dataclass
+class SupportVote:
+    """One supporting path from a landmark to a candidate."""
+
+    landmark_id: int
+    landmark_score: float
+    relation: str
+    relation_weight: float
+    path_score: float
+    source_fanout: int  # outgoing edges from this landmark
+
+
+@dataclass
 class ExpandedCandidate:
-    """A candidate reached via graph expansion from a landmark."""
+    """A candidate reached via graph expansion from landmarks."""
 
     entity_id: int
     name: str
-    best_relation: str
-    hops: int
-    path_score: float
-    source_landmark_id: int
+    supports: list[SupportVote] = field(default_factory=list)
+
+    @property
+    def best_relation(self) -> str:
+        if not self.supports:
+            return ""
+        return max(self.supports, key=lambda s: s.path_score).relation
+
+    @property
+    def hops(self) -> int:
+        return 1  # currently 1-hop expansion
+
+    @property
+    def distinct_landmarks(self) -> int:
+        return len({s.landmark_id for s in self.supports})
 
 
 @dataclass
@@ -266,35 +289,66 @@ def expand_from_landmarks(
     for src, tgt, rel, wt in link_rows:
         adj[src].append((tgt, rel, wt))
 
-    # BFS from landmarks
-    visited: dict[int, ExpandedCandidate] = {}
-    frontier = [(lm_id, lm_id, 0, 1.0) for lm_id in landmark_ids]
+    # Compute source fanout per landmark (number of outgoing edges)
+    source_fanout: dict[int, int] = {}
+    for lm_id in landmark_ids:
+        source_fanout[lm_id] = len(adj.get(lm_id, []))
 
-    for _ in range(max_hops):
-        next_frontier: list[tuple[int, int, int, float]] = []
-        for eid, source_lm, hops, path_score in frontier:
-            neighbors = adj.get(eid, [])
-            # Sort by weight descending, take topk
+    # Collect ALL supporting paths per candidate (not just best)
+    candidate_supports: dict[int, list[SupportVote]] = defaultdict(list)
+
+    for lm in landmarks:
+        neighbors = adj.get(lm.entity_id, [])
+        neighbors.sort(key=lambda x: x[2], reverse=True)
+        fanout = source_fanout.get(lm.entity_id, 1)
+        for tgt, rel, wt in neighbors[:topk_per_seed]:
+            if tgt in landmark_ids:
+                continue
+            vote = SupportVote(
+                landmark_id=lm.entity_id,
+                landmark_score=lm.final_score,
+                relation=rel,
+                relation_weight=wt,
+                path_score=lm.final_score * wt,
+                source_fanout=max(fanout, 1),
+            )
+            candidate_supports[tgt].append(vote)
+
+    # Multi-hop: expand from hop-1 candidates
+    if max_hops >= 2:
+        hop1_ids = set(candidate_supports.keys())
+        for h1_id in hop1_ids:
+            best_vote = max(candidate_supports[h1_id], key=lambda v: v.path_score)
+            neighbors = adj.get(h1_id, [])
             neighbors.sort(key=lambda x: x[2], reverse=True)
+            h1_fanout = len(neighbors)
             for tgt, rel, wt in neighbors[:topk_per_seed]:
-                if tgt in landmark_ids:
-                    continue  # don't re-expand landmarks
-                new_score = path_score * wt
-                if tgt in visited and visited[tgt].path_score >= new_score:
+                if tgt in landmark_ids or tgt in hop1_ids:
                     continue
-                cand = ExpandedCandidate(
-                    entity_id=tgt,
-                    name=data.names.get(tgt, ""),
-                    best_relation=rel,
-                    hops=hops + 1,
-                    path_score=new_score,
-                    source_landmark_id=source_lm,
+                vote = SupportVote(
+                    landmark_id=best_vote.landmark_id,
+                    landmark_score=best_vote.landmark_score,
+                    relation=rel,
+                    relation_weight=wt,
+                    path_score=best_vote.path_score * wt,
+                    source_fanout=max(h1_fanout, 1),
                 )
-                visited[tgt] = cand
-                next_frontier.append((tgt, source_lm, hops + 1, new_score))
-        frontier = next_frontier
+                candidate_supports[tgt].append(vote)
 
-    expanded = sorted(visited.values(), key=lambda c: c.path_score, reverse=True)
+    # Build ExpandedCandidate objects
+    visited: dict[int, ExpandedCandidate] = {}
+    for eid, supports in candidate_supports.items():
+        visited[eid] = ExpandedCandidate(
+            entity_id=eid,
+            name=data.names.get(eid, ""),
+            supports=supports,
+        )
+
+    expanded = sorted(
+        visited.values(),
+        key=lambda c: max(s.path_score for s in c.supports),
+        reverse=True,
+    )
 
     # Trace
     trace = RetrievalTrace(expanded_pool_size=len(expanded))
@@ -373,6 +427,53 @@ def _compute_support_bonus(
     return 1.0 + 0.10 * locality + 0.08 * lexical
 
 
+def _compute_consensus(supports: list[SupportVote]) -> float:
+    """Weighted consensus: 1 - prod(1 - vote_i), with fanout normalization.
+
+    Each vote is: landmark_score * relation_weight / sqrt(source_fanout).
+    Multiple independent high-quality landmarks compound via noisy-OR.
+    """
+    if not supports:
+        return 0.0
+
+    product = 1.0
+    for vote in supports:
+        raw = (
+            vote.landmark_score
+            * vote.relation_weight
+            / math.sqrt(vote.source_fanout)
+        )
+        product *= 1.0 - min(raw, 0.95)
+
+    return 1.0 - product
+
+
+def _compute_diversity_bonus(supports: list[SupportVote]) -> float:
+    """Reward support from multiple distinct landmarks."""
+    distinct = len({s.landmark_id for s in supports})
+    if distinct <= 1:
+        return 1.0
+    # Diminishing returns: sqrt scaling
+    return math.sqrt(distinct)
+
+
+def _compute_hub_penalty(
+    entity_id: int,
+    hub_degrees: dict[int, int],
+    median_degree: float,
+) -> float:
+    """Downweight globally over-connected candidates (hubs).
+
+    Entities with far more incoming links than the median are less
+    likely to be specifically relevant — they're infrastructure lemmas.
+    """
+    degree = hub_degrees.get(entity_id, 0)
+    if degree <= median_degree:
+        return 1.0
+    # Gentle penalty: 1 / sqrt(degree / median)
+    return 1.0 / math.sqrt(degree / max(median_degree, 1.0))
+
+
 def rerank_candidates(
     query: StructuredQuery,
     landmarks: list[ScoredEntity],
@@ -380,10 +481,11 @@ def rerank_candidates(
     conn: sqlite3.Connection,
     config: dict | None = None,
 ) -> tuple[list[ScoredEntity], RetrievalTrace]:
-    """Stage 3: rerank the merged landmark + expanded pool.
+    """Stage 3: rerank by weighted consensus + semantic refinement.
 
-    rerank_score = bank_score * observability * primary_coherence
-                   * support_bonus * expansion_support
+    graph_support = consensus * diversity_bonus * hub_penalty
+    semantic_refinement = bank_score * obs * (1 + primary_coherence) * support_bonus
+    final = graph_support * (0.2 + 0.8 * semantic_refinement)
     """
     cfg = {**DEFAULT_CONFIG, **(config or {})}
     limit = cfg["rerank_limit"]
@@ -391,19 +493,39 @@ def rerank_candidates(
     data = _get_data_cache(conn)
     idf_cache = _get_idf_cache(conn)
 
-    # Merge candidates: landmarks + expanded (deduplicated)
-    all_ids: dict[int, float] = {}  # eid → expansion_support
-    for lm in landmarks:
-        all_ids[lm.entity_id] = 1.0  # landmarks get full expansion support
-    for ec in expanded:
-        if ec.entity_id not in all_ids or ec.path_score > all_ids[ec.entity_id]:
-            all_ids[ec.entity_id] = ec.path_score
+    # Hub penalty: precompute in-degree per candidate (cheap aggregation)
+    allowed_relations = set(cfg["expansion_relations"])
+    candidate_ids_set = {ec.entity_id for ec in expanded}
+    candidate_ids_set.update(lm.entity_id for lm in landmarks)
 
-    candidate_ids = list(all_ids.keys())
+    hub_degrees: dict[int, int] = {}
+    if candidate_ids_set and allowed_relations:
+        placeholders_r = ",".join("?" * len(allowed_relations))
+        placeholders_e = ",".join("?" * len(candidate_ids_set))
+        rows = conn.execute(
+            f"SELECT target_id, COUNT(*) FROM entity_links "  # nosec B608
+            f"WHERE relation IN ({placeholders_r}) "
+            f"AND target_id IN ({placeholders_e}) "
+            f"GROUP BY target_id",
+            list(allowed_relations) + list(candidate_ids_set),
+        ).fetchall()
+        hub_degrees = dict(rows)
+
+    degrees = sorted(hub_degrees.values()) if hub_degrees else [1]
+    median_degree = degrees[len(degrees) // 2] if degrees else 1.0
+
+    # Only rerank expanded candidates — landmarks are seed theorems, not premises
+    landmark_ids = {lm.entity_id for lm in landmarks}
+    all_candidates: dict[int, list[SupportVote]] = {}
+    for ec in expanded:
+        if ec.entity_id not in landmark_ids:
+            all_candidates[ec.entity_id] = list(ec.supports)
+
+    candidate_ids = list(all_candidates.keys())
     if not candidate_ids:
         return [], RetrievalTrace()
 
-    # Bank scores (vectorized)
+    # Vectorized bank scores
     bank_scores = _vectorized_bank_scores(candidate_ids, data.positions, query)
 
     results: list[ScoredEntity] = []
@@ -412,6 +534,18 @@ def rerank_candidates(
         if b_score <= 0:
             continue
 
+        supports = all_candidates[eid]
+
+        # Graph support: consensus * diversity * hub penalty
+        consensus = _compute_consensus(supports)
+        diversity = _compute_diversity_bonus(supports)
+        hub_pen = _compute_hub_penalty(eid, hub_degrees, median_degree)
+        graph_support = consensus * diversity * hub_pen
+
+        if graph_support <= 0:
+            continue
+
+        # Semantic refinement
         ea_set = data.anchor_sets.get(eid, set())
         entity_confs = data.anchor_confidences.get(eid)
 
@@ -431,7 +565,7 @@ def rerank_candidates(
             entity_confs,
         )
 
-        support = _compute_support_bonus(
+        support_bonus = _compute_support_bonus(
             ea_set,
             query.prefer_anchors,
             query.prefer_weights,
@@ -439,22 +573,17 @@ def rerank_candidates(
             data.anchor_categories,
         )
 
-        expansion = all_ids[eid]
+        semantic = b_score * obs * (1.0 + primary_coherence) * support_bonus
+        final = graph_support * (0.2 + 0.8 * semantic)
 
-        # For premise retrieval, graph path support is the primary signal.
-        # Bank alignment and lens coherence refine within the graph-
-        # reachable set, but a premise reached via depends_on from a
-        # high-scoring landmark IS relevant regardless of anchor overlap.
-        semantic_bonus = (1.0 + primary_coherence) * support
-        final = expansion * (0.3 + 0.7 * b_score * obs * semantic_bonus)
         if final > 0:
             results.append(ScoredEntity(
                 entity_id=eid,
                 name=data.names.get(eid, ""),
                 final_score=final,
                 bank_score=b_score,
-                anchor_score=primary_coherence,
-                seed_score=expansion,
+                anchor_score=consensus,
+                seed_score=graph_support,
             ))
 
     results.sort(key=lambda e: e.final_score, reverse=True)
