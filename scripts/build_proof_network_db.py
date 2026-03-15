@@ -262,6 +262,215 @@ def _build_premise_links(conn, input_path: Path, name_to_id: dict[str, int]) -> 
     return premise_links
 
 
+# ---------------------------------------------------------------------------
+# Typed premise graph — v3 landmark expansion links
+# ---------------------------------------------------------------------------
+
+
+def _build_depends_on_links(conn, input_path: Path, name_to_id: dict[str, int]) -> int:
+    """Build directed depends_on links: theorem → used premise.
+
+    Source: traced premises from entity records.
+    These are the strongest signal — verified usage in actual proofs.
+    """
+    count = 0
+    for entity in _iter_entities(input_path):
+        if entity.get("provenance") != "traced":
+            continue
+        eid = name_to_id.get(entity["theorem_id"])
+        if eid is None:
+            continue
+        for premise_name in entity.get("premises", []):
+            pid = name_to_id.get(premise_name)
+            if pid is not None and pid != eid:
+                conn.execute(
+                    "INSERT OR IGNORE INTO entity_links "
+                    "(source_id, target_id, relation, weight) VALUES (?, ?, ?, ?)",
+                    (eid, pid, "depends_on", 0.95),
+                )
+                count += 1
+        if count % 50000 == 0 and count > 0:
+            conn.commit()
+    conn.commit()
+    return count
+
+
+def _build_cousage_links(conn) -> int:
+    """Build co_used_with links: premise <-> premise if co-occurring in proofs.
+
+    Two premises that appear together in the same theorem's premise list
+    are likely semantically related. Weight from capped co-occurrence count.
+    """
+    # Find premise pairs that co-occur via accessible_premises
+    rows = conn.execute("""
+        SELECT a.premise_id AS p1, b.premise_id AS p2, COUNT(*) AS cnt
+        FROM accessible_premises a
+        JOIN accessible_premises b
+            ON a.theorem_id = b.theorem_id AND a.premise_id < b.premise_id
+        GROUP BY a.premise_id, b.premise_id
+        HAVING cnt >= 2
+        ORDER BY cnt DESC
+        LIMIT 500000
+    """).fetchall()
+
+    count = 0
+    for p1, p2, cnt in rows:
+        weight = min(0.75 + 0.05 * (cnt - 2), 0.95)
+        conn.execute(
+            "INSERT OR IGNORE INTO entity_links "
+            "(source_id, target_id, relation, weight) VALUES (?, ?, ?, ?)",
+            (p1, p2, "co_used_with", weight),
+        )
+        conn.execute(
+            "INSERT OR IGNORE INTO entity_links "
+            "(source_id, target_id, relation, weight) VALUES (?, ?, ?, ?)",
+            (p2, p1, "co_used_with", weight),
+        )
+        count += 2
+        if count % 50000 == 0:
+            conn.commit()
+    conn.commit()
+    return count
+
+
+def _build_shared_constant_links(conn) -> int:
+    """Build shared_constant links: premise <-> premise sharing rare constant anchors.
+
+    Weight based on average IDF of shared constant anchors.
+    Only considers anchors in the 'constant' category with high IDF.
+    """
+    # Get constant anchors with high IDF (rare = valuable)
+    rows = conn.execute("""
+        SELECT ea1.entity_id AS e1, ea2.entity_id AS e2,
+               AVG(ai.idf_value) AS avg_idf, COUNT(*) AS shared
+        FROM entity_anchors ea1
+        JOIN entity_anchors ea2
+            ON ea1.anchor_id = ea2.anchor_id AND ea1.entity_id < ea2.entity_id
+        JOIN anchors a ON a.id = ea1.anchor_id
+        JOIN anchor_idf ai ON ai.anchor_id = a.id
+        JOIN entities en1 ON en1.id = ea1.entity_id AND en1.entity_type = 'lemma'
+        JOIN entities en2 ON en2.id = ea2.entity_id AND en2.entity_type = 'lemma'
+        WHERE a.category = 'constant' AND ai.idf_value > 3.0
+        GROUP BY ea1.entity_id, ea2.entity_id
+        HAVING shared >= 2
+        ORDER BY avg_idf DESC
+        LIMIT 500000
+    """).fetchall()
+
+    count = 0
+    for e1, e2, avg_idf, shared in rows:
+        weight = min(0.55 + 0.05 * shared + 0.02 * avg_idf, 0.85)
+        conn.execute(
+            "INSERT OR IGNORE INTO entity_links "
+            "(source_id, target_id, relation, weight) VALUES (?, ?, ?, ?)",
+            (e1, e2, "shared_constant", weight),
+        )
+        conn.execute(
+            "INSERT OR IGNORE INTO entity_links "
+            "(source_id, target_id, relation, weight) VALUES (?, ?, ?, ?)",
+            (e2, e1, "shared_constant", weight),
+        )
+        count += 2
+        if count % 50000 == 0:
+            conn.commit()
+    conn.commit()
+    return count
+
+
+def _build_namespace_links(conn) -> int:
+    """Build same_namespace_prefix links: premise <-> premise in same namespace.
+
+    Weight by prefix depth (deeper = more related).
+    """
+    rows = conn.execute("""
+        SELECT a.id, b.id, a.namespace, b.namespace
+        FROM entities a
+        JOIN entities b ON a.id < b.id
+            AND a.entity_type = 'lemma' AND b.entity_type = 'lemma'
+            AND a.namespace != '' AND b.namespace != ''
+            AND a.namespace = b.namespace
+        LIMIT 500000
+    """).fetchall()
+
+    count = 0
+    for e1, e2, ns1, _ns2 in rows:
+        depth = ns1.count(".") + 1
+        weight = min(0.35 + 0.15 * (depth - 1), 0.65)
+        conn.execute(
+            "INSERT OR IGNORE INTO entity_links "
+            "(source_id, target_id, relation, weight) VALUES (?, ?, ?, ?)",
+            (e1, e2, "same_namespace_prefix", weight),
+        )
+        conn.execute(
+            "INSERT OR IGNORE INTO entity_links "
+            "(source_id, target_id, relation, weight) VALUES (?, ?, ?, ?)",
+            (e2, e1, "same_namespace_prefix", weight),
+        )
+        count += 2
+        if count % 50000 == 0:
+            conn.commit()
+    conn.commit()
+    return count
+
+
+def _build_file_block_links(conn) -> int:
+    """Build same_file_block links: premises near each other in the same file."""
+    rows = conn.execute("""
+        SELECT a.id, b.id
+        FROM entities a
+        JOIN entities b ON a.id < b.id
+            AND a.entity_type = 'lemma' AND b.entity_type = 'lemma'
+            AND a.file_path != '' AND a.file_path = b.file_path
+        LIMIT 500000
+    """).fetchall()
+
+    count = 0
+    for e1, e2 in rows:
+        conn.execute(
+            "INSERT OR IGNORE INTO entity_links "
+            "(source_id, target_id, relation, weight) VALUES (?, ?, ?, ?)",
+            (e1, e2, "same_file_block", 0.40),
+        )
+        conn.execute(
+            "INSERT OR IGNORE INTO entity_links "
+            "(source_id, target_id, relation, weight) VALUES (?, ?, ?, ?)",
+            (e2, e1, "same_file_block", 0.40),
+        )
+        count += 2
+        if count % 50000 == 0:
+            conn.commit()
+    conn.commit()
+    return count
+
+
+def _build_typed_premise_graph(
+    conn, input_path: Path, name_to_id: dict[str, int]
+) -> None:
+    """Build all typed premise links for v3 landmark expansion."""
+    print("  Building typed premise graph...")
+
+    n = _build_depends_on_links(conn, input_path, name_to_id)
+    print(f"    depends_on: {n:,} links")
+
+    n = _build_cousage_links(conn)
+    print(f"    co_used_with: {n:,} links")
+
+    n = _build_shared_constant_links(conn)
+    print(f"    shared_constant: {n:,} links")
+
+    n = _build_namespace_links(conn)
+    print(f"    same_namespace_prefix: {n:,} links")
+
+    n = _build_file_block_links(conn)
+    print(f"    same_file_block: {n:,} links")
+
+    # Summary by relation
+    for row in conn.execute(
+        "SELECT relation, COUNT(*) FROM entity_links GROUP BY relation ORDER BY COUNT(*) DESC"
+    ).fetchall():
+        print(f"    total {row[0]}: {row[1]:,}")
+
+
 def _print_db_summary(conn) -> None:
     """Print summary statistics for the built database."""
     n_entities = conn.execute("SELECT COUNT(*) FROM entities").fetchone()[0]
@@ -303,6 +512,8 @@ def load_entities(input_path: Path, db_path: Path) -> None:
 
     print("  Computing IDF values...")
     recompute_idf(conn)
+
+    _build_typed_premise_graph(conn, input_path, name_to_id)
 
     _print_db_summary(conn)
     conn.close()
