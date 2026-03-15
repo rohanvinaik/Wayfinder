@@ -401,14 +401,14 @@ class TestSomSearchIntegration(unittest.TestCase):
 
         conn = sqlite3.connect(":memory:")
 
-        from src.arbiter import som_search
+        from src.arbiter import SoMSearchParams, som_search
 
         result = som_search(
             theorem_id="thm1",
             initial_goal="goal_state",
             slots=slots,
             conn=conn,
-            config=SearchConfig(budget=10, hammer_delegation=False),
+            params=SoMSearchParams(config=SearchConfig(budget=10, hammer_delegation=False)),
         )
         conn.close()
 
@@ -429,15 +429,17 @@ class TestSomSearchIntegration(unittest.TestCase):
 
         conn = sqlite3.connect(":memory:")
 
-        from src.arbiter import som_search
+        from src.arbiter import SoMSearchParams, som_search
 
         result = som_search(
             theorem_id="thm2",
             initial_goal="hard_goal",
             slots=slots,
             conn=conn,
-            config=SearchConfig(budget=5, hammer_delegation=False),
-            max_template_retries=2,
+            params=SoMSearchParams(
+                config=SearchConfig(budget=5, hammer_delegation=False),
+                max_template_retries=2,
+            ),
         )
         conn.close()
 
@@ -456,15 +458,17 @@ class TestSomSearchIntegration(unittest.TestCase):
 
         conn = sqlite3.connect(":memory:")
 
-        from src.arbiter import som_search
+        from src.arbiter import SoMSearchParams, som_search
 
         result = som_search(
             theorem_id="thm3",
             initial_goal="hard_goal",
             slots=slots,
             conn=conn,
-            config=SearchConfig(budget=20, hammer_delegation=False),
-            max_template_retries=1,
+            params=SoMSearchParams(
+                config=SearchConfig(budget=20, hammer_delegation=False),
+                max_template_retries=1,
+            ),
         )
         conn.close()
 
@@ -487,14 +491,14 @@ class TestSomSearchIntegration(unittest.TestCase):
 
         conn = sqlite3.connect(":memory:")
 
-        from src.arbiter import som_search
+        from src.arbiter import SoMSearchParams, som_search
 
         result = som_search(
             theorem_id="thm4",
             initial_goal="composed_goal",
             slots=slots,
             conn=conn,
-            config=SearchConfig(budget=20, hammer_delegation=False),
+            params=SoMSearchParams(config=SearchConfig(budget=20, hammer_delegation=False)),
         )
         conn.close()
 
@@ -510,15 +514,17 @@ class TestSomSearchIntegration(unittest.TestCase):
 
         conn = sqlite3.connect(":memory:")
 
-        from src.arbiter import som_search
+        from src.arbiter import SoMSearchParams, som_search
 
         result = som_search(
             theorem_id="thm5",
             initial_goal="goal",
             slots=slots,
             conn=conn,
-            config=SearchConfig(budget=3, hammer_delegation=False),
-            max_template_retries=1,
+            params=SoMSearchParams(
+                config=SearchConfig(budget=3, hammer_delegation=False),
+                max_template_retries=1,
+            ),
         )
         conn.close()
 

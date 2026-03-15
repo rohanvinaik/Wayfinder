@@ -104,15 +104,22 @@ def _som_search_step(
         state.attempts += 1
 
 
+@dataclass
+class SoMSearchParams:
+    """Optional parameters for som_search, grouped to reduce argument count."""
+
+    config: SearchConfig | None = None
+    anchor_id_map: dict[str, int] | None = None
+    accessible_theorem_id: int | None = None
+    max_template_retries: int = 3
+
+
 def som_search(
     theorem_id: str,
     initial_goal: str,
     slots: SoMSlots,
     conn: sqlite3.Connection,
-    config: SearchConfig | None = None,
-    anchor_id_map: dict[str, int] | None = None,
-    accessible_theorem_id: int | None = None,
-    max_template_retries: int = 3,
+    params: SoMSearchParams | None = None,
 ) -> SearchResult:
     """Run SoM proof search on a single theorem.
 
@@ -125,29 +132,27 @@ def som_search(
         initial_goal: Initial goal state text.
         slots: SoM slot components.
         conn: SQLite connection to proof network.
-        config: Search configuration.
-        anchor_id_map: Anchor label → DB ID mapping.
-        accessible_theorem_id: Theorem ID for accessible-premises filtering.
-        max_template_retries: Maximum alternative templates to try per goal.
+        params: Optional search parameters.
 
     Returns:
         SearchResult with proof attempt details.
     """
-    cfg = config or SearchConfig()
+    p = params or SoMSearchParams()
+    cfg = p.config or SearchConfig()
     context = SearchContext(
-        accessible_theorem_id=accessible_theorem_id if cfg.accessible_premises else None,
+        accessible_theorem_id=p.accessible_theorem_id if cfg.accessible_premises else None,
     )
     state = _SoMSearchState(open_goals=[initial_goal])
     env = _SoMSearchEnv(
         slots=slots,
         conn=conn,
         context=context,
-        anchor_id_map=anchor_id_map,
+        anchor_id_map=p.anchor_id_map,
         config=cfg,
     )
 
     while state.open_goals and state.attempts < cfg.budget:
-        _som_search_step(state, env, max_template_retries)
+        _som_search_step(state, env, p.max_template_retries)
 
     return SearchResult(
         success=len(state.open_goals) == 0,

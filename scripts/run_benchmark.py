@@ -217,7 +217,7 @@ def _run_search_loop_v2(
     config: dict,
 ) -> tuple[list[dict], int, int]:
     """Run v2 (SoM) proof search. Imports arbiter lazily to avoid circular deps."""
-    from src.arbiter import SoMSlots, som_search
+    from src.arbiter import SoMSearchParams, SoMSlots, som_search
     from src.sketch_predictor import SketchPredictor
     from src.specialist_navigator import ExecutionSlot
     from src.template_classifier import TemplateClassifier
@@ -259,8 +259,10 @@ def _run_search_loop_v2(
             initial_goal=thm["goal_state"],
             slots=slots,
             conn=conn,
-            config=cfg,
-            accessible_theorem_id=accessible_id,
+            params=SoMSearchParams(
+                config=cfg,
+                accessible_theorem_id=accessible_id,
+            ),
         )
         elapsed = time.perf_counter() - t0
 
