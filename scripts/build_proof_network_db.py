@@ -334,32 +334,45 @@ def _build_cousage_links(conn) -> int:
 
 
 def _build_shared_constant_links(conn) -> int:
-    """Build shared_constant links: premise <-> premise sharing rare constant anchors.
+    """Build shared_constant links via inverted index on rare constant anchors.
 
-    Weight based on average IDF of shared constant anchors.
-    Only considers anchors in the 'constant' category with high IDF.
+    For each rare constant anchor, pair up all entities that share it.
+    Weight based on number of shared anchors and their IDF.
     """
-    # Get constant anchors with high IDF (rare = valuable)
-    rows = conn.execute("""
-        SELECT ea1.entity_id AS e1, ea2.entity_id AS e2,
-               AVG(ai.idf_value) AS avg_idf, COUNT(*) AS shared
-        FROM entity_anchors ea1
-        JOIN entity_anchors ea2
-            ON ea1.anchor_id = ea2.anchor_id AND ea1.entity_id < ea2.entity_id
-        JOIN anchors a ON a.id = ea1.anchor_id
+    # Get rare constant anchor IDs
+    rare_anchors = conn.execute("""
+        SELECT a.id, ai.idf_value
+        FROM anchors a
         JOIN anchor_idf ai ON ai.anchor_id = a.id
-        JOIN entities en1 ON en1.id = ea1.entity_id AND en1.entity_type = 'lemma'
-        JOIN entities en2 ON en2.id = ea2.entity_id AND en2.entity_type = 'lemma'
         WHERE a.category = 'constant' AND ai.idf_value > 3.0
-        GROUP BY ea1.entity_id, ea2.entity_id
-        HAVING shared >= 2
-        ORDER BY avg_idf DESC
-        LIMIT 500000
     """).fetchall()
 
+    # Build inverted index: anchor_id → [entity_ids]
+    pair_data: dict[tuple[int, int], list[float]] = {}
+    for aid, idf_val in rare_anchors:
+        eids = [
+            r[0] for r in conn.execute(
+                "SELECT ea.entity_id FROM entity_anchors ea "
+                "JOIN entities e ON e.id = ea.entity_id AND e.entity_type = 'lemma' "
+                "WHERE ea.anchor_id = ?",
+                (aid,),
+            ).fetchall()
+        ]
+        # Cap posting list to avoid combinatorial explosion
+        if len(eids) > 200:
+            continue
+        for i in range(len(eids)):
+            for j in range(i + 1, len(eids)):
+                key = (min(eids[i], eids[j]), max(eids[i], eids[j]))
+                pair_data.setdefault(key, []).append(idf_val)
+
+    # Filter to pairs with 2+ shared anchors
     count = 0
-    for e1, e2, avg_idf, shared in rows:
-        weight = min(0.55 + 0.05 * shared + 0.02 * avg_idf, 0.85)
+    for (e1, e2), idfs in pair_data.items():
+        if len(idfs) < 2:
+            continue
+        avg_idf = sum(idfs) / len(idfs)
+        weight = min(0.55 + 0.05 * len(idfs) + 0.02 * avg_idf, 0.85)
         conn.execute(
             "INSERT OR IGNORE INTO entity_links "
             "(source_id, target_id, relation, weight) VALUES (?, ?, ?, ?)",
@@ -378,35 +391,38 @@ def _build_shared_constant_links(conn) -> int:
 
 
 def _build_namespace_links(conn) -> int:
-    """Build same_namespace_prefix links: premise <-> premise in same namespace.
+    """Build same_namespace_prefix links via GROUP BY namespace.
 
+    Groups entities by namespace, then pairs within each group.
     Weight by prefix depth (deeper = more related).
+    Caps group size to avoid combinatorial explosion.
     """
-    rows = conn.execute("""
-        SELECT a.id, b.id, a.namespace, b.namespace
-        FROM entities a
-        JOIN entities b ON a.id < b.id
-            AND a.entity_type = 'lemma' AND b.entity_type = 'lemma'
-            AND a.namespace != '' AND b.namespace != ''
-            AND a.namespace = b.namespace
-        LIMIT 500000
+    ns_groups = conn.execute("""
+        SELECT namespace, GROUP_CONCAT(id) as ids
+        FROM entities
+        WHERE entity_type = 'lemma' AND namespace != ''
+        GROUP BY namespace
+        HAVING COUNT(*) >= 2 AND COUNT(*) <= 500
     """).fetchall()
 
     count = 0
-    for e1, e2, ns1, _ns2 in rows:
-        depth = ns1.count(".") + 1
+    for ns, id_str in ns_groups:
+        eids = [int(x) for x in id_str.split(",")]
+        depth = ns.count(".") + 1
         weight = min(0.35 + 0.15 * (depth - 1), 0.65)
-        conn.execute(
-            "INSERT OR IGNORE INTO entity_links "
-            "(source_id, target_id, relation, weight) VALUES (?, ?, ?, ?)",
-            (e1, e2, "same_namespace_prefix", weight),
-        )
-        conn.execute(
-            "INSERT OR IGNORE INTO entity_links "
-            "(source_id, target_id, relation, weight) VALUES (?, ?, ?, ?)",
-            (e2, e1, "same_namespace_prefix", weight),
-        )
-        count += 2
+        for i in range(len(eids)):
+            for j in range(i + 1, min(len(eids), i + 50)):
+                conn.execute(
+                    "INSERT OR IGNORE INTO entity_links "
+                    "(source_id, target_id, relation, weight) VALUES (?, ?, ?, ?)",
+                    (eids[i], eids[j], "same_namespace_prefix", weight),
+                )
+                conn.execute(
+                    "INSERT OR IGNORE INTO entity_links "
+                    "(source_id, target_id, relation, weight) VALUES (?, ?, ?, ?)",
+                    (eids[j], eids[i], "same_namespace_prefix", weight),
+                )
+                count += 2
         if count % 50000 == 0:
             conn.commit()
     conn.commit()
@@ -414,29 +430,35 @@ def _build_namespace_links(conn) -> int:
 
 
 def _build_file_block_links(conn) -> int:
-    """Build same_file_block links: premises near each other in the same file."""
-    rows = conn.execute("""
-        SELECT a.id, b.id
-        FROM entities a
-        JOIN entities b ON a.id < b.id
-            AND a.entity_type = 'lemma' AND b.entity_type = 'lemma'
-            AND a.file_path != '' AND a.file_path = b.file_path
-        LIMIT 500000
+    """Build same_file_block links via GROUP BY file_path.
+
+    Groups entities by file, then pairs within each group.
+    Caps group size to avoid combinatorial explosion.
+    """
+    file_groups = conn.execute("""
+        SELECT file_path, GROUP_CONCAT(id) as ids
+        FROM entities
+        WHERE entity_type = 'lemma' AND file_path != ''
+        GROUP BY file_path
+        HAVING COUNT(*) >= 2 AND COUNT(*) <= 500
     """).fetchall()
 
     count = 0
-    for e1, e2 in rows:
-        conn.execute(
-            "INSERT OR IGNORE INTO entity_links "
-            "(source_id, target_id, relation, weight) VALUES (?, ?, ?, ?)",
-            (e1, e2, "same_file_block", 0.40),
-        )
-        conn.execute(
-            "INSERT OR IGNORE INTO entity_links "
-            "(source_id, target_id, relation, weight) VALUES (?, ?, ?, ?)",
-            (e2, e1, "same_file_block", 0.40),
-        )
-        count += 2
+    for _fp, id_str in file_groups:
+        eids = [int(x) for x in id_str.split(",")]
+        for i in range(len(eids)):
+            for j in range(i + 1, min(len(eids), i + 30)):
+                conn.execute(
+                    "INSERT OR IGNORE INTO entity_links "
+                    "(source_id, target_id, relation, weight) VALUES (?, ?, ?, ?)",
+                    (eids[i], eids[j], "same_file_block", 0.40),
+                )
+                conn.execute(
+                    "INSERT OR IGNORE INTO entity_links "
+                    "(source_id, target_id, relation, weight) VALUES (?, ?, ?, ?)",
+                    (eids[j], eids[i], "same_file_block", 0.40),
+                )
+                count += 2
         if count % 50000 == 0:
             conn.commit()
     conn.commit()
