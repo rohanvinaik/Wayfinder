@@ -7,6 +7,7 @@
 [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=rohanvinaik_Wayfinder&metric=coverage)](https://sonarcloud.io/summary/new_code?id=rohanvinaik_Wayfinder)
 [![Maintainability](https://sonarcloud.io/api/project_badges/measure?project=rohanvinaik_Wayfinder&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=rohanvinaik_Wayfinder)
 [![Reliability](https://sonarcloud.io/api/project_badges/measure?project=rohanvinaik_Wayfinder&metric=reliability_rating)](https://sonarcloud.io/summary/new_code?id=rohanvinaik_Wayfinder)
+[![Mutation Score](https://img.shields.io/endpoint?url=https%3A%2F%2Fgist.githubusercontent.com%2Frohanvinaik%2F52acfed02cbb67c88482b37074809fc2%2Fraw%2Fwayfinder-mutation-badge.json)](https://github.com/rohanvinaik/Wayfinder/actions/workflows/mutation.yml)
 
 DeepSeek threw 671 billion parameters at theorem proving. I asked: what if proof space has structure you can navigate?
 
