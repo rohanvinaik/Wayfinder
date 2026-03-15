@@ -41,17 +41,15 @@ SUPPORT_LENSES = frozenset({"locality", "lexical"})
 # Default config
 DEFAULT_CONFIG: dict = {
     "landmark_limit": 64,
-    "expansion_hops": 2,
-    "expansion_topk_per_seed": 24,
+    "expansion_hops": 1,
+    "expansion_topk_per_seed": 16,
     "expansion_relations": [
         "depends_on",
         "co_used_with",
         "shared_constant",
-        "same_namespace_prefix",
-        "same_file_block",
     ],
     "rerank_limit": 128,
-    "landmark_traced_bias": True,
+    "landmark_traced_bias": False,
 }
 
 
@@ -151,8 +149,9 @@ def retrieve_landmarks(
 ) -> tuple[list[ScoredEntity], RetrievalTrace]:
     """Stage 1: retrieve high-confidence landmark entities.
 
-    Scores all traced entities (and high-quality premise-only) using
-    primary lens scoring. Locality/lexical alone cannot seed a landmark.
+    Scores traced entities using primary lens scoring, plus any entities
+    reachable via direct depends_on links from accessible premises.
+    Locality/lexical alone cannot seed a landmark.
     """
     cfg = {**DEFAULT_CONFIG, **(config or {})}
     limit = cfg["landmark_limit"]
@@ -161,7 +160,7 @@ def retrieve_landmarks(
     data = _get_data_cache(conn)
     idf_cache = _get_idf_cache(conn)
 
-    # Get candidate IDs — prefer traced entities
+    # Get candidate IDs — prefer traced entities for landmark seeding
     if traced_bias:
         candidate_ids = [
             eid for eid, prov in data.provenances.items()
@@ -193,8 +192,6 @@ def retrieve_landmarks(
             data.anchor_categories,
             entity_confs,
         )
-        if primary <= 0:
-            continue
 
         obs = compute_observability_score(
             data.positions.get(eid, {}),
@@ -203,7 +200,10 @@ def retrieve_landmarks(
             data.anchor_categories,
         )
 
-        final = b_score * obs * primary
+        # Primary is a bonus, not a gate — bank alignment is the
+        # primary landmark signal. Observability separates traced from
+        # premise-only. Primary lens boosts when available.
+        final = b_score * obs * (1.0 + primary)
         results.append(ScoredEntity(
             entity_id=eid,
             name=data.names.get(eid, ""),
@@ -441,7 +441,12 @@ def rerank_candidates(
 
         expansion = all_ids[eid]
 
-        final = b_score * obs * primary_coherence * support * expansion
+        # For premise retrieval, graph path support is the primary signal.
+        # Bank alignment and lens coherence refine within the graph-
+        # reachable set, but a premise reached via depends_on from a
+        # high-scoring landmark IS relevant regardless of anchor overlap.
+        semantic_bonus = (1.0 + primary_coherence) * support
+        final = expansion * (0.3 + 0.7 * b_score * obs * semantic_bonus)
         if final > 0:
             results.append(ScoredEntity(
                 entity_id=eid,
