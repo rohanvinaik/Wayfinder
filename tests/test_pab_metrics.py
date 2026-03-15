@@ -311,5 +311,48 @@ class TestMonotonicTrendBoundary(unittest.TestCase):
         self.assertAlmostEqual(monotonic_trend([1.0, 2.0, 1.0, 3.0]), 2.0 / 3.0, places=4)
 
 
+class TestFindTierConvergenceBoundaryExtra(unittest.TestCase):
+    """Extra BOUNDARY for find_tier_convergence checkpoint edge cases."""
+
+    def test_with_checkpoints_out_of_range(self):
+        """BOUNDARY: i >= len(checkpoints) falls back to index."""
+        result = find_tier_convergence([0.1, 0.9], 0.5, checkpoints=[100])
+        self.assertEqual(result, 1)  # i=1 >= len(checkpoints)=1, returns i
+
+
+class TestIsOscillatingValue(unittest.TestCase):
+    """VALUE prescriptions for is_oscillating."""
+
+    def test_exact_three_reversals(self):
+        """VALUE: exactly min_reversals=3 → True."""
+        # 0→1(up) 1→0(down=rev1) 0→1(up=rev2) 1→0(down=rev3)
+        values = [0.0, 1.0, 0.0, 1.0, 0.0]
+        self.assertTrue(is_oscillating(values, min_reversals=3))
+
+    def test_exact_zero_reversals(self):
+        """VALUE: monotonic → 0 reversals → False."""
+        self.assertFalse(is_oscillating([1.0, 2.0, 3.0, 4.0]))
+
+    def test_flat_no_reversals(self):
+        """VALUE: flat values (no direction) → no reversals."""
+        self.assertFalse(is_oscillating([1.0, 1.0, 1.0, 1.0]))
+
+
+class TestMonotonicTrendBoundaryExtra(unittest.TestCase):
+    """Extra BOUNDARY for monotonic_trend strict > comparison."""
+
+    def test_boundary_equal_not_counted(self):
+        """BOUNDARY: values[i] == values[i-1] is NOT an increase."""
+        # 1→1 (not up), 1→2 (up) = 1/2
+        self.assertAlmostEqual(monotonic_trend([1.0, 1.0, 2.0]), 0.5)
+
+    def test_boundary_tiny_increase(self):
+        """BOUNDARY: even tiny increase counts."""
+        self.assertAlmostEqual(monotonic_trend([1.0, 1.0 + 1e-10]), 1.0)
+
+    def test_empty_list(self):
+        self.assertAlmostEqual(monotonic_trend([]), 0.0)
+
+
 if __name__ == "__main__":
     unittest.main()

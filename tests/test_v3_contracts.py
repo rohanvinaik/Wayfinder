@@ -195,5 +195,55 @@ class TestConstraintReportAllFields(unittest.TestCase):
         self.assertAlmostEqual(d["total_score"], 0.0)
 
 
+class TestActionCandidateToDictValue(unittest.TestCase):
+    """VALUE: exact assertions for every ActionCandidate.to_dict field."""
+
+    def test_all_fields_exact(self):
+        ac = ActionCandidate(
+            tactic="apply",
+            premises=["h1", "h2"],
+            provenance="navigate",
+            navigational_scores={"structure": 0.9},
+            template_provenance="REWRITE_CHAIN",
+            censor_score=0.15,
+        )
+        d = ac.to_dict()
+        self.assertEqual(d["tactic"], "apply")
+        self.assertEqual(d["premises"], ["h1", "h2"])
+        self.assertEqual(d["provenance"], "navigate")
+        self.assertEqual(d["navigational_scores"], {"structure": 0.9})
+        self.assertEqual(d["template_provenance"], "REWRITE_CHAIN")
+        self.assertAlmostEqual(d["censor_score"], 0.15)
+
+
+class TestNegativeExampleToDictValue(unittest.TestCase):
+    """VALUE: exact assertions for every NegativeExample.to_dict field."""
+
+    def test_all_fields_exact(self):
+        neg = NegativeExample(
+            goal_state="⊢ P",
+            theorem_id="test.thm",
+            step_index=3,
+            failed_tactic="exact h",
+            failure_reason="type mismatch",
+            failure_category="semantic",
+            source="search",
+            proof_history=["intro h"],
+            bank_directions={"structure": 1, "domain": -1},
+            otp_dimensionality=2,
+        )
+        d = neg.to_dict()
+        self.assertEqual(d["goal_state"], "⊢ P")
+        self.assertEqual(d["theorem_id"], "test.thm")
+        self.assertEqual(d["step_index"], 3)
+        self.assertEqual(d["failed_tactic"], "exact h")
+        self.assertEqual(d["failure_reason"], "type mismatch")
+        self.assertEqual(d["failure_category"], "semantic")
+        self.assertEqual(d["source"], "search")
+        self.assertEqual(d["proof_history"], ["intro h"])
+        self.assertEqual(d["bank_directions"], {"structure": 1, "domain": -1})
+        self.assertEqual(d["otp_dimensionality"], 2)
+
+
 if __name__ == "__main__":
     unittest.main()

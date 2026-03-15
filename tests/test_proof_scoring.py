@@ -1,5 +1,6 @@
 """Tests for proof_scoring — mutation-prescribed VALUE + SWAP assertions."""
 
+import math
 import unittest
 
 from src.nav_contracts import StructuredQuery
@@ -8,6 +9,8 @@ from src.proof_scoring import (
     _compute_bank_score,
     _compute_seed_score,
     compose_bank_scores,
+    compute_lens_coherence,
+    compute_lens_scores,
     compute_observability_score,
 )
 
@@ -169,6 +172,197 @@ class TestComputeObservabilitySwap(unittest.TestCase):
         self.assertGreater(many_banks, 0)
         self.assertGreater(many_anchors, 0)
         self.assertNotEqual(round(many_banks, 4), round(many_anchors, 4))
+
+
+class TestComputeLensScores(unittest.TestCase):
+    """VALUE + SWAP for compute_lens_scores."""
+
+    def test_exact_full_match_single_category(self):
+        """VALUE: entity has all query anchors in one category."""
+        entity = {10, 20}
+        query_anchors = [10, 20]
+        query_weights = [1.0, 1.0]
+        idf = {10: 2.0, 20: 3.0}
+        cats = {10: "semantic", 20: "semantic"}
+        scores = compute_lens_scores(entity, query_anchors, query_weights, idf, cats)
+        self.assertAlmostEqual(scores["semantic"], 1.0)
+
+    def test_exact_no_match(self):
+        """VALUE: entity has none of the query anchors."""
+        entity = {99}
+        query_anchors = [10, 20]
+        query_weights = [1.0, 1.0]
+        idf = {10: 1.0, 20: 1.0}
+        cats = {10: "structural", 20: "structural"}
+        scores = compute_lens_scores(entity, query_anchors, query_weights, idf, cats)
+        self.assertAlmostEqual(scores["structural"], 0.0)
+
+    def test_exact_partial_match_idf_weighted(self):
+        """VALUE: partial match weighted by IDF."""
+        entity = {10}  # has anchor 10 but not 20
+        query_anchors = [10, 20]
+        query_weights = [1.0, 1.0]
+        idf = {10: 2.0, 20: 3.0}
+        cats = {10: "lexical", 20: "lexical"}
+        scores = compute_lens_scores(entity, query_anchors, query_weights, idf, cats)
+        # matched_idf = 2.0, total_idf = 5.0
+        self.assertAlmostEqual(scores["lexical"], 2.0 / 5.0)
+
+    def test_multi_category_separation(self):
+        """VALUE: scores computed independently per category."""
+        entity = {10, 30}  # has semantic 10, locality 30
+        query_anchors = [10, 20, 30]
+        query_weights = [1.0, 1.0, 1.0]
+        idf = {10: 1.0, 20: 1.0, 30: 1.0}
+        cats = {10: "semantic", 20: "semantic", 30: "locality"}
+        scores = compute_lens_scores(entity, query_anchors, query_weights, idf, cats)
+        self.assertAlmostEqual(scores["semantic"], 0.5)  # 1/2
+        self.assertAlmostEqual(scores["locality"], 1.0)  # 1/1
+
+    def test_swap_weight_order_changes_score(self):
+        """SWAP: different weights on same anchors change per-category score."""
+        entity = {10}
+        cats = {10: "structural", 20: "structural"}
+        idf = {10: 1.0, 20: 1.0}
+        s1 = compute_lens_scores(entity, [10, 20], [1.0, 0.1], idf, cats)
+        s2 = compute_lens_scores(entity, [10, 20], [0.1, 1.0], idf, cats)
+        self.assertNotEqual(round(s1["structural"], 4), round(s2["structural"], 4))
+
+    def test_swap_category_assignment_changes_output(self):
+        """SWAP: moving an anchor to a different category changes which lens scores."""
+        entity = {10, 20}
+        query_anchors = [10, 20]
+        query_weights = [1.0, 1.0]
+        idf = {10: 1.0, 20: 1.0}
+        cats_same = {10: "semantic", 20: "semantic"}
+        cats_split = {10: "semantic", 20: "structural"}
+        s_same = compute_lens_scores(entity, query_anchors, query_weights, idf, cats_same)
+        s_split = compute_lens_scores(entity, query_anchors, query_weights, idf, cats_split)
+        self.assertIn("semantic", s_same)
+        self.assertNotIn("structural", s_same)
+        self.assertIn("semantic", s_split)
+        self.assertIn("structural", s_split)
+
+    def test_confidence_modulates_match(self):
+        """VALUE: anchor confidence reduces matched_idf."""
+        entity = {10}
+        query_anchors = [10]
+        query_weights = [1.0]
+        idf = {10: 2.0}
+        cats = {10: "semantic"}
+        # Full confidence
+        s_full = compute_lens_scores(entity, query_anchors, query_weights, idf, cats, {10: 1.0})
+        # Half confidence
+        s_half = compute_lens_scores(entity, query_anchors, query_weights, idf, cats, {10: 0.5})
+        self.assertAlmostEqual(s_full["semantic"], 1.0)
+        self.assertAlmostEqual(s_half["semantic"], 0.5)
+
+    def test_empty_query_returns_empty(self):
+        scores = compute_lens_scores({10}, [], [], {}, {})
+        self.assertEqual(scores, {})
+
+    def test_general_category_excluded(self):
+        """Anchors with category 'general' don't appear in any lens."""
+        entity = {10}
+        cats = {10: "general"}
+        idf = {10: 1.0}
+        scores = compute_lens_scores(entity, [10], [1.0], idf, cats)
+        self.assertEqual(scores, {})
+
+
+class TestComputeLensCoherence(unittest.TestCase):
+    """VALUE + BOUNDARY for compute_lens_coherence."""
+
+    def test_exact_single_lens_perfect(self):
+        """VALUE: single lens at 1.0, min_lenses=2 → discounted to 0.5."""
+        result = compute_lens_coherence({"semantic": 1.0}, min_lenses=2)
+        self.assertAlmostEqual(result, 0.5)  # 1.0 * (1/2)
+
+    def test_exact_two_lenses_perfect(self):
+        """VALUE: two lenses at 1.0, min_lenses=2 → full confidence."""
+        result = compute_lens_coherence({"semantic": 1.0, "structural": 1.0}, min_lenses=2)
+        self.assertAlmostEqual(result, 1.0)
+
+    def test_exact_geometric_mean(self):
+        """VALUE: geometric mean of two different scores."""
+        result = compute_lens_coherence({"semantic": 0.25, "structural": 1.0}, min_lenses=2)
+        expected = math.sqrt(0.25 * 1.0)  # = 0.5
+        self.assertAlmostEqual(result, expected)
+
+    def test_exact_three_lenses(self):
+        """VALUE: three lenses, no discount."""
+        result = compute_lens_coherence(
+            {"semantic": 0.8, "structural": 0.8, "lexical": 0.8}, min_lenses=2
+        )
+        expected = (0.8 * 0.8 * 0.8) ** (1.0 / 3)  # = 0.8
+        self.assertAlmostEqual(result, expected)
+
+    def test_empty_returns_zero(self):
+        """VALUE: empty lens_scores → 0."""
+        self.assertAlmostEqual(compute_lens_coherence({}), 0.0)
+
+    def test_all_zero_scores_returns_zero(self):
+        """VALUE: all zeros are excluded from populated set."""
+        result = compute_lens_coherence({"semantic": 0.0, "structural": 0.0})
+        self.assertAlmostEqual(result, 0.0)
+
+    def test_boundary_min_lenses_exact(self):
+        """BOUNDARY: at exactly min_lenses, no discount applied."""
+        result = compute_lens_coherence({"semantic": 1.0, "structural": 1.0}, min_lenses=2)
+        self.assertAlmostEqual(result, 1.0)  # no discount
+
+    def test_boundary_below_min_lenses(self):
+        """BOUNDARY: below min_lenses, discount is applied."""
+        result = compute_lens_coherence({"semantic": 1.0}, min_lenses=2)
+        self.assertAlmostEqual(result, 0.5)  # 1.0 * (1/2) = 0.5
+
+    def test_boundary_above_min_lenses(self):
+        """BOUNDARY: above min_lenses, no discount."""
+        result = compute_lens_coherence(
+            {"semantic": 1.0, "structural": 1.0, "lexical": 1.0}, min_lenses=2
+        )
+        self.assertAlmostEqual(result, 1.0)
+
+    def test_single_lens_discount_scales(self):
+        """BOUNDARY: discount scales with n/min_lenses ratio."""
+        r1 = compute_lens_coherence({"semantic": 1.0}, min_lenses=3)
+        r2 = compute_lens_coherence({"semantic": 1.0}, min_lenses=4)
+        self.assertAlmostEqual(r1, 1.0 / 3)
+        self.assertAlmostEqual(r2, 1.0 / 4)
+
+    def test_coherence_higher_when_more_lenses_agree(self):
+        """Multi-lens agreement > single-lens match."""
+        single = compute_lens_coherence({"semantic": 0.8}, min_lenses=2)
+        multi = compute_lens_coherence({"semantic": 0.8, "structural": 0.8}, min_lenses=2)
+        self.assertGreater(multi, single)
+
+
+class TestComputeObservabilityChannelCoverage(unittest.TestCase):
+    """Tests for channel-coverage observability with anchor_categories."""
+
+    def test_traced_full_coverage(self):
+        """Traced entity with all 5 expected channels covered."""
+        pos = {"structure": 1, "domain": -1, "depth": 1}
+        cats = {1: "semantic", 2: "structural", 3: "lexical", 4: "locality", 5: "proof"}
+        score = compute_observability_score(pos, {1, 2, 3, 4, 5}, "traced", cats)
+        self.assertGreater(score, 0.5)
+
+    def test_premise_only_missing_proof(self):
+        """Premise-only has 4 channels, no proof → lower than traced with 5."""
+        pos = {"structure": 1, "domain": -1}
+        cats = {1: "semantic", 2: "structural", 3: "lexical", 4: "locality"}
+        traced = compute_observability_score(
+            pos, {1, 2, 3, 4, 5}, "traced", {**cats, 5: "proof"}
+        )
+        premise = compute_observability_score(pos, {1, 2, 3, 4}, "premise_only", cats)
+        self.assertGreater(traced, premise)
+
+    def test_tactic_only_proof_channel(self):
+        """Tactic entity expects only proof channel."""
+        pos = {}
+        cats = {1: "proof"}
+        score = compute_observability_score(pos, {1}, "tactic", cats)
+        self.assertGreater(score, 0)
 
 
 if __name__ == "__main__":

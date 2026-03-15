@@ -4,7 +4,18 @@ import unittest
 from unittest.mock import patch
 
 from src.contracts import ProofExample, Tier2Block, Tier3Slot
-from src.lowering import lower_proof_to_lean, lower_to_theorem, roundtrip_validate
+from src.lowering import (
+    _lower_cases,
+    _lower_have,
+    _lower_induction,
+    _lower_intro,
+    _lower_rw,
+    _lower_simp,
+    _lower_tactic,
+    lower_proof_to_lean,
+    lower_to_theorem,
+    roundtrip_validate,
+)
 
 
 class TestLowerProofToLean(unittest.TestCase):
@@ -223,6 +234,115 @@ class TestRoundtripValidate(unittest.TestCase):
         ok, err = roundtrip_validate(ex)
         self.assertFalse(ok)
         self.assertIn("Lowering failed", err)
+
+
+class TestLowerInnerFunctionsValue(unittest.TestCase):
+    """Mutation-prescribed VALUE tests for inner _lower_* functions."""
+
+    def _block(self, tokens):
+        return Tier2Block(tactic_index=0, tactic_name="", tokens=tokens)
+
+    def test_lower_intro_with_names_exact(self):
+        self.assertEqual(_lower_intro(self._block(["h", "h2"]), {}, 0), "intro h h2")
+
+    def test_lower_intro_bare_exact(self):
+        self.assertEqual(_lower_intro(None, {}, 0), "intro")
+
+    def test_lower_cases_with_target_exact(self):
+        self.assertEqual(_lower_cases(self._block(["n"]), {}, 0), "cases n")
+
+    def test_lower_cases_bare_exact(self):
+        self.assertEqual(_lower_cases(None, {}, 0), "cases _")
+
+    def test_lower_induction_single_exact(self):
+        self.assertEqual(_lower_induction(self._block(["n"]), {}, 0), "induction n")
+
+    def test_lower_induction_with_names_exact(self):
+        self.assertEqual(
+            _lower_induction(self._block(["n", "ih"]), {}, 0), "induction n with ih"
+        )
+
+    def test_lower_induction_bare_exact(self):
+        self.assertEqual(_lower_induction(None, {}, 0), "induction _")
+
+    def test_lower_rw_with_lemma_exact(self):
+        self.assertEqual(_lower_rw(self._block(["add_comm"]), {}, 0), "rw [add_comm]")
+
+    def test_lower_rw_multi_exact(self):
+        self.assertEqual(
+            _lower_rw(self._block(["add_comm", "mul_one"]), {}, 0), "rw [add_comm, mul_one]"
+        )
+
+    def test_lower_rw_bare_exact(self):
+        self.assertEqual(_lower_rw(None, {}, 0), "rw []")
+
+    def test_lower_simp_with_lemma_exact(self):
+        self.assertEqual(_lower_simp(self._block(["map_id"]), {}, 0), "simp [map_id]")
+
+    def test_lower_simp_bare_exact(self):
+        self.assertEqual(_lower_simp(None, {}, 0), "simp")
+
+    def test_lower_have_with_type_exact(self):
+        term_map = {"have_5_type": "Nat"}
+        self.assertEqual(
+            _lower_have(self._block(["h"]), term_map, 5), "have h : Nat := by"
+        )
+
+    def test_lower_have_without_type_exact(self):
+        self.assertEqual(_lower_have(self._block(["h"]), {}, 0), "have h := by")
+
+    def test_lower_have_bare_exact(self):
+        self.assertEqual(_lower_have(None, {}, 0), "have h := by")
+
+
+class TestLowerTacticValue(unittest.TestCase):
+    """Mutation-prescribed VALUE + SWAP tests for _lower_tactic."""
+
+    def test_structural_returns_none(self):
+        self.assertIsNone(_lower_tactic("BOS", 0, {}, {}))
+        self.assertIsNone(_lower_tactic("EOS", 0, {}, {}))
+        self.assertIsNone(_lower_tactic("PAD", 0, {}, {}))
+
+    def test_nullary_returns_tactic_name(self):
+        self.assertEqual(_lower_tactic("ring", 0, {}, {}), "ring")
+        self.assertEqual(_lower_tactic("omega", 0, {}, {}), "omega")
+
+    def test_premise_tactic_with_block(self):
+        block = Tier2Block(tactic_index=1, tactic_name="apply", tokens=["Nat.succ_pos"])
+        result = _lower_tactic("apply", 1, {1: block}, {})
+        self.assertEqual(result, "apply Nat.succ_pos")
+
+    def test_premise_tactic_bare(self):
+        result = _lower_tactic("apply", 0, {}, {})
+        self.assertEqual(result, "apply _")
+
+    def test_unknown_tactic_passthrough(self):
+        result = _lower_tactic("my_custom", 0, {}, {})
+        self.assertEqual(result, "my_custom")
+
+    def test_swap_handler_vs_premise(self):
+        """SWAP: 'intro' uses handler, 'exact' uses premise path — different output."""
+        block = Tier2Block(tactic_index=0, tactic_name="", tokens=["h"])
+        intro_result = _lower_tactic("intro", 0, {0: block}, {})
+        exact_result = _lower_tactic("exact", 0, {0: block}, {})
+        self.assertEqual(intro_result, "intro h")
+        self.assertEqual(exact_result, "exact h")
+        self.assertNotEqual(intro_result, exact_result)
+
+
+class TestLowerInductionBoundary(unittest.TestCase):
+    """BOUNDARY: _lower_induction boundary at len(tokens) > 1."""
+
+    def _block(self, tokens):
+        return Tier2Block(tactic_index=0, tactic_name="", tokens=tokens)
+
+    def test_boundary_one_token_no_with(self):
+        result = _lower_induction(self._block(["n"]), {}, 0)
+        self.assertNotIn("with", result)
+
+    def test_boundary_two_tokens_has_with(self):
+        result = _lower_induction(self._block(["n", "ih"]), {}, 0)
+        self.assertIn("with", result)
 
 
 if __name__ == "__main__":
