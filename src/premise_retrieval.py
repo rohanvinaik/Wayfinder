@@ -525,15 +525,14 @@ def rerank_candidates(
     if not candidate_ids:
         return [], RetrievalTrace()
 
-    # Vectorized bank scores
-    bank_scores = _vectorized_bank_scores(candidate_ids, data.positions, query)
+    # Reranking strategy (configurable for ablations)
+    rerank_mode = cfg.get("rerank_mode", "hierarchical")
+
+    # Vectorized bank scores (needed for some modes)
+    bank_scores_arr = _vectorized_bank_scores(candidate_ids, data.positions, query)
 
     results: list[ScoredEntity] = []
     for i, eid in enumerate(candidate_ids):
-        b_score = float(bank_scores[i])
-        if b_score <= 0:
-            continue
-
         supports = all_candidates[eid]
 
         # Graph support: consensus * diversity * hub penalty
@@ -545,7 +544,8 @@ def rerank_candidates(
         if graph_support <= 0:
             continue
 
-        # Semantic refinement
+        # Semantic components (computed for all modes, used selectively)
+        b_score = float(bank_scores_arr[i])
         ea_set = data.anchor_sets.get(eid, set())
         entity_confs = data.anchor_confidences.get(eid)
 
@@ -573,8 +573,32 @@ def rerank_candidates(
             data.anchor_categories,
         )
 
-        semantic = b_score * obs * (1.0 + primary_coherence) * support_bonus
-        final = graph_support * (0.2 + 0.8 * semantic)
+        # --- Rerank modes (for ablation) ---
+        if rerank_mode == "consensus_only":
+            final = graph_support
+
+        elif rerank_mode == "consensus_obs":
+            final = graph_support * (0.5 + 0.5 * obs)
+
+        elif rerank_mode == "consensus_no_bank":
+            # Local semantic without bank_score
+            local_sem = obs * (1.0 + primary_coherence) * support_bonus
+            final = graph_support * (0.5 + 0.5 * local_sem)
+
+        elif rerank_mode == "consensus_full_semantic":
+            semantic = b_score * obs * (1.0 + primary_coherence) * support_bonus
+            final = graph_support * (0.2 + 0.8 * semantic)
+
+        else:  # "hierarchical" (default)
+            # Graph consensus is monotone-primary.
+            # Semantics refines only within consensus bands.
+            # bank_score excluded from stage 3 — it's a stage-1 signal.
+            local_tiebreak = obs * (1.0 + primary_coherence) * support_bonus
+            # Quantize graph_support into bands (0.01 resolution)
+            # so that semantics cannot invert consensus ordering
+            # across band boundaries.
+            band = round(graph_support, 2)
+            final = band + 0.009 * min(local_tiebreak, 1.0)
 
         if final > 0:
             results.append(ScoredEntity(
