@@ -14,15 +14,83 @@ We propose a novel approach to neural theorem proving that treats proof search a
 
 **Navigational claim.** A structured semantic network — where mathematical entities (lemmas, tactics, proof states) are positioned along orthogonal signed dimensions and connected through a shared anchor dictionary — enables premise selection and proof search via deterministic symbolic operations (IDF-weighted set intersection, Bellman-Ford spreading activation, multiplicative bank alignment) that are faster, more auditable, and more precise than dense embedding retrieval.
 
-**Architectural claim.** A hybrid continuous-ternary architecture — with a continuous goal encoder, a learned information bottleneck, and a ternary {-1, 0, +1} navigational decoder — produces *directional coordinates in proof space* rather than vocabulary indices. These coordinates resolve to concrete tactics and premises through the semantic network. The neural network runs once per proof state; all subsequent search operations are pure arithmetic on structured data.
+**Architectural claim.** A hybrid continuous-ternary architecture — with a continuous goal encoder, a learned information bottleneck, and a ternary {-1, 0, +1} navigational decoder — produces *directional coordinates in proof space* rather than vocabulary indices. In the current architecture those coordinates are best interpreted as theorem-level orchestration signals: lane routing, sketch-local family bias, and coarse premise frontier selection. Final local step choice is deferred to a small residual executor over post-structural goals, followed by a family-specific constrained decoder that emits typed action structure rather than raw Lean text. The neural network runs once per proof state; all subsequent search operations are pure arithmetic on structured data plus bounded local classification and constrained local synthesis over the collapsed frontier.
 
-**Decomposition claim (v2).** Specification complexity theory provides a formal criterion for decomposing a monolithic proof search system into a *Society of Mind* architecture — multiple specialist models operating in typed temporal slots (PERCEPTION → RECOGNITION → PLANNING → EXECUTION → VERIFICATION). The composition gap theorem (σ(A∘B) ≤ σ(A) + σ(B) + γ(A,B)) guarantees that when γ vanishes (independent specialists), total specification complexity is additive, not multiplicative. PAB stability per specialist serves as the empirical proxy for specification complexity, guiding decomposition until every component reaches the "stable" regime. Narrative construction converts hard proof structure prediction (Regime B, low symmetry, exponential σ) into tractable template classification (Regime A, high symmetry, polynomial σ).
+**Decomposition claim (v2).** Specification complexity theory provides a formal criterion for decomposing a monolithic proof search system into a *Society of Mind* architecture — multiple specialist models operating in typed temporal slots (PERCEPTION → RECOGNITION → PLANNING → TEMPORAL ORCHESTRATION → EXECUTION → VERIFICATION). The composition gap theorem (σ(A∘B) ≤ σ(A) + σ(B) + γ(A,B)) guarantees that when γ vanishes (independent specialists), total specification complexity is additive, not multiplicative. PAB stability per specialist serves as the empirical proxy for specification complexity, guiding decomposition until every component reaches the "stable" regime. Narrative construction converts hard proof structure prediction (Regime B, low symmetry, exponential σ) into tractable template classification (Regime A, high symmetry, polynomial σ).
 
 **Epistemological claim.** The architecture produces measurable learning trajectories, enabling Process-Aware Benchmarking (PAB) to evaluate *how* it learns to navigate, not just whether proofs close. Progress prediction — estimating remaining proof steps — connects PAB's trajectory analysis to actionable training signals and search heuristics.
 
 The system draws on three distinct intellectual traditions: (1) the navigational semantic network architecture of ModelAtlas (Vinaik, 2025), which positions ML models in a structured coordinate system for deterministic similarity queries; (2) the hybrid continuous-ternary decoder of Balanced Sashimi (Vinaik & Claude, 2026), which uses {-1, 0, +1} weights for categorical decisions; and (3) the formal convergence guarantees of Mutation Theory (formalized in Lean 4), which proves trajectory monotonicity, phase transitions, and fixed-point partitions applicable to structured search processes.
 
 The experimental target is Lean 4 proof generation over Mathlib, evaluated against ReProver (Lean-Dojo), LeanProgress, and DeepSeek-Prover-V2 baselines.
+
+### Practical Value Proposition
+
+Wayfinder's claim is not that a laptop-scale hybrid prover replaces frontier cluster-scale formalization systems. The claim is more targeted and, if true, more operationally useful:
+
+- **Make the routine majority cheap.** Use a small trainable model, structured semantic geometry, and exact Lean verification to discharge the easy and medium proof obligations that dominate real-world library maintenance, CI verification, and local proof search.
+- **Compress the hard residual.** For the theorems that are not solved outright, collapse the search space into a much smaller, better-conditioned frontier: constrained premise sets, lane attribution, failed branch evidence, residual anchor mass, and local proof-state structure.
+
+This matters because the unsolved tail is not left as "the entirety of math." It becomes a conditional problem over a narrowed region of proof space. A stronger model, ATP, or human then works from a structured partial solution state rather than raw theorem text. Even when the residual is still hard, its branching factor is often substantially reduced.
+
+The research bet is therefore twofold:
+
+1. a verifier-backed hybrid system can make a large fraction of theorem-proving workloads operationally cheap; and
+2. the remaining hard cases become easier in practice because Wayfinder has already collapsed and instrumented the relevant solution space.
+
+### Architectural Correction From Current Experiments
+
+Current Mathlib experiments force an important clarification in the theory:
+
+- The theorem-level semantic network is primarily a **temporal orchestration layer**, not a direct oracle for post-structural premise-step targets.
+- After structural normalization (`intro`, `intros`, basic constructors), proof search enters a **residual local-execution regime** with much lower specification complexity.
+- The right learned object in that regime is a **two-stage executor**:
+  1. predict a small tactic family over the normalized local goal (`rw`, `simp`, `exact`, `refine`, `apply`, `other`);
+  2. only for premise-sensitive families, ground the specific premise inside a constrained frontier.
+
+This correction is empirical, not cosmetic. Theorem-level residual retrieval on the v3 DB is near-zero for premise-step targets, while a tiny residual executor trained on post-structural goals already learns family structure from goal embeddings alone and improves further when given oracle premises. At epoch 15, oracle premises improve residual family prediction from `28.0%` to `32.2%` top-1 and from `73.8%` to `77.4%` top-3, with the largest gains on `rw` and `refine`. The theorem-level system therefore shapes the search space over time; the residual executor solves the local step inside that shaped space.
+
+### Temporal Orchestration Hypothesis
+
+Proof search is not memoryless. The relevant conditional object is not just `P(tactic_family | goal)` but:
+
+`P(next_goal, next_lane, next_family_band, next_escalation | proof_state, prior_progress)`
+
+This is the positive temporal signal missing from the earlier theorem-level framing. Once structural tactics succeed, the local action distribution changes sharply. After `intros`, the probability of `exact` or `rw` can rise while the value of further structural actions collapses. After several failed local attempts, automation or replanning may become the rational next move. The right place for this model is the **Arbiter**, not RECOGNITION:
+
+- **RECOGNITION** classifies the global narrative/template.
+- **PLANNING** emits the sketch / abstract subgoal structure.
+- **TEMPORAL ORCHESTRATION** tracks phase, subgoal priority, lane order, escalation, and replanning over time.
+- **EXECUTION** performs residual family prediction and family-conditioned premise grounding.
+
+The initial practical form is a finite-phase controller with four regimes:
+
+1. `structural_setup`
+2. `local_close`
+3. `automation_close`
+4. `repair_or_replan`
+
+This controller is theoretically modest but operationally important: it turns proof search from a static scheduler into a conditional process over prior progress and shrinking constraint sets.
+
+### Constrained Output Hypothesis
+
+The local execution problem is not "generate arbitrary Lean tactics." It is "predict a tactic family, then synthesize a small structured action from the local context." Current residual-tactic analysis shows:
+
+- `82%` of residual tactics are parsable into **family + structured arguments**
+- `rw`, `exact`, `apply`, and `refine` are effectively `100%` parsable under family-specific grammars
+- `simp` is mostly parsable as `simp`, `simp [lemmas]`, or `simpa ... using ...`
+- only `32%` of residual tactics are covered by the first simple template subset, which means the first template library is incomplete, not that the constrained-output approach is wrong
+
+The important number is therefore the parsability rate, not the current exact-template rate. The right local architecture is:
+
+1. predict a family over the normalized local goal;
+2. decode a typed action object from the local symbol table (hypotheses, accessible premises, holes, projections, and a small combinator vocabulary);
+3. lower that object deterministically to Lean;
+4. verify in the Lean kernel.
+
+This is the theorem-proving analogue of the Balanced Sashimi pattern: continuous encoder -> narrow bottleneck -> constrained structural decoder -> deterministic lowering -> exact verifier. The uncertainty is in selecting the right local structure, not in formatting Lean syntax.
+
+The practical implication is that the hard residual is still highly structured. `rw [← lemma h]`, `exact (hfg x hx).trans (le_abs_self _)`, and `refine foo ?_` are not arbitrary strings; they are small typed programs built from local ingredients under family-specific grammars. That is a better-conditioned learning problem than raw tactic text generation and fits the project's core value proposition: make the routine majority cheap and compress the hard tail into a constrained local search problem.
 
 ---
 
@@ -457,9 +525,9 @@ This is the computational content of Winston's Strong Story Hypothesis: stories 
 | **ShortcutForge** | Raw user macros | 6-phase deterministic linter, 31 templates | LALR(1) grammar + execution planner complexity tiers |
 | **Wayfinder** | Raw proof structure | Proof strategy templates (induction-then-simp, decompose-and-conquer, etc.) | Narrative constructor (NEW) |
 
-#### 2.9.6 Five Typed Temporal Slots
+#### 2.9.6 Six Typed Temporal Slots
 
-The Society of Mind architecture for proof search consists of five typed temporal slots, each operating at a different specification complexity:
+The Society of Mind architecture for proof search consists of six typed temporal slots, each operating at a different specification complexity:
 
 ```
 Slot 1: PERCEPTION (Symbolic Representation)
@@ -480,19 +548,25 @@ Slot 3: PLANNING (Narrative Construction)
   Relational-AI's 6-lens narrative pipeline.
   Implementation: Proof sketch generator, possibly story-writing LLM (NEW).
 
-Slot 4: EXECUTION (Bank-Specific Navigation)
+Slot 4: TEMPORAL ORCHESTRATION (Online Routing)
+  σ ≈ O(poly(n)) over compact state. Chooses next goal, lane order, escalation.
+  Encodes proof progress as a conditional process rather than a static scheduler.
+  ARC-style escalation / curriculum / constraint narrowing.
+  Implementation: TemporalController in the Arbiter (NEW).
+
+Slot 5: EXECUTION (Bank-Specific Navigation)
   σ varies by bank. Specialist models per bank cluster.
   PAB stability per specialist must reach "stable".
   This is the existing v1 Wayfinder pipeline, decomposed.
   Implementation: Bank-cluster specialists (v1 navigator → multiple specialists).
 
-Slot 5: VERIFICATION (Constraint Satisfaction)
+Slot 6: VERIFICATION (Constraint Satisfaction)
   σ ≈ O(1). Lean kernel is an exact verification oracle.
   Censor network learns negatives (what NOT to try).
   Implementation: Lane A/B/C verification (already implemented).
 ```
 
-**Key property:** Each slot has bounded specification complexity. The total system σ is additive across slots (composition gap γ ≈ 0 because slots communicate through typed interfaces, not shared weights). The monolithic NAV-001/002 navigator tried to learn all five functions simultaneously through a shared bridge — producing high γ and chaotic PAB dynamics.
+**Key property:** Each slot has bounded specification complexity. The total system σ is additive across slots (composition gap γ ≈ 0 because slots communicate through typed interfaces, not shared weights). The monolithic NAV-001/002 navigator tried to learn all six functions simultaneously through a shared bridge — producing high γ and chaotic PAB dynamics.
 
 #### 2.9.7 PAB as Decomposition Optimization Signal
 
@@ -529,9 +603,9 @@ In Wayfinder, PAB is extended with two domain-specific metrics:
 
 **Ternary-PAB synergy (from Balanced Sashimi).** Ternary weights force discrete commitment. A weight that crystallizes to +1 is *provably* committed to that direction. PAB can track crystallization directly: the fraction of weights whose ternary sign is stable across checkpoints. As crystallization increases, the decoder's navigational output stabilizes, and PAB can measure whether stable navigation correlates with better proof search performance.
 
-### 2.11 Orthogonal Ternary Projection, Constraint-Oriented Computation, and Energy-Based Refinement
+### 2.11 Orthogonal Ternary Projection, Constraint-Oriented Computation, Guidance-Layer Distillation, and Energy-Based Refinement
 
-*This section synthesizes three theoretical streams that ground Phase 7 (v3). §2.11a-b are mature theory informing v3A. §2.11c is speculative, informing v3B.*
+*This section synthesizes four theoretical streams that ground Phase 7 (v3). §2.11a-c are mature theory informing v3A and its Wave 1.5 guidance layer. §2.11d is speculative, informing v3B.*
 
 #### 2.11a Orthogonal Ternary Projection (OTP) [v3A — mature]
 
@@ -563,7 +637,29 @@ In Wayfinder, PAB is extended with two domain-specific metrics:
 
 The v3A Censor is the explicit realization of COEC — it specifies what the system CANNOT do (invalid tactics), and valid proof behavior emerges from the remaining feasible region. The asymmetric loss (MCA-motivated: missed suppressions penalized 2× vs false suppressions) reflects that constraint violations carry more information than satisfactions.
 
-#### 2.11c Energy-Based Refinement (EBM) [v3B — speculative, gated on v3A]
+#### 2.11c Guidance-Layer Distillation [v3A / Wave 1.5 — committed]
+
+**Source**: Internal convergence of Wayfinder, LintGate, and the data geometry / Society-of-Mind program.
+
+**Core claim**: Deterministic navigation should collapse the global proof search space before learned specialists spend capacity on local ambiguity. The correct training target for small models is not "solve theorem proving end-to-end" but "resolve uncertainty inside a bounded, auditable frontier."
+
+**Application to Wayfinder**:
+- **Deterministic collapse first**: Multi-pass landmark selection, freeze/residual analysis, typed graph expansion, and consensus reranking reduce a 242K-entity retrieval universe to a compact frontier plus provenance-rich diagnostics.
+- **Typed guidance second**: Small orthogonal specialists operate on a `GuidancePacket` containing the collapsed frontier, residual anchor mass, conflict clusters, phase signal, and negative evidence. Each specialist emits **support (+1)**, **oppose (-1)**, or **abstain (0)** over the remaining candidates.
+- **Informational Zero preserved**: Abstention is not "no output." It is evidence that the lens is orthogonal to the current ambiguity. Agreement across specialists is pseudo-label confidence; disagreement is a high-value active-learning signal.
+- **Modulation by default**: The guidance layer modulates ranking inside the collapsed frontier. It does not replace deterministic retrieval unless an explicit ablation enables replacement mode.
+
+**Learning-theoretic framing**: Deterministic retrieval transforms the task from global theorem proving to conditional local resolution: learn `H(candidate | collapsed_frontier, residual_state)` instead of `H(proof | theorem)`. This lowers the effective teaching dimension and turns exact-oracle feedback into dense supervision for specialist distillation.
+
+**Distillation thesis**: The symbolic committee, freeze/residual diagnostics, and verifier outcomes together define a teacher. Candidate-grounded rule lenses provide initial structure; learned specialists can then distill:
+- support / oppose / abstain decisions,
+- conflict-branch preferences,
+- residual-category reductions,
+- and disagreement cases for active learning.
+
+**Maturity gate**: Guidance is part of committed v3A once it is non-destructive under modulation, improves ambiguous-tail or zero-recall behavior, or yields useful distillation targets. Replacement mode remains ablation-only unless it beats modulation and deterministic retrieval on paired evaluation.
+
+#### 2.11d Energy-Based Refinement (EBM) [v3B — speculative, gated on v3A]
 
 **Source**: Logical Intelligence/Kona (2026), energy-based models for constraint satisfaction.
 
@@ -579,13 +675,79 @@ The v3A Censor is the explicit realization of COEC — it specifies what the sys
 
 **Convergence with external programs**: AMI Labs (LeCun, 2026) validates structured representations + constrained prediction + planning over autoregressive generation. Logical Intelligence validates energy-based constraint satisfaction over sequential search. Both confirm the same architectural bet Wayfinder makes — but Wayfinder integrates these ideas in a domain (theorem proving) with an exact verification oracle, making empirical validation possible.
 
+### 2.12 Temporal Orchestration: The Arbiter as Learned Controller
+
+**Empirical motivation (2026-03-16):** EXP-3.2 showed learned lane = 0/50 on Mathlib. EXP-3.2d showed all 12 proved theorems succeed at escalation level 0 in `structural_setup` phase. The 38 failures burn through all phases without the learned executor producing useful output. This confirms:
+- The theorem-level system (RECOGNITION + PLANNING) correctly identifies proof structure
+- The temporal controller correctly tracks phase transitions and diagnoses stagnation
+- The bottleneck is the EXECUTION slot's local tactic prior, not orchestration
+
+**Architecture:** The Arbiter is not a static scheduler. It is a stateful temporal controller that predicts:
+- `next_goal_id`: which subgoal to attempt (goal complexity curriculum)
+- `phase`: structural_setup / local_close / automation_close / repair_or_replan
+- `lane_order`: priority ordering of search lanes (structural, learned, automation)
+- `escalation_level`: solver sophistication schedule
+- `replan`: whether to abandon current template
+
+The controller conditions on `TemporalState` — full proof search history including prior lanes, prior families, successful/failed tactics, and per-goal attempt counts. This is the Robot Chef / HTN insight: proof search has temporal dependencies and phase transitions that should be learned, not hardcoded.
+
+**Relationship to SoM slots:**
+- RECOGNITION: theorem-level, mostly static ("what kind of proof is this?")
+- TEMPORAL CONTROLLER (Arbiter): online, stateful ("given what already happened, what should happen next?")
+- EXECUTION: local, residual ("which tactic family on this post-structural goal?")
+
+These are three separate problems with different input/output contracts and training targets.
+
+**Residual executor (EXECUTION detail):** A 6-class tactic family classifier (rw/simp/exact/refine/apply/other) trained on 245K post-structural residual examples. Top-1=31.9%, top-3=75.0% from goal embeddings alone. Adding oracle premises improves to 32.2% (+4.2pp), with rw benefiting most (+16pp recall). The 2-stage decomposition (family → premise selection) is confirmed as the right architecture.
+
+### 2.13 Constrained Structured Decoding: The GSE Correspondence
+
+**Source:** Vinaik (2025-2026), Geometric Semantic Encoding project. The sentence_architecture.md document formalizes multi-scale decomposition of natural language into typed primitives with deterministic composition.
+
+**Core claim:** If GSE can decompose the unbounded, ambiguous, context-dependent space of natural English into a fixed set of typed primitives (72 across 8 banks) with deterministic composition rules and grammar-constrained state transitions — then Lean 4 tactic language, which is already formal, already typed, and has an exact verification oracle, should be dramatically easier to decompose structurally.
+
+**The asymmetry that makes this work:**
+
+| Dimension | GSE (English) | Wayfinder (Lean tactics) |
+|-----------|--------------|--------------------------|
+| Vocabulary | ~18K words → 72 primitives | ~242K premises → 6 families + local context |
+| Ambiguity | Massive (bank/run/set...) | Zero (each name resolves uniquely in scope) |
+| Grammar | Statistical tendency | Formal grammar with exact verifier |
+| Composition | Unbounded, creative | Constrained by Lean's type system |
+| Verification | None ("no English compiler") | Exact oracle (Lean kernel) |
+| Informational Zero | Must be learned from data | Designed into the type system |
+
+**The GSE architectural transfer:**
+
+1. **Fixed primitive vocabulary → Tactic families.** GSE decomposes words into 72 primitives across 8 banks. Wayfinder decomposes tactics into 6 families (rw/simp/exact/apply/refine/other) covering 74% of residual steps. The family IS the primitive.
+
+2. **Typed operators → ActionIR.** GSE uses SIGN/HIERARCHY/AUXILIARY operators with binding rules. Wayfinder uses a typed intermediate representation (ActionIR) with family-specific grammars: `RewriteAtom` for rw (direction + expression), `TermExpr` for exact/apply/refine (application, projection, holes), `simp_lemmas` for simp.
+
+3. **Grammar-constrained composition → Hard type constraints.** GSE's grammatical role transitions collapse the combinatorial space from N^k to manageable subsets. Wayfinder's type system does the same: rw arguments must be equalities, apply targets must unify with the goal head, refine holes are bounded by the skeleton. These are hard constraints, not learned filters.
+
+4. **Two-stage decoding (GSE's core insight).** GSE decomposes "not very good" by first resolving the structural operation (SIGN → HIERARCHY), then instantiating the atomic (GOOD). Wayfinder's ActionIR decoder follows the same pattern: first predict the shape (number of rewrites, direction flags, term skeleton), then fill the leaves from the local vocabulary.
+
+5. **Dynamic local vocabulary.** GSE's sentence parser builds a role-assignment network from the instantiated dimensions in the lexicon. Wayfinder's decoder builds a local symbol table per goal: hypotheses + accessible premises + combinators. The decoder is a pointer model over this table, not a free-form generator.
+
+6. **Informational Zero → Syntax transparency.** In GSE, "ran" and "run" have identical word-scale vectors — tense is transparent at the semantic level. In Lean, `apply foo` and `apply (foo)` are semantically identical — parentheses are transparent at the proof level. The ActionIR captures semantics; deterministic lowering handles syntax.
+
+**Empirical validation (2026-03-16):**
+- 100% of residual tactics with arguments parse into ActionIR
+- 70% round-trip exactly (IR → lower → identical Lean string)
+- 82% of the output space is structurally parsable into the IR grammar
+- The 30% round-trip gap is formatting differences, not semantic failures
+
+**Implication for the decoder architecture:** The ActionIR decoder should be family-specific, IR-targeted, dynamic-vocabulary, hard-constrained, and verifier-backed. It should NOT be a general text generator. The rw decoder should be built first (simplest grammar, highest premise sensitivity), followed by a shared exact/apply/refine term decoder, then simp.
+
+**Relationship to Balanced Sashimi:** This is the "constrained structural decoder" layer of the Balanced Sashimi pattern. The continuous encoder (goal embedding) feeds through the narrow bridge (family classifier) to the constrained decoder (ActionIR emission over typed local vocabulary), verified by the deterministic compiler (Lean kernel). The GSE correspondence confirms this is not an ad-hoc decomposition but an instance of a general principle: structured symbolic output from neural classification, with grammar-constrained composition and exact verification.
+
 ---
 
 ## 3. Architecture Specification
 
 ### 3.1 System Overview
 
-**Wayfinder v2 (Society of Mind)** decomposes the monolithic v1 pipeline into five typed temporal slots, each with bounded specification complexity. The v1 architecture becomes the EXECUTION slot.
+**Wayfinder v2 (Society of Mind)** decomposes the monolithic v1 pipeline into six typed temporal slots, each with bounded specification complexity. The old v1 navigator becomes the **theorem-level execution-guidance component** inside EXECUTION, not the entire local execution mechanism.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -618,8 +780,8 @@ The v3A Censor is the explicit realization of COEC — it specifies what the sys
 │  └──────────────────────────┬──────────────────────────────┘        │
 │                              │ (per subgoal in sketch)               │
 │  ┌──────────────────────────▼──────────────────────────────┐        │
-│  │  SLOT 4: EXECUTION          σ varies by bank cluster     │        │
-│  │  Bank-Cluster Specialists (decomposed v1 navigator)      │        │
+│  │  SLOT 4: EXECUTION / LOCAL RESOLUTION  σ varies by stage │        │
+│  │  Theorem-Level Guidance + Residual Executor              │        │
 │  │  ┌─────────────────────┐  ┌───────────────────────┐     │        │
 │  │  │ Specialist A        │  │ Specialist B           │     │        │
 │  │  │ (DOMAIN, CONTEXT)   │  │ (STRUCTURE, AUTOMATION │     │        │
@@ -628,8 +790,9 @@ The v3A Censor is the explicit realization of COEC — it specifies what the sys
 │  │  └─────────┬───────────┘  └──────────┬────────────┘     │        │
 │  │            └──────────┬──────────────┘                   │        │
 │  │                       ▼                                  │        │
-│  │  Structured Resolution (navigate + spread, deterministic)│        │
-│  │  Output: ranked (tactic, premise_list) pairs             │        │
+│  │  Structural normalization → residual family prediction   │        │
+│  │  → family-conditioned premise grounding                  │        │
+│  │  Output: bounded action frontier, not raw theorem search │        │
 │  └──────────────────────────┬──────────────────────────────┘        │
 │                              │                                       │
 │  ┌──────────────────────────▼──────────────────────────────┐        │
@@ -646,7 +809,7 @@ The v3A Censor is the explicit realization of COEC — it specifies what the sys
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
-**v1 architecture (EXECUTION slot detail):**
+**v1 architecture (theorem-level execution-guidance detail):**
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
@@ -882,43 +1045,47 @@ CREATE TABLE anchor_idf (
 4. Walk import graph → dependency links
 5. Compute IDF from anchor frequencies
 
-### 3.8 Structured Resolution
+### 3.8 Structured Resolution and Residual Execution
 
-The resolution layer converts the Proof Navigator's output into concrete tactics and premises. **No neural inference** — pure symbolic operations:
+The current experiments show that theorem-level anchors are the wrong granularity for direct post-structural premise-step retrieval. The resolution layer should therefore be read as a **two-level system**:
+
+1. **Theorem-level guidance** collapses proof space into a lane choice, family bias, and coarse premise frontier.
+2. **Residual execution** operates on the normalized local goal and predicts a small tactic family, optionally conditioned on candidate premises.
 
 ```python
-def resolve(nav_output, proof_network, current_context):
-    """Convert navigational coordinates to tactic + premises."""
+def resolve_execution(exec_guidance, proof_network, current_context):
+    """Convert theorem-level guidance into bounded local action choices."""
 
-    # Build structured query from ternary directions + anchor logits
-    query = StructuredQuery(
-        structure=nav_output.structure_direction,
-        automation=nav_output.automation_direction,
-        decomposition=nav_output.decompose_direction,
-        prefer_anchors=top_k_anchors(nav_output.anchor_logits, k=8),
+    # Stage 1: theorem-level orchestration
+    frontier_query = StructuredQuery(
+        structure=exec_guidance.structure_direction,
+        automation=exec_guidance.automation_direction,
+        decomposition=exec_guidance.decompose_direction,
+        prefer_anchors=top_k_anchors(exec_guidance.anchor_logits, k=8),
         avoid_anchors=current_context.recently_failed,
     )
+    premise_frontier = navigate(proof_network.lemma_table, frontier_query, limit=16)
+    tactic_frontier = navigate(proof_network.tactic_table, frontier_query, limit=5)
 
-    # Navigate tactic space
-    tactic_candidates = navigate(proof_network.tactic_table, query, limit=5)
+    # Stage 2: local residual execution
+    residual_goal = normalize_structurally(current_context.goal_state)
+    family_scores = residual_executor.predict(residual_goal)
+    family_topk = top_k_families(family_scores, k=3)
 
-    # Navigate premise space
-    premise_candidates = navigate(proof_network.lemma_table, query, limit=16)
+    # Stage 3: family-conditioned premise grounding
+    if any(f in PREMISE_SENSITIVE_FAMILIES for f in family_topk):
+        family_scores = residual_executor.predict(
+            residual_goal,
+            premise_context=premise_frontier,
+        )
+        grounded = select_family_conditioned_premises(family_topk, premise_frontier)
+    else:
+        grounded = []
 
-    # Spreading activation from current proof context
-    context_activation = spread(
-        proof_network,
-        seeds=current_context.used_lemmas + current_context.open_goals,
-        banks=["DOMAIN", "STRUCTURE"],
-        max_depth=3,
-    )
-
-    # Combine: navigate score × spreading activation
-    for p in premise_candidates:
-        p.score *= context_activation.get(p.entity_id, 0.1)
-
-    return tactic_candidates, sorted(premise_candidates, key=lambda p: p.score, reverse=True)
+    return build_action_candidates(family_topk, tactic_frontier, grounded)
 ```
+
+This is still faithful to the original navigational claim: deterministic geometry does the expensive collapse. The correction is that the last mile is not a theorem-level retrieval query. It is a bounded local classifier over the residual goal, with premise grounding only where the family prediction says it matters.
 
 ### 3.9 Deterministic Lowering
 
@@ -936,6 +1103,77 @@ def lower_step(tactic, premises, context):
 ```
 
 This is the existing `lowering.py` module, adapted to accept navigational resolution output instead of tier tokens.
+
+### 3.9b Source-Context Compilation
+
+The deterministic compiler has a second job that the original theorem-level framing underweighted:
+it must compile **source context**, not just tactic syntax.
+
+Lean theorem source is a scoped DSL. The executable meaning of a later theorem depends on prior
+lexical context such as:
+
+- `open` / `open scoped`
+- section-local `variable` / `universe` declarations
+- `local notation` and scoped notation
+- `attribute [local instance]` / `attribute [local simp]`
+- `include` / `omit`
+- inline next-declaration forms such as `open Classical in`
+
+Therefore the deterministic path is:
+
+1. compile theorem-site source context into a small `ContextIR`
+2. construct a theorem-faithful start state in that compiled context
+3. compile family-specific `ActionIR` into Lean syntax relative to that context
+4. verify in Lean
+
+This matters because the remaining local-execution failures are no longer dominated by theorem
+type reconstruction. They are dominated by mismatches between the source proof's scoped notation /
+local environment and the replay environment. In other words: the gap is a **compiler gap**, not
+just a retrieval gap.
+
+This is tightly aligned with the GSE / Balanced Sashimi framing: mathematical notation is the
+surface form, but execution happens over a narrower structured answer space. Wayfinder's bridge
+layer therefore has two deterministic compilers:
+
+- **source-context compiler**: source theorem file → executable local environment
+- **action compiler**: structured local choice → executable Lean tactic
+
+The implication for the research program is important: harder proof architectures are not reached
+by scaling a decoder alone. They are reached by shrinking the semantic gap between theorem source,
+intermediate proof states, and executable local tactics.
+
+**Motivated-move refinement (2026-03-18):** there is now a third, explicitly planner-facing layer
+above the execution compiler:
+
+- **source-context compiler**: theorem source -> executable local environment
+- **action compiler**: structured local choice -> executable Lean tactic
+- **motivated move layer**: `(goal_state, action)` -> `(TriggerProfileIR, SubtaskIR)`
+
+This third layer is the closest Wayfinder analogue to the Human-Oriented ATP / motivated-proof
+program. The point is not to reproduce their framework wholesale; it is to absorb the useful
+constraint that local proof steps should be represented not only as valid actions, but also as:
+- moves with explicit **triggers**
+- moves with explicit **local objectives**
+- moves whose successful instances can be mined into reusable **schemas**
+
+That is now implemented in:
+- `src/subtask_ir.py`
+- `scripts/build_subtask_training_data.py`
+- `scripts/validate_subtask_ir.py`
+- `scripts/mine_move_schemas.py`
+
+The theoretical implication is important. Once a family has collapsed to cheap scoped execution
+(as the rewrite family now has), the remaining hard problem is no longer "generate a tactic
+string." It is "choose the right local transformation type, under the right trigger conditions."
+`SubtaskIR` is the contract for that residual planning problem.
+
+**Empirical update (2026-03-17):** this compiler framing should now be read narrowly. `ContextIR`
+is still necessary for replay coverage and future families, but it is no longer the reason to
+delay rewrite-lane deployment. On the current split, `rw0` is already solved operationally by
+cosine top-k, `rw1` behaves the same under tier-conditioned default direction, and step>0 replayed
+states support the same scoped-cosine execution regime once replay succeeds. The learned frontier
+therefore shifts above rewrite-family local execution to the problems cheap geometry still does
+not solve: mixed-family orchestration, controller-visible move selection, and shortlist reranking.
 
 ### 3.10 Lean Kernel Interaction
 

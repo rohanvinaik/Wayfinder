@@ -2,15 +2,24 @@
 
 import unittest
 
-from src.lean_interface import LeanConfig, LeanKernel, _build_hammer_tactics
-from src.nav_contracts import TacticResult
+from src.lean_interface import (
+    LeanConfig,
+    LeanKernel,
+    ReplayResult,
+    ServerCrashError,
+    _build_hammer_tactics,
+    _classify_tactic_failure,
+    extract_file_header,
+    resolve_lean_path,
+)
+from src.nav_contracts import LeanFeedback, TacticResult
 
 
 class TestLeanConfig(unittest.TestCase):
     def test_defaults(self):
         cfg = LeanConfig()
         self.assertEqual(cfg.backend, "stub")
-        self.assertEqual(cfg.timeout, 30)
+        self.assertEqual(cfg.timeout, 120)
         self.assertEqual(cfg.hammer_timeout, 60)
         self.assertEqual(cfg.project_root, "")
 
@@ -30,6 +39,18 @@ class TestLeanKernelInit(unittest.TestCase):
         cfg = LeanConfig(backend="pantograph")
         kernel = LeanKernel(config=cfg)
         self.assertEqual(kernel._backend, "pantograph")
+
+    def test_close_terminates_server(self):
+        from unittest.mock import MagicMock
+
+        kernel = LeanKernel(config=LeanConfig(backend="pantograph"))
+        server = MagicMock()
+        kernel._server = server
+
+        kernel.close()
+
+        server._close.assert_called_once()
+        self.assertIsNone(kernel._server)
 
 
 class TestTryTactic(unittest.TestCase):
@@ -276,6 +297,340 @@ class TestPantographBackend(unittest.TestCase):
     def test_gc_does_not_crash(self):
         self.kernel.goal_start("True")
         self.kernel.gc()
+
+
+class TestCrashRestart(unittest.TestCase):
+    """Test crash detection and server restart."""
+
+    def test_is_crash_error_broken_pipe(self):
+        kernel = LeanKernel()
+        self.assertTrue(kernel._is_crash_error(BrokenPipeError("pipe")))
+
+    def test_is_crash_error_connection_reset(self):
+        kernel = LeanKernel()
+        self.assertTrue(kernel._is_crash_error(ConnectionResetError("reset")))
+
+    def test_is_crash_error_process_lookup(self):
+        kernel = LeanKernel()
+        self.assertTrue(kernel._is_crash_error(ProcessLookupError("no proc")))
+
+    def test_is_crash_error_message_match(self):
+        kernel = LeanKernel()
+        self.assertTrue(kernel._is_crash_error(Exception("Connection lost to server")))
+        self.assertTrue(kernel._is_crash_error(Exception("broken pipe detected")))
+
+    def test_is_crash_error_false_for_regular(self):
+        kernel = LeanKernel()
+        self.assertFalse(kernel._is_crash_error(ValueError("bad value")))
+        self.assertFalse(kernel._is_crash_error(TypeError("wrong type")))
+
+    def test_restart_server_clears_state(self):
+        """_restart_server clears caches (stub backend, no real server)."""
+        kernel = LeanKernel()
+        # Populate caches with dummy data
+        kernel._goal_states[("", "goal1")] = "state1"
+        kernel._tactic_cache[("", "goal1", "tac", 0)] = None
+        kernel._restart_server()
+        self.assertEqual(len(kernel._goal_states), 0)
+        self.assertEqual(len(kernel._tactic_cache), 0)
+
+    def test_pantograph_try_tactic_raises_on_crash(self):
+        """_pantograph_try_tactic raises ServerCrashError on broken pipe."""
+        from unittest.mock import MagicMock, patch
+
+        # Create a real exception class for TacticFailure
+        class MockTacticFailure(Exception):
+            pass
+
+        mock_panto_server = MagicMock()
+        mock_panto_server.TacticFailure = MockTacticFailure
+
+        cfg = LeanConfig(backend="pantograph")
+        kernel = LeanKernel(config=cfg)
+
+        mock_server = MagicMock()
+        kernel._server = mock_server
+        mock_state = MagicMock()
+        kernel._goal_states[("", "⊢ P")] = mock_state
+        mock_server.goal_tactic.side_effect = BrokenPipeError("pipe closed")
+
+        with patch.dict('sys.modules', {
+            'pantograph': MagicMock(),
+            'pantograph.server': mock_panto_server,
+        }):
+            with self.assertRaises(ServerCrashError):
+                kernel._pantograph_try_tactic("⊢ P", "rfl")
+
+    def test_get_or_create_goal_raises_on_crash(self):
+        """_get_or_create_goal raises ServerCrashError on broken pipe."""
+        cfg = LeanConfig(backend="pantograph")
+        kernel = LeanKernel(config=cfg)
+
+        # Mock server that crashes on goal_start
+        from unittest.mock import MagicMock
+        mock_server = MagicMock()
+        mock_server.goal_start.side_effect = BrokenPipeError("pipe closed")
+        kernel._server = mock_server
+
+        with self.assertRaises(ServerCrashError):
+            kernel._get_or_create_goal("⊢ P")
+
+
+class TestReplayResult(unittest.TestCase):
+    """Test ReplayResult dataclass."""
+
+    def test_construction(self):
+        r = ReplayResult(
+            success=True, goal_state="⊢ True", goal_state_obj=None,
+            tier_used="A", failure_category="", failing_prefix_idx=-1,
+            crash_retries=0, env_key="file:thm:abc",
+        )
+        self.assertTrue(r.success)
+        self.assertEqual(r.tier_used, "A")
+        self.assertEqual(r.env_key, "file:thm:abc")
+
+    def test_failure_construction(self):
+        r = ReplayResult(
+            success=False, goal_state="", goal_state_obj=None,
+            tier_used="B", failure_category="file_not_found",
+            failing_prefix_idx=-1, crash_retries=1, env_key="",
+        )
+        self.assertFalse(r.success)
+        self.assertEqual(r.failure_category, "file_not_found")
+        self.assertEqual(r.crash_retries, 1)
+
+    def test_feedback_construction(self):
+        r = ReplayResult(
+            success=False, goal_state="", goal_state_obj=None,
+            tier_used="B", failure_category="goal_creation_fail",
+            failing_prefix_idx=-1, crash_retries=0, env_key="env",
+            feedback=LeanFeedback(
+                stage="goal_creation",
+                category="goal_creation_fail",
+                messages=[{"data": "Cannot start goal"}],
+                raw_error="Cannot start goal",
+            ),
+        )
+        self.assertIsNotNone(r.feedback)
+        assert r.feedback is not None
+        self.assertEqual(r.feedback.stage, "goal_creation")
+
+
+class TestEnvironmentCaching(unittest.TestCase):
+    """Test environment-keyed caching."""
+
+    def test_different_env_keys_independent(self):
+        """Same goal text with different env_keys → independent cache entries."""
+        kernel = LeanKernel()
+        # Simulate two different environments with same goal
+        kernel._goal_states[("env1", "⊢ P")] = "state_env1"
+        kernel._goal_states[("env2", "⊢ P")] = "state_env2"
+        self.assertEqual(kernel._goal_states[("env1", "⊢ P")], "state_env1")
+        self.assertEqual(kernel._goal_states[("env2", "⊢ P")], "state_env2")
+
+    def test_default_env_key_empty(self):
+        """Default env_key is empty string for backward compatibility."""
+        kernel = LeanKernel()
+        self.assertEqual(kernel._current_env_key, "")
+
+    def test_tactic_cache_env_keyed(self):
+        """Tactic cache uses 3-tuple (env_key, goal, tactic)."""
+        kernel = LeanKernel()
+        from src.nav_contracts import TacticResult
+        r = TacticResult(success=True, tactic="rfl", premises=[], new_goals=[])
+        kernel._tactic_cache[("env1", "⊢ P", "rfl", 0)] = r
+        kernel._tactic_cache[("env2", "⊢ P", "rfl", 0)] = TacticResult(
+            success=False, tactic="rfl", premises=[], new_goals=[], error_message="fail"
+        )
+        self.assertTrue(kernel._tactic_cache[("env1", "⊢ P", "rfl", 0)].success)
+        self.assertFalse(kernel._tactic_cache[("env2", "⊢ P", "rfl", 0)].success)
+
+    def test_prepare_for_new_example_prefers_gc(self):
+        from unittest.mock import MagicMock
+
+        kernel = LeanKernel()
+        kernel._server_contaminated = True
+        kernel.gc = MagicMock()
+        kernel._restart_server = MagicMock()
+
+        kernel._prepare_for_new_example()
+
+        kernel.gc.assert_called_once()
+        kernel._restart_server.assert_not_called()
+        self.assertFalse(kernel._server_contaminated)
+
+    def test_prepare_for_new_example_periodic_restart(self):
+        from unittest.mock import MagicMock
+
+        kernel = LeanKernel()
+        kernel._server_contaminated = True
+        kernel._load_sorry_reset_count = 63
+        kernel.gc = MagicMock()
+        kernel._restart_server = MagicMock()
+
+        kernel._prepare_for_new_example()
+
+        kernel.gc.assert_called_once()
+        kernel._restart_server.assert_called_once()
+
+
+class TestFileHelpers(unittest.TestCase):
+    """Test resolve_lean_path and extract_file_header."""
+
+    def test_resolve_lean_path(self):
+        result = resolve_lean_path(
+            "Mathlib/Analysis/Foo.lean", "/project"
+        )
+        self.assertEqual(result, "/project/.lake/packages/mathlib/Mathlib/Analysis/Foo.lean")
+
+    def test_extract_file_header(self):
+        import os
+        import tempfile
+        content = (
+            "import Mathlib.Data.Nat\nopen Nat\nvariable (n : Nat)\n"
+            "namespace Foo\n\ntheorem bar : True := trivial\n"
+        )
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.lean', delete=False) as f:
+            f.write(content)
+            path = f.name
+        try:
+            header = extract_file_header(path, 6)  # theorem is on line 6
+            self.assertIn("open Nat", header)
+            self.assertIn("variable (n : Nat)", header)
+            self.assertIn("namespace Foo", header)
+            self.assertNotIn("import", header)
+        finally:
+            os.unlink(path)
+
+    def test_extract_file_header_empty(self):
+        import os
+        import tempfile
+        content = "theorem bar : True := trivial\n"
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.lean', delete=False) as f:
+            f.write(content)
+            path = f.name
+        try:
+            header = extract_file_header(path, 1)
+            self.assertEqual(header, "")
+        finally:
+            os.unlink(path)
+
+
+class TestLeanFeedback(unittest.TestCase):
+    def test_success_factory(self):
+        fb = LeanFeedback.success()
+        self.assertEqual(fb.category, "none")
+        self.assertEqual(fb.stage, "tactic_exec")
+        self.assertEqual(fb.messages, [])
+        self.assertEqual(fb.raw_error, "")
+
+    def test_to_dict(self):
+        fb = LeanFeedback(stage="tactic_parse", category="parse_error",
+                          messages=[{"data": "unexpected token"}], raw_error="err")
+        d = fb.to_dict()
+        self.assertEqual(d["stage"], "tactic_parse")
+        self.assertEqual(d["category"], "parse_error")
+        self.assertEqual(d["messages"][0]["data"], "unexpected token")
+
+
+class TestClassifyTacticFailure(unittest.TestCase):
+    def _make_exc(self, *args: object) -> Exception:
+        exc = Exception(*args)
+        return exc
+
+    def test_parse_error_dict(self):
+        exc = self._make_exc({"parseError": "unexpected token ';'"})
+        fb = _classify_tactic_failure(exc)
+        self.assertEqual(fb.category, "parse_error")
+        self.assertEqual(fb.stage, "tactic_parse")
+
+    def test_generated_sorry(self):
+        exc = self._make_exc("Tactic generated sorry", [])
+        fb = _classify_tactic_failure(exc)
+        self.assertEqual(fb.category, "generated_sorry")
+
+    def test_generated_unsafe(self):
+        exc = self._make_exc("Tactic generated unsafe", [])
+        fb = _classify_tactic_failure(exc)
+        self.assertEqual(fb.category, "generated_unsafe")
+
+    def test_generic_string_exception_is_other(self):
+        exc = self._make_exc("some generic exception")
+        fb = _classify_tactic_failure(exc)
+        self.assertEqual(fb.category, "other")
+
+    def test_unknown_identifier_from_messages(self):
+        class FakeMsg:
+            severity = "error"
+            kind = None
+            data = "unknown identifier 'Nat.foo'"
+            pos = "1:0"
+        exc = self._make_exc([FakeMsg()])
+        fb = _classify_tactic_failure(exc)
+        self.assertEqual(fb.category, "unknown_identifier")
+        self.assertEqual(fb.stage, "tactic_exec")
+
+    def test_type_mismatch_from_messages(self):
+        class FakeMsg:
+            severity = "error"
+            kind = None
+            data = "type mismatch: expected Nat, got Int"
+            pos = "1:0"
+        exc = self._make_exc([FakeMsg()])
+        fb = _classify_tactic_failure(exc)
+        self.assertEqual(fb.category, "unification_mismatch")
+
+    def test_could_not_unify_from_messages(self):
+        class FakeMsg:
+            severity = "error"
+            kind = None
+            data = "could not unify the conclusion with the goal"
+            pos = "1:0"
+        exc = self._make_exc([FakeMsg()])
+        fb = _classify_tactic_failure(exc)
+        self.assertEqual(fb.category, "unification_mismatch")
+
+    def test_typeclass_missing(self):
+        class FakeMsg:
+            severity = "error"
+            kind = None
+            data = "failed to synthesize instance Ring Nat"
+            pos = "1:0"
+        exc = self._make_exc([FakeMsg()])
+        fb = _classify_tactic_failure(exc)
+        self.assertEqual(fb.category, "typeclass_missing")
+
+    def test_other_message(self):
+        class FakeMsg:
+            severity = "error"
+            kind = None
+            data = "some unrecognised error"
+            pos = "1:0"
+        exc = self._make_exc([FakeMsg()])
+        fb = _classify_tactic_failure(exc)
+        self.assertEqual(fb.category, "other")
+
+    def test_tactic_result_carries_feedback(self):
+        r = TacticResult(
+            success=False, tactic="apply foo", premises=[],
+            error_message="unknown identifier 'foo'",
+            feedback=LeanFeedback(
+                stage="tactic_exec", category="unknown_identifier",
+                messages=[], raw_error="unknown identifier 'foo'",
+            ),
+        )
+        self.assertIsNotNone(r.feedback)
+        assert r.feedback is not None
+        self.assertEqual(r.feedback.category, "unknown_identifier")
+        d = r.to_dict()
+        self.assertIn("feedback", d)
+        self.assertEqual(d["feedback"]["category"], "unknown_identifier")
+
+    def test_tactic_result_feedback_defaults_none(self):
+        r = TacticResult(success=True, tactic="rfl", premises=[])
+        self.assertIsNone(r.feedback)
+        d = r.to_dict()
+        self.assertNotIn("feedback", d)
 
 
 if __name__ == "__main__":

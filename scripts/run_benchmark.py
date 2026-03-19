@@ -16,12 +16,19 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sqlite3
+import sys
 import time
 from pathlib import Path
 
 import numpy as np
 import yaml
+
+if __package__ is None or __package__ == "":
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+logger = logging.getLogger(__name__)
 
 from scripts.benchmark_lane_b import run_lane_b
 from src.lean_interface import LeanConfig, LeanKernel
@@ -101,18 +108,22 @@ def _build_search_components(config: dict, checkpoint_path: Path, device: str) -
         accessible_premises=search_cfg.get("accessible_premises", True),
         max_candidates_per_step=search_cfg.get("max_candidates_per_step", 8),
         device=device,
+        search_mode=search_cfg.get("search_mode", "full"),
+        no_learned_premises=search_cfg.get("no_learned_premises", False),
+        temporal_mode=search_cfg.get("temporal_mode", "off"),
+        cosine_rw_beam=search_cfg.get("cosine_rw_beam", 5),
+        cosine_rw_seq_max_atoms=search_cfg.get("cosine_rw_seq_max_atoms", 10),
+        cosine_rw_seq_max_calls=search_cfg.get("cosine_rw_seq_max_calls", 50),
+        cosine_rw_seq_enabled=search_cfg.get("cosine_rw_seq_enabled", False),
     )
 
     lean_backend = config.get("lean", {}).get("backend", "stub")
-    if lean_backend == "pantograph":
-        raise RuntimeError(
-            "Pantograph backend is not yet implemented (Phase 2+). "
-            "Use --backend stub for offline testing or --backend replay for ground-truth matching. "
-            "See docs/WAYFINDER_PLAN.md §3.1."
-        )
+    lean_section = config.get("lean", {})
     lean_cfg = LeanConfig(
         backend=lean_backend,
         hammer_timeout=search_cfg.get("hammer_timeout", 60),
+        project_root=lean_section.get("project_root", ""),
+        imports=lean_section.get("imports", ["Init"]),
     )
     lean = LeanKernel(lean_cfg)
     conn = sqlite3.connect(config["data"]["proof_network_db"])
@@ -122,8 +133,41 @@ def _build_search_components(config: dict, checkpoint_path: Path, device: str) -
 
 def _build_theorem_id_map(conn: sqlite3.Connection) -> dict[str, int]:
     """Build theorem name → DB integer ID map for accessible-premises lookup."""
-    cursor = conn.execute("SELECT id, theorem_id FROM entities")
+    cursor = conn.execute("SELECT id, name FROM entities")
     return {name: eid for eid, name in cursor.fetchall()}
+
+
+def _resolve_initial_goal(thm: dict, lean: LeanKernel) -> str | None:
+    """Resolve the initial goal for proof search.
+
+    For Pantograph with a Mathlib project, uses env_inspect to get the
+    theorem's type, then goal_start (with load_sorry fallback for universe-
+    polymorphic types). Falls back to raw goal_state if env_inspect fails.
+
+    Returns None only if goal_start fails on both the inspected type AND
+    the raw goal_state.
+    """
+    if lean._backend != "pantograph" or lean._server is None:
+        return thm["goal_state"]
+
+    tid = thm["theorem_id"]
+
+    # Try env_inspect → goal_start (proper Lean type with load_sorry fallback)
+    try:
+        info = lean._server.env_inspect(tid)
+        theorem_type = info["type"]["pp"]
+        return lean.goal_start(theorem_type)
+    except Exception:
+        pass
+
+    # env_inspect failed (theorem not in environment, or custom benchmark).
+    # Fall back to raw goal_state — works for simple type expressions.
+    raw_goal = thm["goal_state"]
+    try:
+        return lean.goal_start(raw_goal)
+    except Exception as e:
+        logger.debug("Could not start goal for %s: %s", tid, e)
+        return None
 
 
 def _run_search_loop(
@@ -132,6 +176,7 @@ def _run_search_loop(
     conn: sqlite3.Connection,
     lean: LeanKernel,
     cfg: SearchConfig,
+    sentence_encoder: object | None = None,
 ) -> tuple[list[dict], int, int]:
     """Run proof search on all theorems. Returns (results, raw_proved, total_attempts)."""
     results: list[dict] = []
@@ -141,6 +186,10 @@ def _run_search_loop(
     # Build name→id map so search can filter to accessible premises
     name_to_id = _build_theorem_id_map(conn) if cfg.accessible_premises else {}
 
+    # Pre-initialize the Pantograph server before the loop
+    if lean._backend == "pantograph":
+        lean._ensure_server()
+
     for i, thm in enumerate(theorems):
         # Register ground-truth tactic for replay backend
         gt_tactic = thm.get("ground_truth_tactic", "")
@@ -149,16 +198,66 @@ def _run_search_loop(
 
         t0 = time.perf_counter()
         accessible_id = name_to_id.get(thm["theorem_id"]) if name_to_id else None
+
+        # Resolve initial goal — uses env_inspect for Pantograph+Mathlib
+        initial_goal = _resolve_initial_goal(thm, lean)
+
+        if initial_goal is None:
+            # Could not create goal state (universe polymorphism, missing theorem, etc.)
+            results.append(
+                {
+                    "theorem_id": thm["theorem_id"],
+                    "source": thm["source"],
+                    "success": False,
+                    "success_category": "failed",
+                    "close_lane": "skipped",
+                    "close_provenance": [],
+                    "final_closer": "",
+                    "attempts": 0,
+                    "goals_closed": 0,
+                    "goals_remaining": 1,
+                    "tactics_used": [],
+                    "time_s": 0.0,
+                }
+            )
+            continue
+
         result = search(
             theorem_id=thm["theorem_id"],
-            initial_goal=thm["goal_state"],
+            initial_goal=initial_goal,
             pipeline=pipeline,
             conn=conn,
             lean=lean,
             config=cfg,
             accessible_theorem_id=accessible_id,
+            sentence_encoder=sentence_encoder,
         )
         elapsed = time.perf_counter() - t0
+
+        # Determine dominant close lane for this theorem.
+        # Priority: learned > solver_bootstrap > structural_core > automation > failed
+        # "dominant" = the highest-priority lane that closed any goal.
+        prov = getattr(result, "close_provenance", [])
+        if not result.success:
+            close_lane = "failed"
+        elif any(p == "learned" for p in prov):
+            close_lane = "learned"
+        elif any(p.startswith("cosine_") for p in prov):
+            close_lane = next(p for p in prov if p.startswith("cosine_"))
+        elif any(p == "solver_bootstrap" for p in prov):
+            close_lane = "solver_bootstrap"
+        elif any(p == "structural_core" for p in prov):
+            close_lane = "structural_core"
+        elif any(p == "automation" for p in prov):
+            close_lane = "automation"
+        else:
+            close_lane = "unknown"
+
+        # Final closer (tactic that closed the last goal)
+        final_closer = result.tactics_used[-1] if result.success and result.tactics_used else ""
+
+        # Lane sequence summary: e.g. "structural_core→solver_bootstrap" or "automation"
+        lane_sequence = "→".join(dict.fromkeys(prov)) if prov else ""
 
         results.append(
             {
@@ -166,6 +265,11 @@ def _run_search_loop(
                 "source": thm["source"],
                 "success": result.success,
                 "success_category": "raw_success" if result.success else "failed",
+                "close_lane": close_lane,
+                "lane_sequence": lane_sequence,
+                "close_provenance": prov,
+                "final_closer": final_closer,
+                "temporal_trace": getattr(result, "temporal_trace", []),
                 "attempts": result.attempts,
                 "goals_closed": result.goals_closed,
                 "goals_remaining": result.goals_remaining,
@@ -414,6 +518,8 @@ def run_benchmark(
     device: str,
     limit: int | None,
     mode: str = "v1",
+    cosine_rw: bool = False,
+    cosine_rw_seq: bool = False,
 ) -> dict:
     """Run proof search on benchmark theorems.
 
@@ -429,6 +535,16 @@ def run_benchmark(
 
     pipeline, cfg, lean, lean_cfg, conn = _build_search_components(config, checkpoint_path, device)
 
+    # Load sentence encoder for cosine_rw lane
+    encoder = None
+    if cosine_rw or cosine_rw_seq:
+        from sentence_transformers import SentenceTransformer
+        encoder = SentenceTransformer("all-MiniLM-L6-v2")
+        msg = "  Cosine rw lane: enabled"
+        if cosine_rw_seq:
+            msg += " + cosine_rw_seq"
+        print(f"{msg} (MiniLM encoder loaded)")
+
     theorems = load_benchmark_theorems(config, limit)
     print(f"Running benchmark on {len(theorems)} theorems (mode={mode})")
     print(f"  Budget: {cfg.budget}, Hammer: {cfg.hammer_delegation}")
@@ -436,7 +552,8 @@ def run_benchmark(
 
     start = time.time()
     if mode == "v1":
-        results, raw_proved, total_attempts = _run_search_loop(theorems, pipeline, conn, lean, cfg)
+        results, raw_proved, total_attempts = _run_search_loop(
+            theorems, pipeline, conn, lean, cfg, sentence_encoder=encoder)
     elif mode == "v2":
         results, raw_proved, total_attempts = _run_search_loop_v2(
             theorems,
@@ -459,6 +576,13 @@ def run_benchmark(
     total_time = time.time() - start
 
     n = len(results)
+
+    # Lane-separated provenance counts
+    lane_counts: dict[str, int] = {}
+    for r in results:
+        lane = r.get("close_lane", "failed" if not r["success"] else "unknown")
+        lane_counts[lane] = lane_counts.get(lane, 0) + 1
+
     report = {
         "benchmark": {
             "total_theorems": n,
@@ -467,6 +591,8 @@ def run_benchmark(
             "axle_assisted_success": 0,
             "axle_repair_only": 0,
             "failed": n - raw_proved,
+            "by_close_lane": lane_counts,
+            "lane_activity": _summarize_lane_activity(results),
         },
         "efficiency": {
             "total_attempts": total_attempts,
@@ -487,6 +613,14 @@ def run_benchmark(
             "lean_backend": lean_cfg.backend,
             "axle_enabled": config.get("axle", {}).get("enabled", False),
             "device": device,
+            "search_mode": cfg.search_mode,
+            "cosine_rw_enabled": bool(cosine_rw),
+            "cosine_rw_seq_enabled": bool(cosine_rw_seq or cfg.cosine_rw_seq_enabled),
+            "active_rewrite_lane": (
+                "cosine_rw_seq"
+                if (cosine_rw_seq or cfg.cosine_rw_seq_enabled)
+                else ("cosine_rw" if cosine_rw else "none")
+            ),
         },
     }
 
@@ -515,6 +649,35 @@ def _group_by_source(results: list[dict]) -> dict:
     return summary
 
 
+def _summarize_lane_activity(results: list[dict]) -> dict[str, dict[str, int]]:
+    """Summarize lane activity beyond theorem-level final closers."""
+    theorem_touches: dict[str, int] = {}
+    subgoal_closes: dict[str, int] = {}
+    tactic_rows = {"rw_rows": 0, "rw_seq_rows": 0}
+
+    for r in results:
+        touched = set()
+        for lane in r.get("close_provenance", []):
+            if not lane:
+                continue
+            subgoal_closes[lane] = subgoal_closes.get(lane, 0) + 1
+            touched.add(lane)
+        for lane in touched:
+            theorem_touches[lane] = theorem_touches.get(lane, 0) + 1
+
+        tactics = r.get("tactics_used", [])
+        if any(isinstance(t, str) and t.startswith("rw [") for t in tactics):
+            tactic_rows["rw_rows"] += 1
+        if any(isinstance(t, str) and t.startswith("rw_seq(") for t in tactics):
+            tactic_rows["rw_seq_rows"] += 1
+
+    return {
+        "theorem_touches": theorem_touches,
+        "subgoal_closes": subgoal_closes,
+        "tactic_rows": tactic_rows,
+    }
+
+
 def _print_summary(report: dict) -> None:
     """Print benchmark summary with metric separation."""
     bm = report["benchmark"]
@@ -530,6 +693,50 @@ def _print_summary(report: dict) -> None:
         repair = bm["axle_repair_only"]
         print(f"  Axle repair-only:          {repair} ({100 * repair / max(n, 1):.1f}%)")
     print(f"  Failed: {bm['failed']}")
+
+    # Lane-separated provenance
+    lanes = bm.get("by_close_lane", {})
+    lane_activity = bm.get("lane_activity", {})
+    if lanes:
+        print("  --- Close lane breakdown ---")
+        for lane in [
+            "automation",
+            "structural_core",
+            "solver_bootstrap",
+            "cosine_rw",
+            "cosine_rw_seq",
+            "learned",
+            "failed",
+        ]:
+            count = lanes.get(lane, 0)
+            if count > 0:
+                print(f"    {lane}: {count} ({100 * count / max(n, 1):.1f}%)")
+    if lane_activity:
+        touches = lane_activity.get("theorem_touches", {})
+        subgoal = lane_activity.get("subgoal_closes", {})
+        tactic_rows = lane_activity.get("tactic_rows", {})
+        if touches or subgoal:
+            print("  --- Lane activity (touches / subgoal closes) ---")
+            for lane in [
+                "automation",
+                "structural_core",
+                "solver_bootstrap",
+                "cosine_rw",
+                "cosine_rw_seq",
+                "learned",
+            ]:
+                if lane in touches or lane in subgoal:
+                    print(
+                        f"    {lane}: touches={touches.get(lane, 0)}"
+                        f" subgoals={subgoal.get(lane, 0)}"
+                    )
+        if tactic_rows:
+            print(
+                "  --- Rewrite tactic rows ---"
+                f" rw={tactic_rows.get('rw_rows', 0)}"
+                f" rw_seq={tactic_rows.get('rw_seq_rows', 0)}"
+            )
+
     print(f"  Avg attempts/theorem: {eff['avg_attempts_per_theorem']}")
     print(f"  Avg time/theorem: {eff['avg_time_per_theorem_s']:.2f}s")
     print(f"  Total time: {eff['total_time_s']:.1f}s")
@@ -548,13 +755,92 @@ def main() -> None:
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--output", type=Path, default=None)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--theorems",
+        type=Path,
+        default=None,
+        help="Override benchmark theorems file (JSONL)",
+    )
+    parser.add_argument(
+        "--lean-project",
+        type=str,
+        default=None,
+        help="Lean project root for Pantograph (enables Mathlib imports)",
+    )
+    parser.add_argument(
+        "--lean-imports",
+        type=str,
+        nargs="+",
+        default=None,
+        help="Lean imports for Pantograph (e.g., Mathlib)",
+    )
+    parser.add_argument(
+        "--search-mode",
+        type=str,
+        default=None,
+        choices=["full", "learned_only", "learned_structural", "no_learned"],
+        help="Search lane mode: full (all lanes), learned_only, learned_structural, no_learned",
+    )
+    parser.add_argument(
+        "--no-learned-premises",
+        action="store_true",
+        help="Strip navigator premises from hammer calls (premise-value ablation)",
+    )
+    parser.add_argument(
+        "--temporal",
+        type=str,
+        default=None,
+        choices=["off", "shadow", "active"],
+        help="Temporal controller mode: off (default), shadow (log only), active",
+    )
+    parser.add_argument(
+        "--cosine-rw",
+        action="store_true",
+        help="Enable cosine rw lane (scope → MiniLM → top-k beam + Lean verify)",
+    )
+    parser.add_argument(
+        "--cosine-rw-beam",
+        type=int,
+        default=5,
+        help="Beam width for cosine rw lane (default: 5)",
+    )
+    parser.add_argument(
+        "--cosine-rw-seq",
+        action="store_true",
+        help="Enable sequential bare rewrite lane; this replaces single-step cosine_rw in static lane order",
+    )
     args = parser.parse_args()
 
     np.random.seed(args.seed)
     config = load_config(args.config)
     if args.backend:
         config.setdefault("lean", {})["backend"] = args.backend
-    report = run_benchmark(config, args.checkpoint, args.device, args.limit, mode=args.mode)
+    if args.lean_project:
+        config.setdefault("lean", {})["project_root"] = args.lean_project
+    if args.lean_imports:
+        config.setdefault("lean", {})["imports"] = args.lean_imports
+    if args.search_mode:
+        config.setdefault("search", {})["search_mode"] = args.search_mode
+    if args.no_learned_premises:
+        config.setdefault("search", {})["no_learned_premises"] = True
+    if args.temporal:
+        config.setdefault("search", {})["temporal_mode"] = args.temporal
+    if args.theorems:
+        config.setdefault("evaluation", {})["benchmark_theorems"] = str(args.theorems)
+        config.setdefault("evaluation", {}).pop("mathlib_test_split", None)
+    if args.cosine_rw_beam != 5:
+        config.setdefault("search", {})["cosine_rw_beam"] = args.cosine_rw_beam
+    if args.cosine_rw_seq:
+        config.setdefault("search", {})["cosine_rw_seq_enabled"] = True
+    report = run_benchmark(
+        config,
+        args.checkpoint,
+        args.device,
+        args.limit,
+        mode=args.mode,
+        cosine_rw=args.cosine_rw or args.cosine_rw_seq,
+        cosine_rw_seq=args.cosine_rw_seq,
+    )
 
     output = args.output or Path("runs/benchmark_results.json")
     output.parent.mkdir(parents=True, exist_ok=True)

@@ -10,6 +10,7 @@ from src.proof_search import (
     Pipeline,
     SearchConfig,
     SearchResult,
+    _apply_gate,
     _build_tactic_text,
     _cached_infer,
     _close_goal,
@@ -20,6 +21,8 @@ from src.proof_search import (
     _should_hammer,
     _try_candidates,
     _try_hammer,
+    _try_interleaved_bootstrap,
+    _try_structural_fallback,
 )
 from src.resolution import Candidate, SearchContext
 
@@ -224,6 +227,84 @@ class TestTryCandidates(unittest.TestCase):
         self.assertEqual(state.attempts, 1)
         # Only tried one candidate
         self.assertEqual(lean.try_tactic.call_count, 1)
+
+
+class TestStructuralLaneGuards(unittest.TestCase):
+    def test_interleaved_bootstrap_not_blocked_by_structural_guard(self):
+        """Structural fallback and interleaved bootstrap must keep separate one-shot guards."""
+        state = _SearchState(open_goals=["goal"])
+
+        lean_structural = MagicMock()
+        lean_structural.try_tactic.return_value = _make_tactic_result(success=False, tactic="")
+        env_structural = _SearchEnv(
+            conn=MagicMock(),
+            lean=lean_structural,
+            anchor_id_map=None,
+            max_candidates=8,
+        )
+
+        self.assertFalse(_try_structural_fallback("goal", 0, state, env_structural))
+        self.assertIn("goal", state._structural_tried)
+        self.assertNotIn("goal", state._interleaved_tried)
+
+        def side_effect(goal, tactic):
+            if tactic == "simp":
+                return _make_tactic_result(success=True, tactic="simp", new_goals=[])
+            return _make_tactic_result(success=False, tactic=tactic, new_goals=[])
+
+        lean_interleaved = MagicMock()
+        lean_interleaved.try_tactic.side_effect = side_effect
+        env_interleaved = _SearchEnv(
+            conn=MagicMock(),
+            lean=lean_interleaved,
+            anchor_id_map=None,
+            max_candidates=8,
+        )
+
+        self.assertTrue(
+            _try_interleaved_bootstrap(
+                "goal",
+                0,
+                state,
+                env_interleaved,
+                max_depth=1,
+                max_calls=8,
+            )
+        )
+        self.assertIn("goal", state._interleaved_tried)
+        self.assertIn("interleaved_bootstrap/simp", state.close_provenance)
+
+
+class TestLaneOrdering(unittest.TestCase):
+    @patch("src.proof_search._try_lane")
+    def test_interleaved_bootstrap_replaces_structural_core_when_enabled(self, mock_try_lane):
+        """When enabled, interleaved bootstrap occupies the structural slot."""
+        seen: list[str] = []
+
+        def side_effect(lane, goal, goal_idx, nav_output, state, env, context, cfg):
+            seen.append(lane)
+            return False
+
+        mock_try_lane.side_effect = side_effect
+
+        pipeline = MagicMock()
+        state = _SearchState(open_goals=["goal"])
+        env = _SearchEnv(conn=MagicMock(), lean=MagicMock(), anchor_id_map=None, max_candidates=8)
+        context = SearchContext()
+        cfg = SearchConfig(
+            hammer_delegation=False,
+            search_mode="no_learned",
+            interleaved_bootstrap_enabled=True,
+            cosine_rw_seq_enabled=False,
+            cosine_simp_enabled=False,
+        )
+
+        with patch("src.proof_search._cached_infer", return_value=_make_nav_output()):
+            _search_step(pipeline, state, env, context, cfg)
+
+        self.assertIn("interleaved_bootstrap", seen)
+        self.assertNotIn("structural_core", seen)
+        self.assertEqual(seen[0], "interleaved_bootstrap")
 
     @patch("src.proof_search.resolve")
     def test_all_candidates_fail(self, mock_resolve):
@@ -556,14 +637,18 @@ class TestSearchStep(unittest.TestCase):
         mock_candidates.assert_not_called()
 
     @patch("src.proof_search._try_candidates")
+    @patch("src.proof_search._try_structural_fallback")
     @patch("src.proof_search._try_hammer")
     @patch("src.proof_search._cached_infer")
     @patch("src.proof_search._select_goal")
-    def test_candidate_success_path(self, mock_select, mock_infer, mock_hammer, mock_candidates):
-        """When automation=0, skips hammer and tries candidates."""
+    def test_candidate_success_path(
+        self, mock_select, mock_infer, mock_hammer, mock_structural, mock_candidates
+    ):
+        """When automation=0, skips hammer, tries structural then candidates."""
         nav = _make_nav_output(automation=0)
         mock_select.return_value = ("g0", 0)
         mock_infer.return_value = nav
+        mock_structural.return_value = False
         mock_candidates.return_value = True
 
         state = _SearchState(open_goals=["g0"])
@@ -577,17 +662,19 @@ class TestSearchStep(unittest.TestCase):
         mock_candidates.assert_called_once()
 
     @patch("src.proof_search._try_candidates")
+    @patch("src.proof_search._try_structural_fallback")
     @patch("src.proof_search._try_hammer")
     @patch("src.proof_search._cached_infer")
     @patch("src.proof_search._select_goal")
     def test_all_fail_rotates_goal_and_increments(
-        self, mock_select, mock_infer, mock_hammer, mock_candidates
+        self, mock_select, mock_infer, mock_hammer, mock_structural, mock_candidates
     ):
         """All paths fail: goal rotated to back, attempts incremented."""
         nav = _make_nav_output(automation=-1)
         mock_select.return_value = ("g0", 0)
         mock_infer.return_value = nav
         mock_hammer.return_value = False
+        mock_structural.return_value = False
         mock_candidates.return_value = False
 
         state = _SearchState(open_goals=["g0", "g1", "g2"])
@@ -602,16 +689,18 @@ class TestSearchStep(unittest.TestCase):
         self.assertEqual(state.attempts, 1)
 
     @patch("src.proof_search._try_candidates")
+    @patch("src.proof_search._try_structural_fallback")
     @patch("src.proof_search._try_hammer")
     @patch("src.proof_search._cached_infer")
     @patch("src.proof_search._select_goal")
     def test_single_goal_all_fail_no_rotation(
-        self, mock_select, mock_infer, mock_hammer, mock_candidates
+        self, mock_select, mock_infer, mock_hammer, mock_structural, mock_candidates
     ):
         """Single goal, all fail: no rotation (len==1 guard), attempts incremented."""
         nav = _make_nav_output(automation=0)
         mock_select.return_value = ("g0", 0)
         mock_infer.return_value = nav
+        mock_structural.return_value = False
         mock_candidates.return_value = False
 
         state = _SearchState(open_goals=["g0"])
@@ -625,16 +714,18 @@ class TestSearchStep(unittest.TestCase):
         self.assertEqual(state.attempts, 1)
 
     @patch("src.proof_search._try_candidates")
+    @patch("src.proof_search._try_structural_fallback")
     @patch("src.proof_search._try_hammer")
     @patch("src.proof_search._cached_infer")
     @patch("src.proof_search._select_goal")
     def test_hammer_disabled_skips_hammer(
-        self, mock_select, mock_infer, mock_hammer, mock_candidates
+        self, mock_select, mock_infer, mock_hammer, mock_structural, mock_candidates
     ):
         """hammer_delegation=False skips hammer even with automation=-1."""
         nav = _make_nav_output(automation=-1)
         mock_select.return_value = ("g0", 0)
         mock_infer.return_value = nav
+        mock_structural.return_value = False
         mock_candidates.return_value = True
 
         state = _SearchState(open_goals=["g0"])
@@ -646,6 +737,65 @@ class TestSearchStep(unittest.TestCase):
 
         mock_hammer.assert_not_called()
         mock_candidates.assert_called_once()
+
+
+class TestApplyGate(unittest.TestCase):
+    """Unit tests for the _apply_gate() deterministic trigger."""
+
+    _APPLY_GOAL = "h : Nat\n⊢ Tendsto f atTop (nhds x)"
+    _ARITH_GOAL = "⊢ 2 + 3 = 5"
+    _SIMPLE_EQ_GOAL = "⊢ a = b"
+    _LOGIC_GOAL = "⊢ True"
+    _MULTI_GOAL_1 = "⊢ Tendsto f atTop (nhds x)"
+    _MULTI_GOAL_2 = "⊢ ContinuousAt g x"
+
+    def _state_with_ib_tried(self, goal: str, extra_goals: list[str] | None = None) -> _SearchState:
+        all_goals = [goal] + (extra_goals or [])
+        state = _SearchState(open_goals=all_goals)
+        state._interleaved_tried.add(goal)
+        return state
+
+    def test_passes_when_all_gates_clear(self) -> None:
+        state = self._state_with_ib_tried(self._APPLY_GOAL)
+        self.assertTrue(_apply_gate(self._APPLY_GOAL, state))
+
+    def test_fails_when_ib_not_tried(self) -> None:
+        state = _SearchState(open_goals=[self._APPLY_GOAL])
+        # IB not added to _interleaved_tried
+        self.assertFalse(_apply_gate(self._APPLY_GOAL, state))
+
+    def test_fails_when_multiple_open_goals(self) -> None:
+        state = self._state_with_ib_tried(
+            self._MULTI_GOAL_1, extra_goals=[self._MULTI_GOAL_2]
+        )
+        self.assertFalse(_apply_gate(self._MULTI_GOAL_1, state))
+
+    def test_fails_on_arithmetic_goal(self) -> None:
+        state = self._state_with_ib_tried(self._ARITH_GOAL)
+        self.assertFalse(_apply_gate(self._ARITH_GOAL, state))
+
+    def test_fails_on_simple_symmetric_eq(self) -> None:
+        state = self._state_with_ib_tried(self._SIMPLE_EQ_GOAL)
+        self.assertFalse(_apply_gate(self._SIMPLE_EQ_GOAL, state))
+
+    def test_fails_on_logic_connective_head(self) -> None:
+        state = self._state_with_ib_tried(self._LOGIC_GOAL)
+        self.assertFalse(_apply_gate(self._LOGIC_GOAL, state))
+
+    def test_passes_on_continuous_goal(self) -> None:
+        goal = "⊢ ContinuousAt f x"
+        state = self._state_with_ib_tried(goal)
+        self.assertTrue(_apply_gate(goal, state))
+
+    def test_passes_on_measurable_goal(self) -> None:
+        goal = "⊢ Measurable (fun x => f x)"
+        state = self._state_with_ib_tried(goal)
+        self.assertTrue(_apply_gate(goal, state))
+
+    def test_fails_on_goal_with_no_turnstile(self) -> None:
+        goal = "some state without turnstile"
+        state = self._state_with_ib_tried(goal)
+        self.assertFalse(_apply_gate(goal, state))
 
 
 if __name__ == "__main__":

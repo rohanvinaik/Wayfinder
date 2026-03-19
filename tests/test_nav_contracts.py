@@ -33,6 +33,7 @@ class TestNavigationalExample(unittest.TestCase):
         d = ex.to_dict()
         self.assertEqual(d["goal_state"], "⊢ P → P")
         self.assertEqual(d["theorem_id"], "thm1")
+        self.assertEqual(d["theorem_key"], "thm1")
         self.assertEqual(d["step_index"], 2)
         self.assertEqual(d["nav_directions"], {"structure": 1, "domain": 0})
         self.assertEqual(d["ground_truth_tactic"], "intro")
@@ -66,10 +67,16 @@ class TestNavigationalExample(unittest.TestCase):
         loaded = NavigationalExample.from_dict(d)
         self.assertEqual(loaded.goal_state, ex.goal_state)
         self.assertEqual(loaded.theorem_id, ex.theorem_id)
+        self.assertEqual(loaded.theorem_key, ex.theorem_id)
         self.assertEqual(loaded.step_index, ex.step_index)
         self.assertEqual(loaded.nav_directions, ex.nav_directions)
         self.assertEqual(loaded.bank_positions, ex.bank_positions)
         self.assertEqual(loaded.metadata, ex.metadata)
+
+    def test_theorem_key_roundtrip(self):
+        ex = self._make_example(theorem_key="Mathlib/Foo.lean::thm1")
+        loaded = NavigationalExample.from_dict(ex.to_dict())
+        self.assertEqual(loaded.theorem_key, "Mathlib/Foo.lean::thm1")
 
     def test_full_roundtrip_all_fields(self):
         """Every field survives a to_dict → from_dict cycle with exact values."""
@@ -134,6 +141,7 @@ class TestNavigationalExample(unittest.TestCase):
         loaded = NavigationalExample.from_dict(minimal)
         self.assertEqual(loaded.step_index, 0)
         self.assertEqual(loaded.total_steps, 1)
+        self.assertEqual(loaded.theorem_key, "t")
         self.assertEqual(loaded.anchor_labels, [])
         self.assertEqual(loaded.ground_truth_tactic, "")
         self.assertEqual(loaded.ground_truth_premises, [])

@@ -9,6 +9,8 @@ from __future__ import annotations
 import numpy as np
 import torch
 
+from src.move_supervision import build_move_targets
+
 
 def build_direction_targets(
     examples: list, banks: list[str], device: str
@@ -59,6 +61,7 @@ def compute_val_loss(
     banks: list[str],
     anchor_labels: list[str],
     device: str,
+    move_supervision_spec=None,
 ) -> float:
     """Compute validation loss on a fixed set of examples."""
     goal_states = [ex.goal_state for ex in examples]
@@ -66,7 +69,14 @@ def compute_val_loss(
         embeddings = modules["encoder"].encode(goal_states)
         features, _, _ = modules["analyzer"](embeddings)
         bridge_out = modules["bridge"](features)
-        dir_logits, anchor_logits, progress_pred, critic_pred = modules["navigator"](bridge_out)
+        dir_logits, anchor_logits, progress_pred, critic_pred, move_logits = modules[
+            "navigator"
+        ].forward_with_aux(bridge_out)
+        move_targets, move_masks, move_target_types = build_move_targets(
+            examples,
+            move_supervision_spec,
+            device,
+        )
 
         loss_dict = loss_fn(
             direction_logits=dir_logits,
@@ -77,6 +87,10 @@ def compute_val_loss(
             progress_target=build_progress_targets(examples, device),
             critic_pred=critic_pred,
             critic_target=build_critic_targets(examples, device),
+            move_logits=move_logits,
+            move_targets=move_targets,
+            move_masks=move_masks,
+            move_target_types=move_target_types,
         )
     return loss_dict["L_total"].item()
 

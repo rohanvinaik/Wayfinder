@@ -19,13 +19,18 @@ from __future__ import annotations
 import argparse
 import json
 import time
+from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
+import sys
 
 import numpy as np
 import torch
 import yaml
 from torch.utils.data import DataLoader
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from scripts.train_targets import (
     build_anchor_targets,
@@ -37,10 +42,16 @@ from scripts.train_targets import (
     compute_val_loss,
     extract_decoder_weight_signs,
 )
-from src.data import NavigationalDataset
+from src.data import NavigationalDataset, load_nav_examples_jsonl
 from src.losses import NavigationalLoss
+from src.move_supervision import (
+    MoveSupervisionSpec,
+    build_move_supervision_spec,
+    build_move_targets,
+    compute_move_metrics,
+)
 from src.nav_contracts import BANK_NAMES
-from src.nav_model_factory import build_navigational_modules
+from src.nav_model_factory import build_navigational_modules, resolve_model_config
 from src.pab_tracker import CheckpointData, PABTracker
 
 
@@ -69,6 +80,7 @@ class TrainContext:
     config: dict
     eval_examples: list = field(default_factory=list)  # fixed eval subset for PAB
     paths: dict = field(default_factory=dict)  # run_dir, ckpt_dir, log_path
+    move_supervision_spec: MoveSupervisionSpec | None = None
 
 
 def load_config(path: Path) -> dict:
@@ -77,9 +89,19 @@ def load_config(path: Path) -> dict:
         return yaml.safe_load(f)
 
 
-def build_pipeline(config: dict, device: str) -> dict:
+def build_pipeline(
+    config: dict,
+    device: str,
+    move_supervision_spec: MoveSupervisionSpec | None = None,
+    checkpoint: dict | None = None,
+) -> dict:
     """Build neural pipeline components from config."""
-    return build_navigational_modules(config["model"], device)
+    model_config = resolve_model_config(config, checkpoint)
+    if move_supervision_spec is not None and move_supervision_spec.has_any():
+        model_config.setdefault("navigator", {})["auxiliary_heads"] = (
+            move_supervision_spec.head_sizes()
+        )
+    return build_navigational_modules(model_config, device)
 
 
 def load_anchor_labels(config: dict) -> list[str]:
@@ -92,6 +114,63 @@ def load_anchor_labels(config: dict) -> list[str]:
     return [str(i) for i in range(num_anchors)]
 
 
+def _build_move_supervision(
+    nav_train_path: Path,
+    config: dict,
+    run_dir: Path,
+    checkpoint: dict | None = None,
+) -> MoveSupervisionSpec | None:
+    """Load or build navigator-safe auxiliary move-supervision vocabularies.
+
+    By design, the navigator only consumes descriptive local-state metadata.
+    Planning-level labels such as `subtask_kind` belong in higher slots.
+    """
+    aux_cfg = config.get("training", {}).get("auxiliary", {})
+    enabled_heads = aux_cfg.get("navigator_heads", ["goal_target_head", "trigger_signature"])
+    checkpoint_spec = checkpoint.get("move_supervision_spec") if checkpoint else None
+    enabled = bool(aux_cfg.get("enabled", False) or checkpoint_spec)
+    if not enabled:
+        return None
+
+    if checkpoint_spec:
+        spec = MoveSupervisionSpec.from_dict(checkpoint_spec)
+    else:
+        examples = load_nav_examples_jsonl(nav_train_path)
+        spec = build_move_supervision_spec(
+            examples,
+            enabled_heads=enabled_heads,
+            subtask_min_support=aux_cfg.get("subtask_min_support", 25),
+            goal_head_min_support=aux_cfg.get("goal_head_min_support", 100),
+            max_goal_heads=aux_cfg.get("max_goal_heads", 64),
+            trigger_min_support=aux_cfg.get("trigger_min_support", 250),
+            max_trigger_signatures=aux_cfg.get("max_trigger_signatures", 128),
+        )
+
+    enabled_set = set(enabled_heads)
+    if "subtask_kind" not in enabled_set:
+        spec.subtask_vocab = []
+    if "goal_target_head" not in enabled_set:
+        spec.goal_head_vocab = []
+    if "trigger_signature" not in enabled_set:
+        spec.trigger_signature_vocab = []
+
+    if not spec.has_any():
+        return None
+
+    spec_path = run_dir / "move_supervision_spec.json"
+    with open(spec_path, "w") as f:
+        json.dump(spec.to_dict(), f, indent=2)
+
+    print(
+        "  Move supervision:"
+        f" heads={','.join(enabled_heads)}"
+        f" subtasks={len(spec.subtask_vocab)}"
+        f" goal_heads={len(spec.goal_head_vocab)}"
+        f" trigger_sigs={len(spec.trigger_signature_vocab)}"
+    )
+    return spec
+
+
 def train_step(batch: list, ctx: TrainContext, max_grad_norm: float) -> dict[str, float]:
     """Execute a single training step."""
     ctx.optimizer.zero_grad()
@@ -100,7 +179,14 @@ def train_step(batch: list, ctx: TrainContext, max_grad_norm: float) -> dict[str
     embeddings = ctx.modules["encoder"].encode(goal_states)
     features, _, _ = ctx.modules["analyzer"](embeddings)
     bridge_out = ctx.modules["bridge"](features)
-    dir_logits, anchor_logits, progress_pred, critic_pred = ctx.modules["navigator"](bridge_out)
+    dir_logits, anchor_logits, progress_pred, critic_pred, move_logits = ctx.modules[
+        "navigator"
+    ].forward_with_aux(bridge_out)
+    move_targets, move_masks, move_target_types = build_move_targets(
+        batch,
+        ctx.move_supervision_spec,
+        ctx.device,
+    )
 
     loss_dict = ctx.loss_fn(
         direction_logits=dir_logits,
@@ -111,6 +197,10 @@ def train_step(batch: list, ctx: TrainContext, max_grad_norm: float) -> dict[str
         progress_target=build_progress_targets(batch, ctx.device),
         critic_pred=critic_pred,
         critic_target=build_critic_targets(batch, ctx.device),
+        move_logits=move_logits,
+        move_targets=move_targets,
+        move_masks=move_masks,
+        move_target_types=move_target_types,
     )
 
     loss_dict["L_total"].backward()
@@ -120,10 +210,15 @@ def train_step(batch: list, ctx: TrainContext, max_grad_norm: float) -> dict[str
     )
     ctx.optimizer.step()
 
+    with torch.no_grad():
+        loss_dict.update(
+            compute_move_metrics(move_logits, move_targets, move_masks, move_target_types)
+        )
+
     return {
         k: v.item() if isinstance(v, torch.Tensor) else v
         for k, v in loss_dict.items()
-        if k != "bank_losses"
+        if k not in {"bank_losses", "move_losses"}
     }
 
 
@@ -197,13 +292,38 @@ def _load_eval_subset(config: dict, seed: int) -> list:
     return []
 
 
-def _setup_training(config: dict, run_id: str, device: str, seed: int) -> TrainContext:
-    """Initialize all training components."""
+def _setup_training(
+    config: dict,
+    run_id: str,
+    device: str,
+    seed: int,
+    resume_checkpoint: Path | None = None,
+) -> tuple[TrainContext, int]:
+    """Initialize all training components. Returns (context, start_step)."""
     torch.manual_seed(seed)
     np.random.seed(seed)
 
     paths = _setup_directories(config, run_id)
-    modules = build_pipeline(config, device)
+    nav_train_path = Path(config["data"].get("nav_train", "data/nav_training.jsonl"))
+
+    checkpoint = None
+    start_step = 0
+    if resume_checkpoint is not None and resume_checkpoint.exists():
+        checkpoint = torch.load(resume_checkpoint, map_location=device, weights_only=False)
+        start_step = checkpoint.get("step", 0)
+
+    move_supervision_spec = _build_move_supervision(
+        nav_train_path,
+        config,
+        paths["run_dir"],
+        checkpoint,
+    )
+    if move_supervision_spec is not None and move_supervision_spec.has_any():
+        config.setdefault("model", {}).setdefault("navigator", {})["auxiliary_heads"] = (
+            move_supervision_spec.head_sizes()
+        )
+
+    modules = build_pipeline(config, device, move_supervision_spec, checkpoint)
     loss_fn = NavigationalLoss(
         initial_log_sigma=config["training"]["loss"].get("initial_log_sigma", 0.0)
     ).to(device)
@@ -211,14 +331,27 @@ def _setup_training(config: dict, run_id: str, device: str, seed: int) -> TrainC
     scheduler = _build_scheduler(optimizer, config)
     eval_examples = _load_eval_subset(config, seed)
 
+    if checkpoint is not None:
+        ckpt = checkpoint
+        for name, module in modules.items():
+            if name in ckpt.get("modules", {}):
+                module.load_state_dict(ckpt["modules"][name])
+        loss_fn.load_state_dict(ckpt["loss_fn"])
+        optimizer.load_state_dict(ckpt["optimizer"])
+        if "scheduler" in ckpt and scheduler is not None:
+            scheduler.load_state_dict(ckpt["scheduler"])
+        start_step = ckpt.get("step", 0)
+        print(f"Resumed from checkpoint at step {start_step}: {resume_checkpoint}")
+
     train_cfg = config["training"]
     print(f"Training run: {run_id}")
     print(
         f"  Device: {device}, Max iters: {train_cfg['max_iterations']}"
         f", Batch: {train_cfg['batch_size']}"
+        f", Start step: {start_step}"
     )
 
-    return TrainContext(
+    ctx = TrainContext(
         modules=modules,
         banks=config["model"]["navigator"].get("navigable_banks", BANK_NAMES),
         anchor_labels=load_anchor_labels(config),
@@ -233,7 +366,9 @@ def _setup_training(config: dict, run_id: str, device: str, seed: int) -> TrainC
         config=config,
         eval_examples=eval_examples,
         paths=paths,
+        move_supervision_spec=move_supervision_spec,
     )
+    return ctx, start_step
 
 
 def _log_step_progress(step: int, loss_dict: dict, ctx: TrainContext) -> None:
@@ -246,6 +381,7 @@ def _log_step_progress(step: int, loss_dict: dict, ctx: TrainContext) -> None:
         f"  Step {step}/{max_iters}: L={loss_dict['L_total']:.4f}"
         f" nav={loss_dict.get('L_nav', 0):.4f}"
         f" anchor={loss_dict.get('L_anchor', 0):.4f}"
+        f" move={loss_dict.get('L_move', 0):.4f}"
         f" critic={loss_dict.get('L_critic', 0):.4f}"
         f"{lr_str}"
     )
@@ -278,6 +414,7 @@ def _build_pab_checkpoint_data(
             ctx.banks,
             ctx.anchor_labels,
             ctx.device,
+            ctx.move_supervision_spec,
         )
 
     bottleneck_emb = None
@@ -290,12 +427,14 @@ def _build_pab_checkpoint_data(
         "ce": loss_dict.get("L_nav", 0.0),
         "margin": loss_dict.get("L_anchor", 0.0),
         "repair": loss_dict.get("L_progress", 0.0),
+        "move": loss_dict.get("L_move", 0.0),
     }
     adaptive_weights = {
         "w_nav": loss_dict.get("w_nav", 0.0),
         "w_anchor": loss_dict.get("w_anchor", 0.0),
         "w_progress": loss_dict.get("w_progress", 0.0),
         "w_critic": loss_dict.get("w_critic", 0.0),
+        "w_move": loss_dict.get("w_move", 0.0),
     }
 
     return CheckpointData(
@@ -367,6 +506,9 @@ def _finalize_training(
         "loss_fn": ctx.loss_fn.state_dict(),
         "optimizer": ctx.optimizer.state_dict(),
         "config": ctx.config,
+        "move_supervision_spec": (
+            ctx.move_supervision_spec.to_dict() if ctx.move_supervision_spec is not None else None
+        ),
     }
     if ctx.scheduler is not None:
         ckpt_data["scheduler"] = ctx.scheduler.state_dict()
@@ -449,14 +591,21 @@ def _run_epoch(
     return None
 
 
-def train(config: dict, run_id: str, device: str, seed: int, dry_run: bool) -> dict:
+def train(
+    config: dict,
+    run_id: str,
+    device: str,
+    seed: int,
+    dry_run: bool,
+    resume_checkpoint: Path | None = None,
+) -> dict:
     """Main training loop with curriculum phases."""
-    ctx = _setup_training(config, run_id, device, seed)
+    ctx, start_step = _setup_training(config, run_id, device, seed, resume_checkpoint)
     nav_train_path = Path(config["data"]["nav_train"])
     max_iters = config["training"]["max_iterations"]
     batch_size = config["training"]["batch_size"]
 
-    state = _TrainState()
+    state = _TrainState(step=start_step)
     start = time.time()
 
     while state.step < max_iters:
@@ -493,10 +642,26 @@ def main() -> None:
     parser.add_argument("--device", type=str, default="mps", choices=["mps", "cpu"])
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--resume-checkpoint",
+        type=Path,
+        default=None,
+        help="Resume training from this checkpoint (loads modules, optimizer, scheduler)",
+    )
+    parser.add_argument(
+        "--max-iterations",
+        type=int,
+        default=None,
+        help="Override max_iterations from config",
+    )
     args = parser.parse_args()
 
     config = load_config(args.config)
-    result = train(config, args.run_id, args.device, args.seed, args.dry_run)
+    if args.max_iterations is not None:
+        config["training"]["max_iterations"] = args.max_iterations
+    result = train(
+        config, args.run_id, args.device, args.seed, args.dry_run, args.resume_checkpoint
+    )
     print(json.dumps(result, indent=2, default=str))
 
 

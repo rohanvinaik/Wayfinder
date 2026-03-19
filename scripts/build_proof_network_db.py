@@ -351,7 +351,8 @@ def _build_shared_constant_links(conn) -> int:
     pair_data: dict[tuple[int, int], list[float]] = {}
     for aid, idf_val in rare_anchors:
         eids = [
-            r[0] for r in conn.execute(
+            r[0]
+            for r in conn.execute(
                 "SELECT ea.entity_id FROM entity_anchors ea "
                 "JOIN entities e ON e.id = ea.entity_id AND e.entity_type = 'lemma' "
                 "WHERE ea.anchor_id = ?",
@@ -465,9 +466,7 @@ def _build_file_block_links(conn) -> int:
     return count
 
 
-def _build_typed_premise_graph(
-    conn, input_path: Path, name_to_id: dict[str, int]
-) -> None:
+def _build_typed_premise_graph(conn, input_path: Path, name_to_id: dict[str, int]) -> None:
     """Build all typed premise links for v3 landmark expansion."""
     print("  Building typed premise graph...")
 
@@ -491,6 +490,116 @@ def _build_typed_premise_graph(
         "SELECT relation, COUNT(*) FROM entity_links GROUP BY relation ORDER BY COUNT(*) DESC"
     ).fetchall():
         print(f"    total {row[0]}: {row[1]:,}")
+
+
+def _classify_tactic_sequence(tactic_names: list[str]) -> str:
+    """Classify a tactic sequence into a proof motif."""
+    if not tactic_names:
+        return ""
+
+    tset = set(tactic_names)
+
+    if "induction" in tset:
+        return "INDUCT_THEN_CLOSE"
+    if tset & {"cases", "rcases"}:
+        return "CASE_ANALYSIS"
+    if tset & {"by_contra", "contradiction"}:
+        return "CONTRAPOSITIVE"
+    if len(tset & {"rw", "rewrite", "simp", "ring", "norm_num"}) >= 2:
+        return "REWRITE_CHAIN"
+    if "apply" in tset:
+        return "APPLY_CHAIN"
+    if tset & {"constructor", "and.intro"}:
+        return "DECOMPOSE_AND_CONQUER"
+    if tset & {"decide", "norm_num"}:
+        return "DECIDE"
+    if tset & {"omega", "linarith", "nlinarith", "polyrith"}:
+        return "HAMMER_DELEGATE"
+
+    return ""
+
+
+def _build_landmark_profiles(conn, input_path: Path, name_to_id: dict[str, int]) -> int:
+    """Build landmark_neighborhood_profiles table for multi-pass selectors."""
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS landmark_neighborhood_profiles (
+            entity_id INTEGER PRIMARY KEY,
+            outdegree INTEGER NOT NULL DEFAULT 0,
+            nbr_constant_anchor_count INTEGER NOT NULL DEFAULT 0,
+            nbr_structural_anchor_count INTEGER NOT NULL DEFAULT 0,
+            proof_motif TEXT NOT NULL DEFAULT '',
+            bank_signature TEXT NOT NULL DEFAULT ''
+        );
+    """)
+
+    # Compute outdegree per entity
+    outdegrees = dict(
+        conn.execute(
+            "SELECT source_id, COUNT(*) FROM entity_links "
+            "WHERE relation = 'depends_on' GROUP BY source_id"
+        ).fetchall()
+    )
+
+    if not outdegrees:
+        return 0
+
+    # Compute neighborhood anchor counts by category
+    nbr_anchors = conn.execute(
+        "SELECT el.source_id, a.category, COUNT(DISTINCT ea.anchor_id) "
+        "FROM entity_links el "
+        "JOIN entity_anchors ea ON ea.entity_id = el.target_id "
+        "JOIN anchors a ON a.id = ea.anchor_id "
+        "WHERE el.relation = 'depends_on' AND a.category IN ('constant', 'structural') "
+        "GROUP BY el.source_id, a.category"
+    ).fetchall()
+
+    nbr_counts: dict[int, dict[str, int]] = {}
+    for src_id, cat, cnt in nbr_anchors:
+        if src_id not in nbr_counts:
+            nbr_counts[src_id] = {"constant": 0, "structural": 0}
+        nbr_counts[src_id][cat] = cnt
+
+    # Compute proof motifs from tactic links
+    tactic_links = conn.execute(
+        "SELECT el.target_id, e.name FROM entity_links el "
+        "JOIN entities e ON e.id = el.source_id "
+        "WHERE el.relation = 'used_in'"
+    ).fetchall()
+
+    entity_tactics: dict[int, list[str]] = {}
+    for lemma_id, tactic_name in tactic_links:
+        entity_tactics.setdefault(lemma_id, []).append(tactic_name)
+
+    # Compute bank signatures from positions
+    positions = conn.execute(
+        "SELECT entity_id, bank, sign FROM entity_positions ORDER BY entity_id, bank"
+    ).fetchall()
+
+    pos_by_entity: dict[int, list[str]] = {}
+    for eid, bank, sign in positions:
+        sign_str = "+" if sign > 0 else ("-" if sign < 0 else "0")
+        pos_by_entity.setdefault(eid, []).append(f"{bank}={sign_str}")
+    bank_sigs = {eid: ",".join(parts) for eid, parts in pos_by_entity.items()}
+
+    # Insert profiles
+    count = 0
+    for eid, outdeg in outdegrees.items():
+        motif = _classify_tactic_sequence(entity_tactics.get(eid, []))
+        sig = bank_sigs.get(eid, "")
+        counts = nbr_counts.get(eid, {"constant": 0, "structural": 0})
+        conn.execute(
+            "INSERT OR REPLACE INTO landmark_neighborhood_profiles "
+            "(entity_id, outdegree, nbr_constant_anchor_count, "
+            "nbr_structural_anchor_count, proof_motif, bank_signature) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (eid, outdeg, counts["constant"], counts["structural"], motif, sig),
+        )
+        count += 1
+        if count % 10000 == 0:
+            conn.commit()
+
+    conn.commit()
+    return count
 
 
 def _print_db_summary(conn) -> None:
@@ -536,6 +645,10 @@ def load_entities(input_path: Path, db_path: Path) -> None:
     recompute_idf(conn)
 
     _build_typed_premise_graph(conn, input_path, name_to_id)
+
+    print("  Building landmark neighborhood profiles...")
+    profile_count = _build_landmark_profiles(conn, input_path, name_to_id)
+    print(f"  Created {profile_count} landmark profiles")
 
     _print_db_summary(conn)
     conn.close()

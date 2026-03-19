@@ -94,8 +94,9 @@ class TestSearch(unittest.TestCase):
         self.assertEqual(result.theorem_id, "thm1")
         self.assertEqual(result.goals_remaining, 1)
 
+    @patch("src.proof_search._try_structural_fallback", return_value=False)
     @patch("src.proof_search.resolve")
-    def test_all_goals_closed(self, mock_resolve):
+    def test_all_goals_closed(self, mock_resolve, _mock_structural):
         """Single goal, first candidate succeeds with no new goals: success."""
         mock_resolve.return_value = [_make_candidate(tactic="rfl")]
 
@@ -182,8 +183,9 @@ class TestSearch(unittest.TestCase):
 
         self.assertEqual(result.success, True)
 
+    @patch("src.proof_search._try_structural_fallback", return_value=False)
     @patch("src.proof_search.resolve")
-    def test_accessible_premises_passed_to_context(self, mock_resolve):
+    def test_accessible_premises_passed_to_context(self, mock_resolve, _mock_structural):
         """accessible_theorem_id flows through when accessible_premises=True."""
         mock_resolve.return_value = [_make_candidate(tactic="rfl")]
 
@@ -204,8 +206,11 @@ class TestSearch(unittest.TestCase):
         context_arg = call_args[0][2]  # third positional arg is context
         self.assertEqual(context_arg.accessible_theorem_id, 42)
 
+    @patch("src.proof_search._try_structural_fallback", return_value=False)
     @patch("src.proof_search.resolve")
-    def test_accessible_premises_disabled_clears_theorem_id(self, mock_resolve):
+    def test_accessible_premises_disabled_clears_theorem_id(
+        self, mock_resolve, _mock_structural
+    ):
         """accessible_premises=False means context.accessible_theorem_id is None."""
         mock_resolve.return_value = [_make_candidate(tactic="rfl")]
 
@@ -271,8 +276,9 @@ class TestSearch(unittest.TestCase):
         lean.try_hammer.assert_called()
         lean.try_tactic.assert_called()
 
+    @patch("src.proof_search._try_structural_fallback", return_value=False)
     @patch("src.proof_search.resolve")
-    def test_subgoals_spawn_and_close(self, mock_resolve):
+    def test_subgoals_spawn_and_close(self, mock_resolve, _mock_struct):
         """First tactic spawns a subgoal; second iteration closes it."""
         mock_resolve.return_value = [_make_candidate(tactic="intro")]
 

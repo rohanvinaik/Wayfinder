@@ -28,6 +28,7 @@ class _NavExampleCore:
 
     goal_state: str = ""
     theorem_id: str = ""
+    theorem_key: str = ""
     step_index: int = 0
     total_steps: int = 1
     nav_directions: dict[str, int] = field(default_factory=dict)
@@ -54,6 +55,7 @@ class NavigationalExample(_NavExampleCore):
         d: dict[str, Any] = {
             "goal_state": self.goal_state,
             "theorem_id": self.theorem_id,
+            "theorem_key": self.theorem_key or self.theorem_id,
             "step_index": self.step_index,
             "total_steps": self.total_steps,
             "nav_directions": self.nav_directions,
@@ -75,6 +77,7 @@ class NavigationalExample(_NavExampleCore):
         return cls(
             goal_state=d["goal_state"],
             theorem_id=d["theorem_id"],
+            theorem_key=d.get("theorem_key", d["theorem_id"]),
             step_index=d.get("step_index", 0),
             total_steps=d.get("total_steps", 1),
             nav_directions=d.get("nav_directions", {}),
@@ -154,6 +157,55 @@ class NavOutput:
 
 
 @dataclass
+class LeanFeedback:
+    """Structured compiler/elaborator feedback from a Lean tactic attempt.
+
+    Preserves the Pantograph message objects so callers can route repair
+    actions based on the category of failure rather than raw error strings.
+
+    Categories
+    ----------
+    parse_error        -- TacticFailure raised with ``parseError`` key.
+                          Bad tactic template / lowering syntax.
+    unknown_identifier -- Message data contains "unknown identifier" or
+                          "unknown constant".  Name not in scope.
+    unification_mismatch -- "type mismatch", "failed to synthesize",
+                          "application type mismatch".
+                          Candidate theorem does not fit the goal.
+    typeclass_missing  -- "failed to synthesize" alone (no type mismatch).
+                          Elaboration support missing; different from wrong lemma.
+    generated_sorry    -- hasSorry flag: tactic leaves a sorry hole.
+    generated_unsafe   -- hasUnsafe flag.
+    goal_creation_fail -- Lean could not create the initial goal state.
+    prefix_replay_fail -- A prefix tactic failed during Tier C replay.
+    goal_match_fail    -- Replay reached goals, but none matched the expected goal.
+    accepted_with_goals -- tactic succeeded but left open subgoals
+                          (not a failure, stored for completeness).
+    other              -- Unclassified error.
+    none               -- No feedback (success with all goals closed).
+    """
+
+    stage: str       # goal_creation | tactic_parse | elaboration | tactic_exec
+    category: str    # see docstring
+    messages: list[dict]   # serialised Message objects (severity, kind, data, pos)
+    raw_error: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "stage": self.stage,
+            "category": self.category,
+            "messages": self.messages,
+            "raw_error": self.raw_error,
+        }
+
+    @staticmethod
+    def success() -> "LeanFeedback":
+        return LeanFeedback(
+            stage="tactic_exec", category="none", messages=[], raw_error=""
+        )
+
+
+@dataclass
 class TacticResult:
     """Result of applying a tactic to a goal state via the Lean kernel."""
 
@@ -162,12 +214,16 @@ class TacticResult:
     premises: list[str]
     new_goals: list[str] = field(default_factory=list)
     error_message: str = ""
+    feedback: LeanFeedback | None = None  # structured elaboration feedback
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        d: dict[str, Any] = {
             "success": self.success,
             "tactic": self.tactic,
             "premises": self.premises,
             "new_goals": self.new_goals,
             "error_message": self.error_message,
         }
+        if self.feedback is not None:
+            d["feedback"] = self.feedback.to_dict()
+        return d

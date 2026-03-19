@@ -13,6 +13,7 @@ import sqlite3
 from dataclasses import dataclass, field
 
 from src.nav_contracts import NavOutput, ScoredEntity, StructuredQuery
+from src.premise_retrieval import landmark_expand_retrieve
 from src.proof_network import navigate, spread
 
 
@@ -82,15 +83,21 @@ def resolve(
     tactic_limit: int = 8,
     premise_limit: int = 16,
     spread_depth: int = 2,
+    retrieval_config: dict | None = None,
 ) -> list[Candidate]:
     """Resolve navigator output to ranked tactic-premise candidates.
 
     Steps:
         1. Build structured query from nav output
         2. Navigate for tactic entities
-        3. Navigate for premise entities
+        3. Retrieve premise entities (flat navigate or landmark_expand)
         4. Spread activation from seed entities for re-ranking
         5. Combine and rank candidates
+
+    Args:
+        retrieval_config: If provided, controls premise retrieval strategy.
+            strategy: "flat" (default) or "landmark_expand"
+            Plus any landmark_expand_retrieve config keys.
     """
     query = build_query(nav_output, anchor_id_map)
 
@@ -99,11 +106,16 @@ def resolve(
     if context.seed_entity_ids:
         query.seed_entity_ids = list(context.seed_entity_ids)
 
-    # Retrieve tactic entities
+    # Retrieve tactic entities (always flat navigate)
     tactics = navigate(conn, query, limit=tactic_limit, entity_type="tactic")
 
     # Retrieve premise entities
-    premises = navigate(conn, query, limit=premise_limit, entity_type="lemma")
+    rcfg = retrieval_config or {}
+    strategy = rcfg.get("strategy", "flat")
+    if strategy == "landmark_expand":
+        premises, _ = landmark_expand_retrieve(query, conn, limit=premise_limit, config=rcfg)
+    else:
+        premises = navigate(conn, query, limit=premise_limit, entity_type="lemma")
 
     # Spread activation from seeds for re-ranking
     spread_scores: dict[int, float] = {}

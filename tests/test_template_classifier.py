@@ -31,6 +31,11 @@ class TestTemplateClassifierConstruction(unittest.TestCase):
         self.assertEqual(model.num_templates, 9)
         self.assertEqual(model.num_templates, len(TEMPLATE_NAMES))
 
+    def test_auxiliary_heads_construction(self):
+        model = TemplateClassifier(auxiliary_heads={"subtask_kind": 3, "goal_target_head": 5})
+        self.assertIn("subtask_kind", model.auxiliary_heads)
+        self.assertIn("goal_target_head", model.auxiliary_heads)
+
 
 class TestTemplateClassifierForward(unittest.TestCase):
     """Test forward pass output shapes and values."""
@@ -74,6 +79,15 @@ class TestTemplateClassifierForward(unittest.TestCase):
         logits, template_features = model(features)
         self.assertEqual(logits.shape, (3, 5))
         self.assertEqual(template_features.shape, (3, 32))
+
+    def test_forward_with_aux_outputs_aux_logits(self):
+        model = TemplateClassifier(auxiliary_heads={"subtask_kind": 3, "trigger_signature": 4})
+        features = torch.randn(2, 256)
+        logits, template_features, aux_logits = model.forward_with_aux(features)
+        self.assertEqual(logits.shape, (2, 9))
+        self.assertEqual(template_features.shape, (2, 64))
+        self.assertEqual(aux_logits["subtask_kind"].shape, (2, 3))
+        self.assertEqual(aux_logits["trigger_signature"].shape, (2, 4))
 
 
 class TestTemplateClassifierPredict(unittest.TestCase):

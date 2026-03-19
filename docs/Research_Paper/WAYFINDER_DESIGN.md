@@ -1,7 +1,7 @@
 # Wayfinder: Technical Design Reference
 
-**Version:** 2.0
-**Date:** March 10, 2026
+**Version:** 2.1
+**Date:** March 19, 2026
 **Corresponding documents:** `WAYFINDER_RESEARCH.md` (theory), `WAYFINDER_PLAN.md` (operational plan), `EXPERIMENT_RESULTS.md` (results ledger)
 
 ---
@@ -12,9 +12,15 @@
 
 This design is directly adapted from ModelAtlas (Vinaik, 2025), which demonstrated that structured navigation over signed semantic coordinates outperforms both flat database queries and dense embedding retrieval for finding ML models on HuggingFace. We apply the same paradigm to mathematical entities: lemmas, tactics, and proof states are positioned in a structured coordinate system; retrieval is multiplicative bank alignment × IDF-weighted anchor relevance × seed similarity.
 
-**Decompose, then navigate (v2).** NAV-001/002 training runs demonstrated that a monolithic navigator produces chaotic PAB dynamics (stability_mean > 0.30) because the six bank dimensions have heterogeneous difficulty — Regime A banks (DOMAIN, CONTEXT) saturate early while Regime B banks (STRUCTURE, AUTOMATION, DEPTH) never converge. The composition gap theorem (σ(A∘B) ≤ σ(A) + σ(B) + γ(A,B)) explains why: the shared bridge creates high γ between bank representations. The v2 architecture decomposes proof search into a Society of Mind — five typed temporal slots (PERCEPTION → RECOGNITION → PLANNING → EXECUTION → VERIFICATION) with independent specialists. Each specialist operates at bounded specification complexity, communicating through typed interfaces rather than shared weights. PAB stability per specialist serves as the empirical proxy for σ, guiding decomposition until every component is "stable." See `WAYFINDER_RESEARCH.md` §2.9 for the full theoretical argument.
+**Decompose, then navigate (v2).** NAV-001/002 training runs demonstrated that a monolithic navigator produces chaotic PAB dynamics (stability_mean > 0.30) because the six bank dimensions have heterogeneous difficulty — Regime A banks (DOMAIN, CONTEXT) saturate early while Regime B banks (STRUCTURE, AUTOMATION, DEPTH) never converge. The composition gap theorem (σ(A∘B) ≤ σ(A) + σ(B) + γ(A,B)) explains why: the shared bridge creates high γ between bank representations. The v2 architecture decomposes proof search into a Society of Mind — six typed temporal slots (PERCEPTION → RECOGNITION → PLANNING → TEMPORAL ORCHESTRATION → EXECUTION → VERIFICATION) with independent specialists. Each specialist operates at bounded specification complexity, communicating through typed interfaces rather than shared weights. PAB stability per specialist serves as the empirical proxy for σ, guiding decomposition until every component is "stable." See `WAYFINDER_RESEARCH.md` §2.9 for the full theoretical argument.
 
 The thesis is falsifiable. If dense retrieval consistently outperforms structured navigation for premise selection (Phase 2.2 of the plan), the navigational paradigm is wrong for this domain. If tactic classification outperforms navigational coordinates (Phase 4.4 ablation), the ternary decoder design is wrong. If a monolithic navigator with sufficient capacity achieves stable PAB dynamics (Phase 6 comparison), the SoM decomposition is unnecessary. All negative results would be informative.
+
+**Post-EXP-048 update.** The first execution-level result beyond rewrite collapse is now in hand:
+for step-0 `apply`, a small executable selector trained on Lean-generated feedback improves live
+`LeanAccepted` from `15/91 (16.5%)` under cosine top-1 to `35/91 (38.5%)` on held-out goals. This
+sharpens the design claim. The right learned object is not "the best theorem name." It is the
+best **structured executable action boundary** inside a compiler-checked interface.
 
 ---
 
@@ -460,7 +466,7 @@ src/
 
 scripts/
 ├── extract_proof_network.py    Populate proof network from Mathlib
-├── build_nav_training_data.py  Convert proof traces to nav labels
+├── build_nav_training_data.py  Convert proof traces to nav labels + `SubtaskIR` metadata
 ├── build_proof_network_db.py   Load entities JSONL → SQLite proof network
 ├── convert_leandojo.py         Bridge LeanDojo Benchmark 4 → flat JSONL
 ├── anchor_gap_analysis.py      Iterative anchor gap analysis
@@ -476,8 +482,10 @@ configs/
 
 data/  (generated/downloaded at runtime)
 ├── proof_network.db            SQLite semantic network
-├── nav_training.jsonl             Navigational training data
+├── nav_training.jsonl          Navigational training data + controller-facing move metadata
 ├── nav_eval.jsonl              Navigational eval data (frozen)
+├── nav_train_templates.jsonl   Template-labeled nav data + theorem-level move profiles
+├── template_taxonomy.json      Template counts + aggregated move profiles
 └── leandojo_mathlib.jsonl      LeanDojo extracted dataset
 ```
 
@@ -595,7 +603,7 @@ pab:
 
 ## 10. Society of Mind Architecture (v2)
 
-The v2 architecture decomposes the monolithic v1 pipeline into five typed temporal slots. Each slot has bounded specification complexity and communicates with adjacent slots through typed data contracts, not shared weights. The composition gap γ ≈ 0 because slots share structured data (navigational coordinates, template IDs, proof sketches), not learned representations.
+The v2 architecture decomposes the monolithic v1 pipeline into six typed temporal slots. Each slot has bounded specification complexity and communicates with adjacent slots through typed data contracts, not shared weights. The composition gap γ ≈ 0 because slots share structured data (navigational coordinates, template IDs, proof sketches, temporal control state), not learned representations.
 
 ### 10.1 Slot 1: PERCEPTION (σ ≈ O(1))
 
@@ -645,7 +653,13 @@ The v2 architecture decomposes the monolithic v1 pipeline into five typed tempor
 
 ### 10.4 Slot 4: EXECUTION (σ varies by specialist)
 
-**Function:** For each subgoal in the sketch, navigate proof space to find concrete tactics and premises. This is the existing v1 pipeline, decomposed into bank-cluster specialists.
+**Function:** Slot 4 is a two-level execution system:
+
+1. **Theorem-level execution guidance** uses the old navigational machinery to decide lane, coarse family bias, and a bounded premise frontier for each subgoal.
+2. **Residual local execution** solves the post-structural local step inside that frontier.
+3. **Premise grounding** is invoked only for premise-sensitive tactic families.
+
+The current experiments force this correction. The theorem-level network is good at temporal orchestration and frontier shaping; it is not the right granularity for direct post-structural premise-step retrieval.
 
 **Specialist decomposition (guided by PAB stability):**
 
@@ -658,7 +672,7 @@ This is the initial decomposition. PAB stability measurement on each specialist 
 - If Navigator-B remains "chaotic" → split into Navigator-B1 (STRUCTURE, DECOMPOSITION) and Navigator-B2 (AUTOMATION, DEPTH)
 - If Navigator-A remains "stable" → scope is correct, no further decomposition
 
-Each specialist has its own bridge (eliminates the shared-bridge γ that made v1 chaotic), its own hidden layers, and its own output heads for its assigned banks.
+Each theorem-level guidance specialist has its own bridge (eliminates the shared-bridge γ that made v1 chaotic), its own hidden layers, and its own output heads for its assigned banks.
 
 **Fusion mechanism for shared heads.** Anchor logits, progress, and critic are produced by each specialist independently, then fused:
 
@@ -681,7 +695,7 @@ def fuse_specialist_outputs(outputs_a, outputs_b):
     # Critic: min (conservative — if either specialist thinks the goal is hard, trust that)
     critic = min(outputs_a.critic, outputs_b.critic)
 
-    return ExecutionOutput(directions, anchor_logits, progress, critic)
+    return ExecutionGuidance(directions, anchor_logits, progress, critic)
 ```
 
 **Fusion alternatives to ablate in Phase 6:**
@@ -689,7 +703,93 @@ def fuse_specialist_outputs(outputs_a, outputs_b):
 - Min critic vs mean critic vs max critic
 - Confidence-weighted progress vs simple average
 
-**Output contract:** Same as v1 `NavOutput`, but produced by combining specialist outputs: `ExecutionOutput { directions: dict[str, int], anchor_logits: Tensor, progress: float, critic: float }`
+**Output contract (theorem-level guidance):** `ExecutionGuidance { directions: dict[str, int], anchor_logits: Tensor, progress: float, critic: float, lane_hint: str | None, family_hint: list[str] | None }`
+
+**Residual local executor.** After one-shot structural normalization (`intro`, `intros`, `assumption`, `constructor`, `rfl`, `trivial`), the local layer does not behave like a flat always-on tactic menu. The measured runtime roles are:
+
+- **Finisher**: `cosine_rw`
+- **Scaffolder**: interleaved bootstrap
+- **Helper**: `simp`
+- **Executable selector**: `apply`
+- **Next structured-action regime**: `refine_named`
+
+The long-run interface can still be expressed as a family gate over a restricted vocabulary:
+
+- `rw`
+- `simp`
+- `exact`
+- `refine`
+- `apply`
+- `other`
+
+But the concrete design consequence is now sharper: each family needs its own executable contract.
+Search should only explore candidates consistent with those contracts. This uses theorem-level
+guidance as context, but it is trained on the normalized residual goal, not on raw theorem states.
+
+**Candidate grounding.** Candidate grounding is family-sensitive:
+
+- `rw` is largely solved by scoped cosine retrieval plus deterministic lowering.
+- `simp` is mostly local and often does not need a specific premise embedding.
+- `apply` depends on whether a candidate is actually executable against the current goal; name
+  relevance alone is insufficient.
+- `refine_named` depends on structured action / skeleton choice over a short scoped candidate set.
+- `refine_anon` is a distinct harder regime and should not be forced into the same selector.
+
+The concrete architecture is therefore:
+
+1. theorem-level guidance → coarse frontier;
+2. residual family prediction on the normalized local goal;
+3. family-conditioned candidate grounding inside the frontier;
+4. family-specific executable selection before lowering.
+
+This is the intended decomposition, not a fallback. The theorem-level system handles temporal orchestration; the residual executor handles step-level local choice.
+
+**Constrained action synthesis.** The family predictor should not emit raw Lean text. It should emit a family-specific intermediate representation that can be lowered deterministically:
+
+```python
+@dataclass
+class TermExpr:
+    kind: str              # var | const | app | proj | hole | chain | ctor | lambda
+    head: str | None
+    args: list["TermExpr"]
+    field: str | None = None
+
+@dataclass
+class RewriteAtom:
+    direction: str         # forward | backward
+    expr: TermExpr
+
+@dataclass
+class ActionIR:
+    family: str            # rw | simp | exact | apply | refine
+    term: TermExpr | None = None
+    rewrites: list[RewriteAtom] | None = None
+    simp_lemmas: list[TermExpr] | None = None
+    using_term: TermExpr | None = None
+    only: bool = False
+```
+
+The decoder's job is therefore:
+
+1. choose a tactic family;
+2. choose symbols and local applications from the frontier and context;
+3. emit `ActionIR`;
+4. let a deterministic lowering layer format Lean syntax.
+
+For `apply`-like families, that lowering step now has an additional verified precondition:
+the chosen candidate must first survive executable selection against the current goal. In other
+words, the learned selector sits between scoped retrieval and ActionIR lowering; it is not a
+second theorem-name reranker. The selector is trained on Lean-generated feedback such as:
+- `accepted_with_goals`
+- `closed`
+- `unification_mismatch`
+- `typeclass_missing`
+- goal-start failures
+
+This is the first concrete case where the design's "small model over a structured executable
+interface" claim is already validated in live Lean.
+
+Current residual-tactic analysis shows that `82%` of examples are parsable into family + structured arguments, while only `32%` are covered by the first simple template subset. The implication is to grow the IR and canonicalizer, not to revert to raw tactic-string generation.
 
 ### 10.5 Slot 5: VERIFICATION (σ ≈ O(1))
 
@@ -697,26 +797,413 @@ def fuse_specialist_outputs(outputs_a, outputs_b):
 
 **New addition — Censor network.** A small classifier that learns to predict tactic failure *before* Lean kernel verification, trained on accumulated (goal_state, tactic, result) triples from search. This inverts the verification oracle: instead of only learning what works, actively learn what does NOT work. The censor prunes the candidate set before expensive Lean kernel calls.
 
-**Output contract:** `VerificationOutput { success: bool, new_goals: list[GoalState], failure_reason: Optional[str] }`
+**Output contract:** `VerificationOutput { success: bool, new_goals: list[GoalState], feedback: LeanFeedback, failure_reason: Optional[str] }`
+
+`LeanFeedback` is now part of the design contract, not just logging. The verifier should preserve:
+- stage (`goal_creation`, `tactic_parse`, `elaboration`, `tactic_exec`)
+- category (`unification_mismatch`, `typeclass_missing`, `unknown_identifier`, `accepted_with_goals`, `closed`, `other`)
+- raw compiler/elaborator messages when available
+
+This feedback serves two roles:
+1. runtime diagnosis / repair;
+2. generated supervision for executable selectors.
 
 ### 10.6 Arbiter (Orchestrator)
 
-The Arbiter manages the proof search loop at the SoM level:
+The Arbiter manages the proof search loop at the SoM level. It has two distinct responsibilities:
+
+1. **Template-level orchestration** across the six SoM slots.
+2. **Online temporal control** over subgoal ordering, lane order, escalation, and replanning.
+
+The temporal controller is a first-class Arbiter component, not an extension of RECOGNITION. It models proof-solving dynamics conditioned on prior progress.
+
+**Core temporal contracts**:
+
+```python
+@dataclass
+class TemporalState:
+    theorem_id: str
+    active_template: str | None
+    open_goals: list[str]
+    closed_goals: list[str]
+    current_goal_id: str | None
+    prior_lanes: list[str]
+    prior_families: list[str]
+    successful_tactics: list[str]
+    failed_tactics: list[str]
+    phase: str
+    escalation_level: int
+    budget_remaining: int
+    total_attempts: int
+
+@dataclass
+class OrchestrationDecision:
+    next_goal_id: str
+    phase: str
+    lane_order: list[str]
+    family_prior: list[str]
+    escalation_level: int
+    budget_slice: int
+    replan: bool
+```
+
+**Current implementation status**:
+- `src/temporal_controller.py` implements a tested rule-based `TemporalController` v0.
+- The benchmarked `search()` path in `src/proof_search.py` now supports both `shadow` and `active` temporal modes and records `temporal_trace`.
+- `src/arbiter.py` / `som_search()` still do not consume the controller.
+- `budget_slice` and `replan` are tracked in the controller contract, but hammer still runs as an unconditional pre-check and full budget enforcement is not yet operative.
+
+The intended Arbiter loop is:
 
 1. Receives initial goal from PERCEPTION
 2. Routes to RECOGNITION for template classification
 3. Routes to PLANNING for proof sketch generation
-4. For each subgoal in sketch: routes to appropriate EXECUTION specialist
-5. Routes tactic candidates to VERIFICATION
-6. On verification failure: updates censor, re-routes to EXECUTION with updated context
-7. On verification success: advances to next subgoal, updates proof history
-8. On sketch failure (all subgoals attempted, proof incomplete): re-routes to RECOGNITION with "retry" flag for alternative template
+4. Builds or updates `TemporalState`
+5. Uses the temporal controller to choose `next_goal_id`, `phase`, `lane_order`, `family_prior`, and `escalation_level`
+6. Routes to the appropriate theorem-level EXECUTION specialist
+7. Runs one-shot structural normalization, then residual family prediction and family-conditioned premise grounding
+8. Routes bounded action candidates to VERIFICATION
+9. On verification failure: updates censor and `TemporalState`, possibly escalating or replanning
+10. On verification success: advances to next subgoal, updates proof history and closed-goal context
+11. On sketch failure (all subgoals attempted, proof incomplete): re-routes to RECOGNITION/PLANNING with `replan=True`
 
-**Goal selection** uses the critic head (estimated distance-to-completion) and progress head (estimated remaining steps), same as v1. The Arbiter adds template-level goal selection: if one subgoal in a sketch is stuck, try a different template before exhausting the search budget on the current one.
+**Goal selection today** is mixed-mode. In the benchmarked `search()` path, shadow mode logs decisions and active mode consumes `next_goal_id` and `lane_order`. In the full SoM `arbiter.py` path, critic/progress-based selection remains the baseline until the controller is wired there as well.
+
+### 10.6a Temporal Controller (Arbiter Implementation)
+
+The Arbiter's core is a `TemporalController` that produces `OrchestrationDecision` from `TemporalState` each search step.
+
+**Contracts** (from `src/temporal_controller.py`):
+
+```python
+@dataclass
+class TemporalState:
+    theorem_id: str
+    active_template: str | None
+    open_goals: list[str]
+    closed_goals: list[str]
+    current_goal_id: str | None
+    prior_lanes: list[str]
+    prior_families: list[str]
+    successful_tactics: list[str]
+    failed_tactics: list[str]
+    phase: str  # structural_setup | local_close | automation_close | repair_or_replan
+    escalation_level: int
+    budget_remaining: int
+    goal_attempt_counts: dict[str, int]
+    goal_lane_failures: dict[str, set[str]]
+
+@dataclass
+class OrchestrationDecision:
+    next_goal_id: str
+    phase: str
+    lane_order: list[str]
+    family_prior: list[str]
+    escalation_level: int
+    budget_slice: int
+    replan: bool
+```
+
+**Phases** (4-state FSM):
+1. `structural_setup`: intros, constructors, trivial normalization
+2. `local_close`: residual executor — exact/apply/refine/rw/simp family execution
+3. `automation_close`: hammer/aesop/decide/omega when state is favorable
+4. `repair_or_replan`: lane exhausted, residual stagnant, failures clustered
+
+**Implementation status (2026-03-16):**
+- Rule-based v0 controller: `src/temporal_controller.py` (18 unit tests)
+- Shadow mode: logs decisions without changing behavior (TC0-log)
+- Active mode: consumes `next_goal_id` and `lane_order` from decisions
+- `StepOutcome` provides clean goal attribution for TC state updates
+- Hammer fires as pre-check independent of TC lane ordering
+- `budget_slice` and `replan` are not yet full control surfaces in the operative search loop
+
+**Key empirical finding:** The current theorem-level gains are still dominated by escalation=0
+structural/bootstrap behavior plus `cosine_rw` as the active finisher. The TC's value depends on
+the quality of the residual specialists in `local_close`. `apply` executable selection is now the
+first specialist beyond rewrite collapse to show a live execution-level gain, but theorem-search
+deployment is still the next benchmark rather than an already-proven theorem-level win.
+
+### 10.6b ActionIR Decoder (Constrained Tactic Construction)
+
+The ActionIR decoder sits inside the EXECUTION slot. It takes the residual executor's family prediction + local vocabulary and emits typed `ActionIR` nodes that deterministic lowering compiles to Lean syntax.
+
+**Modules:**
+- `src/tactic_ir.py` — `TermExpr`, `RewriteAtom`, `ActionIR` typed AST with `lower()` method
+- `src/tactic_canonicalizer.py` — parse Lean tactic strings into canonical ActionIR
+- `src/tactic_compiler.py` — compile family + premises into tactic candidates (template-based v0)
+
+**Architecture (GSE-aligned two-stage):**
+
+Stage 1 — Shape prediction:
+- rw: rewrite count + direction flags per atom
+- exact/apply/refine: coarse term skeleton (symbol | app | projection | chain | hole | ctor)
+- simp: mode (bare | list | only | using)
+
+Stage 2 — Leaf filling:
+- Pointer attention over dynamic local vocabulary
+- Hard grammar masks per family
+- Hard type masks where Lean type info is available
+
+**Dynamic local vocabulary per goal:**
+- Local hypotheses (from goal state text)
+- Accessible premises (from proof network, scoped to theorem)
+- Fixed combinators: `.trans`, `.symm`, `_`, `?_`, `.1`, `.2`, `←`
+- Each entry: source_kind, type_features, family_eligibility, embedding
+
+**Empirical status (2026-03-16):**
+- ActionIR parse rate: 100% of residual tactics with arguments
+- Round-trip fidelity: 70% exact (IR → lower → identical string)
+- Parsable output space: 82% of residual tactics
+- Not yet trained — architecture and IR are specified, decoder model is next
+
+### 10.6c Source-Context Compiler (ContextIR)
+
+ActionIR is only half of the deterministic compiler. The local-execution harness also has to
+reconstruct the **theorem-site source context** in which tactics are meaningful. Mathlib source
+relies heavily on scoped surface constructs that change executable meaning without changing the
+theorem statement itself:
+
+- `open` / `open scoped`
+- `variable(s)` / `universe(s)`
+- `local notation`, `scoped[...]` notation, and notation declarations
+- `attribute [local instance]`, `attribute [local simp]`
+- `include` / `omit`
+- inline next-declaration forms such as `open Classical in` or `variable (R) in`
+
+These should be treated as a compiled DSL, not as header text.
+
+**Contract:**
+
+```python
+@dataclass
+class ContextDirective:
+    kind: str
+    text: str
+    line_no: int
+    inline_only: bool
+    renderable: bool
+
+@dataclass
+class ContextFrame:
+    kind: str
+    name: str
+    start_line: int
+    directives: list[ContextDirective]
+
+@dataclass
+class ContextIR:
+    top_level_directives: list[ContextDirective]
+    scope_stack: list[ContextFrame]
+    unsupported: list[ContextDirective]
+```
+
+**Compiler stages:**
+1. Parse theorem-site lexical context into `ContextIR`
+2. Render wrapper prefix/suffix from the supported subset
+3. Keep unsupported forms explicit in logs and validation reports
+4. Reuse the same `ContextIR` in:
+   - Tier B declaration-faithful wrapper generation
+   - Tier C step>0 replay normalization
+   - future family-specific scopers (`simp`, `apply`, `exact`)
+
+**Current implementation status (2026-03-17):**
+- `src/lean_context_ir.py` provides the parser/IR and conservative renderer
+- `src/lean_interface.py` now uses the `ContextIR`-backed extractor for Tier B wrapper prefix/suffix
+- validation scripts:
+  - `scripts/context_ir_census.py`
+  - `scripts/context_ir_benchmark_audit.py`
+
+**Design consequence:** future executor work is now explicitly a two-compiler stack:
+- **source-context compiler** (`ContextIR`) for theorem-site environment reconstruction
+- **action compiler** (`ActionIR`) for family-specific local tactic lowering
+
+**Updated execution consequence (2026-03-17):**
+- `rw0` and `rw1` are now operationally served by scoped cosine retrieval plus Lean verification.
+- `ContextIR` remains the coverage/faithfulness track for replay and future families (`simp`, `apply`), not the reason to delay extending the runtime rewrite lane from `rw0` to `rw1`.
+- The rewrite family has since collapsed further: on current started step-0 slices, `rw2` and `rw3` are also served well enough by the same cheap sequential cosine executor. The next learned targets are therefore above rewrite-family local execution: residual-conditioned orchestration, controller-visible move typing, and executable action selection over cosine shortlists.
+
+### 10.6d Motivated Move Layer (`SubtaskIR` + Trigger Profiles)
+
+The Human-Oriented ATP / motivated-proof line suggests a useful refinement for Wayfinder: local
+execution should not be represented only as a tactic string or even only as `ActionIR`. It should
+also carry an explicit answer to two controller-facing questions:
+
+1. **Why is this move admissible here?** (`TriggerProfileIR`)
+2. **What local subtask is this move trying to accomplish?** (`SubtaskIR`)
+
+This layer is intentionally lossy and sits **above** `ActionIR`. It does not participate in Lean
+lowering; it exists to support planning, move typing, auditability, and proof-schema mining.
+
+**Contract:**
+
+```python
+@dataclass
+class GoalShapeIR:
+    goal_count: int
+    target: str
+    target_head: str
+    local_names: list[str]
+    has_forall: bool
+    has_implication: bool
+    has_exists: bool
+    has_equality: bool
+    has_iff: bool
+
+@dataclass
+class TriggerFeatureIR:
+    kind: str
+    value: str
+    source: str
+
+@dataclass
+class TriggerProfileIR:
+    family: str
+    primary_premise: str
+    features: list[TriggerFeatureIR]
+
+@dataclass
+class SubtaskIR:
+    family: str
+    kind: str
+    summary: str
+    primary_premise: str
+    local_inputs: list[str]
+    expected_effect: str
+```
+
+**Examples:**
+- `rw [h]` on an equality goal:
+  - `SubtaskIR.kind = normalize_target_forward`
+  - triggers include `target_shape=equality`, `rewrite_count=1`, `direction_prior=forward`
+- `rw [foo h]`:
+  - `SubtaskIR.kind = specialize_rewrite`
+  - triggers include `argument_mode=applied`, `local_inputs=h`
+- `apply foo`:
+  - `SubtaskIR.kind = reduce_goal_by_lemma`
+- `exact h`:
+  - `SubtaskIR.kind = close_with_term`
+
+**Why this layer exists:**
+- `ActionIR` is the **execution compiler** target
+- `SubtaskIR` is the **planning / move-type** target
+- the controller should reason over subtasks such as:
+  - normalize target
+  - continue rewrite chain
+  - reduce goal by lemma
+  - close with term
+  - simplify with context
+  rather than over raw tactic strings
+
+**Placement rule (alignment correction):**
+- `goal_target_head` and `trigger_signature` are **descriptive** local-state labels and may be
+  used as auxiliary supervision on routing-oriented models such as the navigator.
+- `subtask_kind` is a **planning/controller** label. It should feed RECOGNITION / PLANNING /
+  temporal-control modules, not be treated as a required target for the bank-direction decoder.
+- Therefore, a collapsed `subtask_kind` head on the navigator is not evidence against
+  `SubtaskIR`; it is evidence that the label belongs in a different slot.
+
+**Pipeline integration (implemented 2026-03-18):**
+- `src/subtask_ir.py`
+  - derives `GoalShapeIR`, `TriggerProfileIR`, and `SubtaskIR` from
+    `(goal_state_before, family, tactic_text, canonical_action_ir, annotated_premise)`
+- `scripts/build_canonical_local_data.py`
+  - now writes `goal_shape_ir`, `trigger_profile_ir`, and `subtask_ir` into canonical datasets
+- `scripts/build_subtask_training_data.py`
+  - projects canonical data to a compact controller-facing SubtaskIR dataset
+- `scripts/validate_subtask_ir.py`
+  - validates family/subtask/trigger invariants over a dataset
+- `scripts/mine_move_schemas.py`
+  - aggregates successful steps into reusable `(family, subtask_kind, trigger_signature)` schemas
+- `scripts/build_move_inventory.py`
+  - coarsens SubtaskIR data into a compact planner inventory, especially for `apply` / `simp`
+- `src/move_supervision.py`
+  - builds compact auxiliary vocabularies over `subtask_kind`, `goal_target_head`, and
+    `trigger_signature`
+  - supports head filtering so each slot only trains on conceptually appropriate targets
+- `scripts/train_navigator.py`
+  - uses only **descriptive** move vocabularies (`goal_target_head`, `trigger_signature`) as
+    auxiliary supervision heads on the navigator hidden state
+  - persists `move_supervision_spec.json` in the run directory
+- `scripts/train_template_classifier.py`
+  - uses theorem-level `template_move_profile` summaries as auxiliary supervision on the
+    recognition hidden state (`subtask_kind`, `goal_target_head`, `trigger_signature`)
+  - persists `template_move_supervision_spec.json` in the run directory
+- `scripts/run_enhanced_controller_pipeline.sh`
+  - rebuilds the controller-facing data products end-to-end
+- `scripts/run_main_experiment.sh`
+  - canonical end-to-end experiment driver for the enhanced controller stack
+
+**Design consequence:** Wayfinder now has a three-layer local stack:
+- **source-context compiler** (`ContextIR`)
+- **action compiler** (`ActionIR`)
+- **motivated move layer** (`SubtaskIR` + trigger profiles) for controller-visible move typing
+
+**Runtime boundary:** these additions do not change the current execution DSL or Lean-lowering
+contracts. The benchmarked search path still executes through:
+- `ContextIR` for theorem-site wrapper reconstruction
+- `ActionIR` / rewrite-family executors for deterministic local execution
+- `proof_search.py` consuming `NavOutput` for routing
+
+The motivated-move layer is currently a data/training/planning contract, not a runtime executor.
+
+**Stable theorem identity:** downstream theorem-level aggregation now keys on
+`theorem_key = file_path::theorem_id`, not on the display name alone. This prevents auxiliary
+theorems such as `aux` from collapsing into the same template bucket across files.
+
+This layer is especially relevant for the future non-rewrite families. Rewrite-family experiments
+show that raw local execution often collapses to cheap geometry + verification. The remaining
+difficult question is therefore not "which string do we emit?" but "which local transformation
+should we attempt next?" `SubtaskIR` is the contract for that question.
+
+**Post-experiment role split (2026-03-19):**
+- **Finisher lanes**: theorem-winning local executors
+  - currently: `cosine_rw`
+- **Scaffolder lanes**: structural/bootstrap policies that simplify the goal and expose the next residual
+  - currently: interleaved bootstrap
+- **Helper / transformer lanes**: locally useful but not yet theorem-winning on their own
+  - currently: `simp`
+- **Executable specialist lanes**: locally real selectors over scoped candidates; not automatically global lanes
+  - currently: `apply`
+- **Unresolved structured-action regimes**: families whose bottleneck is still skeleton choice rather than executable scoring
+  - currently: `refine_named`, `refine_anon`
+
+This matters because the next improvement is no longer "add another always-on lane."
+
+Current family evidence now splits cleanly:
+- `apply`: ranking the annotated premise is not enough; the real bottleneck is whether a candidate can actually unify/elaborate against the current goal. A Lean-feedback-trained selector now improves live `LeanAccepted`, which validates executable candidate selection as the correct interface.
+- `refine_named`: better premise ranking barely changes `LeanAccepted`, so the real bottleneck is structured action / skeleton choice
+- `refine_anon`: typed features are neutral-to-harmful, so it is a different computational regime
+
+**Design implication:** the architecture should prefer:
+- deterministic scoping to produce a small auditable candidate set
+- executable action filtering and scoring over that shortlist
+- residual-conditioned orchestration rather than globally enabled specialist lanes
+- provenance-aware training sets so specialist models do not conflate canonical step-0 data with
+  post-bootstrap or mid-search residual regimes
+
+That means the learned object is no longer "the best theorem name."
+It is the best **structured executable action boundary**:
+- for `apply`: unification-aware / elaboration-aware candidate selection
+- for `refine_named`: skeleton / structured action selection
+- for `refine_anon`: not yet collapsed into the same selector regime
+
+This preserves the central factorization:
+- broad easy local mass collapses into deterministic compilers + verifier-backed execution
+- the remaining hard residue becomes small-candidate executable-action selection rather than open-ended tactic generation
+
+**Immediate design-order consequence:** do not jump from the first `apply` selector win straight to
+full SoM specialist training. The next order is:
+1. expand provenance-aware executable datasets (`canonical_step0`, `canonical_midstep`,
+   `post_bootstrap_residual`, `mid_search_residual`);
+2. train source-aware executable selectors;
+3. integrate those selectors into theorem search;
+4. then extend the same regime to `refine_named`;
+5. only then train the full SoM over multiple validated specialist contracts.
 
 ### 10.7 Module Map Update (v2)
 
-New modules for v2 (to be implemented in Phase 6):
+New modules for v2 (implemented or planned within Phase 6):
 
 ```
 src/
@@ -724,13 +1211,27 @@ src/
 ├── story_templates.py          Template taxonomy and extraction (Slot 2)
 ├── template_classifier.py      Recognition classifier (Slot 2)
 ├── sketch_predictor.py         Proof sketch generator (Slot 3)
+├── temporal_controller.py      Temporal controller (Arbiter core, 4-phase FSM)
 ├── specialist_navigator.py     Bank-cluster specialist wrapper (Slot 4)
+├── residual_executor.py        Residual tactic family classifier (6-class)
+├── lean_context_ir.py          Source-context parser/compiler for theorem-site wrappers
+├── action_ir.py                Family-specific local tactic IR + typed terms
+├── tactic_ir.py                ActionIR typed AST (TermExpr, RewriteAtom, ActionIR)
+├── tactic_canonicalizer.py     Parse Lean tactics into canonical ActionIR
+├── subtask_ir.py               Derive GoalShapeIR / TriggerProfileIR / SubtaskIR
+├── tactic_compiler.py          Template-based tactic compilation (v0)
+├── tactic_lowering.py          Deterministic ActionIR -> Lean tactic lowering
 ├── censor.py                   Failure prediction network (Slot 5)
 └── arbiter.py                  SoM orchestrator
 
 scripts/
 ├── ... (all existing scripts retained)
 ├── extract_templates.py        Extract template labels from proof corpus
+├── context_ir_census.py        Whole-Mathlib context-feature census
+├── context_ir_benchmark_audit.py  Benchmark-targeted ContextIR needs audit
+├── build_subtask_training_data.py  Project canonical data to controller-facing SubtaskIR dataset
+├── validate_subtask_ir.py      Validate TriggerProfileIR/SubtaskIR annotations
+├── mine_move_schemas.py        Mine reusable move schemas from successful proof steps
 ├── train_specialist.py         Train individual specialists with PAB monitoring
 └── train_template_classifier.py  Train the RECOGNITION slot
 ```
@@ -855,6 +1356,9 @@ src/
 ├── v3_runtime.py          v3 orchestrator (imports below)
 ├── v3_contracts.py         Shared interfaces above
 ├── v3_scoring.py           OTP bank-IDF scoring, ConstraintReport composition
+├── lens_guidance.py        GuidancePacket / ResolutionDecision contracts
+├── lens_models.py          Rule-based or learned lens specialists over collapsed frontiers
+├── coherence_engine.py     Typed-vote fusion, abstention handling, action routing
 ├── censor.py               Standalone censor (existing from Phase 6.0, retrained with asymmetric loss)
 ├── energy.py               [v3B] Energy function, Gumbel-softmax, refinement loop
 │
@@ -870,12 +1374,33 @@ scripts/
 GoalContext
   → Encoder (shared, frozen)
   → OTP-scored navigation (bank-IDF weights from v3_scoring.py)
+  → Deterministic collapse (landmark selection, freeze/residual, typed expansion)
+  → Guidance modulation over collapsed frontier (optional, modulate-only by default)
   → Censor pruning (asymmetric, safety-net: never prune ALL)
   → Template classification (shared with v2)
   → Discrete sketch scoring via ConstraintReport
   → Lean verification (Lane A)
   → SearchTrace output
 ```
+
+### 12.4a v3A Guidance Layer (Wave 1.5)
+
+This layer sits between deterministic retrieval collapse and later v3B refinement. Its purpose is to spend learned or symbolic specialist capacity only on the ambiguous remainder after the proof universe has already been reduced to a small auditable frontier.
+
+**Core contracts**:
+- **`GuidancePacket`**: collapsed frontier, committed landmarks, residual anchor/category mass, conflict clusters, phase signal, negative evidence, candidate summaries.
+- **`LensVote`**: typed specialist output over a candidate or branch: `support`, `oppose`, or `abstain`, with confidence and provenance.
+- **`LensCommitteeState`**: fused view of support/oppose/abstain patterns, informativeness, and conflict structure across lenses.
+- **`ResolutionDecision`**: committee action (`modulate`, `trust_lens`, `bifurcate`, `expand_more`, `noop`) plus bounded score adjustments or routing decisions.
+
+**Default invariants**:
+- Deterministic collapse remains the primary retrieval mechanism.
+- Guidance modulates ranking inside the collapsed frontier by default.
+- `replace` mode is ablation-only until it beats modulation and no-lens retrieval on paired evaluation.
+- Abstention is first-class and logged; it is not collapsed into low confidence.
+- Lean verification remains the final authority.
+
+This is a v3A component, not a v3B luxury. It formalizes the bridge between symbolic navigation and later learned refinement/distillation without requiring energy-based optimization.
 
 ### 12.5 v3B Pipeline Extension (Energy Refinement — gated on v3A)
 
@@ -922,6 +1447,13 @@ contrastive:
   margin_end: 0.3
   margin_anneal_steps: 5000
   hard_negative_ratio: 0.5
+
+guidance:
+  enabled: false
+  mode: modulate              # modulate | replace (ablation only)
+  specialist_source: rule_based  # rule_based | learned
+  min_informativeness: 0.15
+  max_downweight: 0.10
 
 # v3B (disabled by default until v3A demonstrates value)
 energy_refinement:

@@ -16,6 +16,7 @@ import unittest
 
 from src.nav_contracts import BANK_NAMES, ScoredEntity, StructuredQuery
 from src.proof_network import (
+    _DataCache,
     _MISSING_BANK_SCORE,
     _SCHEMA_SQL,
     _compute_anchor_score,
@@ -640,6 +641,16 @@ class TestComputeSeedScore(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 
+def _make_data(positions=None, anchor_sets=None, names=None, provenances=None):
+    """Helper to build a _DataCache for _score_candidates tests."""
+    return _DataCache(
+        positions=positions or {},
+        anchor_sets=anchor_sets or {},
+        names=names or {},
+        provenances=provenances or {},
+    )
+
+
 class TestScoreCandidates(unittest.TestCase):
     """Integration: bank * anchor * seed scoring and sorting."""
 
@@ -648,26 +659,15 @@ class TestScoreCandidates(unittest.TestCase):
             directions={"structure": 1},
             confidences={"structure": 1.0},
         )
-        candidate_ids = [1, 2]
-        positions = {
-            1: {"structure": 1},  # aligned => bank_score=1.0
-            2: {"structure": -1},  # anti => bank_score=0.5
-        }
-        entity_anchor_sets: dict[int, set[int]] = {}
-        idf_cache: dict[int, float] = {}
-        names = {1: "alpha", 2: "beta"}
-        seed_anchors: set[int] = set()
-
-        results = _score_candidates(
-            candidate_ids,
-            positions,
-            entity_anchor_sets,
-            idf_cache,
-            names,
-            query,
-            seed_anchors,
-            "multiplicative",
+        data = _make_data(
+            positions={
+                1: {"structure": 1},  # aligned => bank_score=1.0
+                2: {"structure": -1},  # anti => bank_score=0.5
+            },
+            names={1: "alpha", 2: "beta"},
         )
+
+        results = _score_candidates([1, 2], data, {}, query, set(), "multiplicative")
 
         self.assertEqual(len(results), 2)
         # Sorted descending
@@ -683,23 +683,13 @@ class TestScoreCandidates(unittest.TestCase):
             prefer_anchors=[10],
             prefer_weights=[1.0],
         )
-        candidate_ids = [1]
-        positions = {1: {"structure": -1}}  # bank_score = 0.5
-        entity_anchor_sets = {1: {10}}  # anchor 10 matches
-        idf_cache = {10: 2.0}
-        names = {1: "gamma"}
-        seed_anchors: set[int] = set()
-
-        results = _score_candidates(
-            candidate_ids,
-            positions,
-            entity_anchor_sets,
-            idf_cache,
-            names,
-            query,
-            seed_anchors,
-            "multiplicative",
+        data = _make_data(
+            positions={1: {"structure": -1}},  # bank_score = 0.5
+            anchor_sets={1: {10}},  # anchor 10 matches
+            names={1: "gamma"},
         )
+
+        results = _score_candidates([1], data, {10: 2.0}, query, set(), "multiplicative")
 
         self.assertEqual(len(results), 1)
         # bank=0.5, anchor=1.0 (fully matched), seed=1.0 (no seeds)
@@ -715,23 +705,13 @@ class TestScoreCandidates(unittest.TestCase):
             prefer_anchors=[10],
             prefer_weights=[1.0],
         )
-        candidate_ids = [1]
-        positions = {1: {"structure": 1}}  # bank=1.0
-        entity_anchor_sets = {1: {99}}  # no anchor 10 match => anchor=0.0
-        idf_cache = {10: 2.0, 99: 1.0}
-        names = {1: "delta"}
-        seed_anchors: set[int] = set()
-
-        results = _score_candidates(
-            candidate_ids,
-            positions,
-            entity_anchor_sets,
-            idf_cache,
-            names,
-            query,
-            seed_anchors,
-            "multiplicative",
+        data = _make_data(
+            positions={1: {"structure": 1}},  # bank=1.0
+            anchor_sets={1: {99}},  # no anchor 10 match => anchor=0.0
+            names={1: "delta"},
         )
+
+        results = _score_candidates([1], data, {10: 2.0, 99: 1.0}, query, set(), "multiplicative")
 
         self.assertEqual(len(results), 0)
 
@@ -740,24 +720,16 @@ class TestScoreCandidates(unittest.TestCase):
             directions={"structure": 1},
             confidences={"structure": 1.0},
         )
-        candidate_ids = [1, 2, 3]
-        positions = {
-            1: {"structure": -1},  # 0.5
-            2: {"structure": 1},  # 1.0
-            3: {"structure": 0},  # 0.5
-        }
-        names = {1: "a", 2: "b", 3: "c"}
-
-        results = _score_candidates(
-            candidate_ids,
-            positions,
-            {},
-            {},
-            names,
-            query,
-            set(),
-            "multiplicative",
+        data = _make_data(
+            positions={
+                1: {"structure": -1},  # 0.5
+                2: {"structure": 1},  # 1.0
+                3: {"structure": 0},  # 0.5
+            },
+            names={1: "a", 2: "b", 3: "c"},
         )
+
+        results = _score_candidates([1, 2, 3], data, {}, query, set(), "multiplicative")
 
         scores = [r.final_score for r in results]
         self.assertEqual(scores, sorted(scores, reverse=True))
@@ -770,23 +742,15 @@ class TestScoreCandidates(unittest.TestCase):
             prefer_anchors=[10, 20],
             prefer_weights=[1.0, 1.0],
         )
-        candidate_ids = [1]
-        positions = {1: {"structure": 1, "domain": -1}}  # both aligned => bank=1.0
-        entity_anchor_sets = {1: {10, 30}}  # match 10, miss 20
+        data = _make_data(
+            positions={1: {"structure": 1, "domain": -1}},  # both aligned => bank=1.0
+            anchor_sets={1: {10, 30}},  # match 10, miss 20
+            names={1: "epsilon"},
+        )
         idf_cache = {10: 2.0, 20: 3.0, 30: 1.5}
-        names = {1: "epsilon"}
         seed_anchors = {10, 40}
 
-        results = _score_candidates(
-            candidate_ids,
-            positions,
-            entity_anchor_sets,
-            idf_cache,
-            names,
-            query,
-            seed_anchors,
-            "multiplicative",
-        )
+        results = _score_candidates([1], data, idf_cache, query, seed_anchors, "multiplicative")
 
         self.assertEqual(len(results), 1)
         r = results[0]
@@ -812,7 +776,8 @@ class TestScoreCandidates(unittest.TestCase):
 
     def test_empty_candidates(self):
         query = _make_query()
-        results = _score_candidates([], {}, {}, {}, {}, query, set(), "multiplicative")
+        data = _make_data()
+        results = _score_candidates([], data, {}, query, set(), "multiplicative")
         self.assertEqual(results, [])
 
     def test_missing_name_defaults_empty(self):
@@ -820,20 +785,9 @@ class TestScoreCandidates(unittest.TestCase):
             directions={"structure": 1},
             confidences={"structure": 1.0},
         )
-        candidate_ids = [1]
-        positions = {1: {"structure": 1}}
-        names: dict[int, str] = {}  # no name for entity 1
+        data = _make_data(positions={1: {"structure": 1}})
 
-        results = _score_candidates(
-            candidate_ids,
-            positions,
-            {},
-            {},
-            names,
-            query,
-            set(),
-            "multiplicative",
-        )
+        results = _score_candidates([1], data, {}, query, set(), "multiplicative")
 
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0].name, "")
@@ -843,16 +797,11 @@ class TestScoreCandidates(unittest.TestCase):
             directions={"structure": 1},
             confidences={"structure": 1.0},
         )
-        results = _score_candidates(
-            [1],
-            {1: {"structure": 1}},
-            {},
-            {},
-            {1: "test"},
-            query,
-            set(),
-            "multiplicative",
+        data = _make_data(
+            positions={1: {"structure": 1}},
+            names={1: "test"},
         )
+        results = _score_candidates([1], data, {}, query, set(), "multiplicative")
         r = results[0]
         self.assertIsInstance(r, ScoredEntity)
         self.assertIsInstance(r.final_score, float)

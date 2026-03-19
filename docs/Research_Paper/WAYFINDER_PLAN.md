@@ -1,15 +1,29 @@
 # Wayfinder: Operational Research Plan
 
-**Version:** 2.0
-**Date:** March 10, 2026
+**Version:** 2.4
+**Date:** March 19, 2026
 **Corresponding documents:** `WAYFINDER_RESEARCH.md` (theory), `WAYFINDER_DESIGN.md` (engineering), `EXPERIMENT_RESULTS.md` (results ledger)
-**Status:** v1 implementation complete. Phase 0 data pipeline complete. NAV-001/002 trained (monolithic navigator, chaotic PAB). Pivoting to Society of Mind architecture (v2) guided by specification complexity theory.
+**Status:** Canonical execution plan for `docs/Research_Paper/`. v1 implementation complete. Phase 0 data pipeline complete. NAV-001/002 trained (monolithic navigator, chaotic PAB). Pivot to Society of Mind architecture (v2) is complete at the design level; the current execution branch is to keep `cosine_rw` plus interleaved bootstrap as the frozen deployed local baseline, keep source-context compilation (`ContextIR`) as the parallel infrastructure track, and move the learned frontier above rewrite-family execution to executable action selection, controller-visible move typing, residual-conditioned orchestration, and specialist-specific training regimes once those specialist contracts are validated.
 
 ---
 
 ## Overview
 
-This document specifies the sequence of work, tooling, compute decisions, and stop/go criteria for running the Wayfinder experiments. All source code and scripts are implemented (36 src files, 18 scripts, 3 configs). This plan covers data pipeline execution and experimental evaluation.
+This document specifies the sequence of work, tooling, compute decisions, and stop/go criteria for running the Wayfinder experiments. It is the authoritative plan for the `docs/Research_Paper/` folder. If `docs/PLAN_2.md` or scratch notes diverge from this file, this file wins.
+
+This plan covers data pipeline execution and experimental evaluation. The current execution state is:
+
+- canonical local-execution data is built and frozen
+- the semantic `rw0` benchmark definition is frozen
+- step-0 `rw0` is solved operationally by qualified-name cosine beam search
+- step>0 replay is usable for semantic evaluation, and replayed states support cosine-ranked `rw0`
+- `rw1` is operationally equivalent to `rw0` under tier-conditioned default direction
+- theorem-faithful Tier B start states are validated for step-0 and usable for step>0 base states
+- live Lean verification now validates executable action selection for `apply` (`selector_top1 = 35/91` vs `cosine_top1 = 15/91`)
+- the next runtime step is not another always-on lane; it is expanding the provenance-aware executable dataset, deploying the `apply` selector into theorem search, and then extending the same regime to `refine_named`
+- `ContextIR` is the parallel infrastructure track for replay coverage and future local families
+- rewrite-family local execution is collapsed enough that learning now shifts above it: controller-visible move typing, residual-conditioned orchestration, and executable action selection over shortlists
+- full SoM training remains downstream of multiple validated specialist regimes, not the next immediate milestone
 
 This plan produces five categories of results:
 
@@ -23,7 +37,7 @@ This plan produces five categories of results:
 
 - **Stream 5 (Boundary Learning + Energy Refinement)**: Does incorporating structured negative examples — failed tactics, incomplete proofs, and actively-generated boundary cases — transform positive-only imitation into boundary-aware reasoning? Does an energy-based refinement loop, grounded in Orthogonal Ternary Projection theory (Vinaik, 2025) and energy-based constraint satisfaction (cf. Logical Intelligence/Kona, 2026), enable holistic proof sketch optimization that outperforms sequential candidate scoring?
 
-Every phase states what it validates in each stream. The experimental pipeline is designed so that a single set of experiments tests all five claims. Results are recorded in `docs/EXPERIMENT_RESULTS.md`.
+Every phase states what it validates in each stream. The experimental pipeline is designed so that a single set of experiments tests all five claims. Results are recorded in `docs/Research_Paper/EXPERIMENT_RESULTS.md`.
 
 **Time horizon:** 6-10 weeks for Phase 0-4 (v1). Phase 5 extensions. Phase 6 Society of Mind (v2, 4-6 additional weeks). Phase 7 Energy-Constrained Navigation (v2.1, 4-6 additional weeks).
 
@@ -196,16 +210,23 @@ Or use their pre-extracted dataset:
 #   3. Extract ground-truth anchors from goal + tactic + premises
 #   4. Count remaining proof steps → progress label
 #   5. Solvability = 1.0 (all steps in successful proofs)
-#   6. Write to JSONL
+#   6. Attach optional canonical move metadata:
+#      - theorem_key = file_path::theorem_id (stable against duplicate names)
+#      - local_family
+#      - subtask_kind / subtask_summary / subtask_effect
+#      - goal_target_head
+#      - trigger_signature
+#   7. Write to JSONL
 ```
 
-**Output**: `data/nav_train.jsonl`, `data/nav_eval.jsonl`
+**Output**: `data/nav_training.jsonl` with per-step move metadata, plus any frozen eval split
 
 **Format**:
 ```json
 {
   "goal_state": "⊢ ∀ x : ℕ, x + 0 = x",
   "theorem_id": "Nat.add_zero",
+  "theorem_key": "Mathlib/Data/Nat/Basic.lean::Nat.add_zero",
   "nav_directions": {"structure": -1, "automation": -1, "decompose": -1},
   "ground_truth_anchors": ["nat-arithmetic", "equality", "omega-solvable"],
   "ground_truth_tactic": "omega",
@@ -553,7 +574,7 @@ python scripts/eval_encoders.py --model "kaiyuy/leandojo-lean4-retriever-byt5-sm
 *Goal: Close the loop with the Lean kernel. Full proof search with navigational guidance.*
 *Code status: Search loop (`proof_search.py`), Lean interface (`lean_interface.py`), proof auditor (`proof_auditor.py`), and benchmark runner (`run_benchmark.py`) all implemented.*
 *Architecture: 3-lane verification — Lane A (Pantograph, local), Lane B (Axle, cloud), Lane C (lean4checker, high-assurance). See DESIGN §8.0.*
-*Lane A status: Pantograph backend is **not yet implemented** — `lean_interface.py` raises `NotImplementedError`. Current benchmark uses `stub` (offline, no real verification) or `replay` (ground-truth matching). Real `raw_success` requires Pantograph integration (Phase 3.1). Lane B (Axle) is operational for cloud verification.*
+*Lane A status: Pantograph backend is implemented and operational for local verification. Current gap is no longer kernel access; it is theorem-site source-context fidelity for step>0 local execution. Lane B (Axle) remains the cloud verification / repair lane.*
 
 ### 3.1 Lean Kernel Integration
 
@@ -752,6 +773,103 @@ Run full evaluation for each ablation variant from Phase 2:
 - PAB profile comparisons across all variants
 - Failure analysis with navigational interpretation
 
+### 4.6 Multi-Pass Landmark Retrieval (Implemented)
+
+*Goal: Replace single-pass anchor-based retrieval with a multi-pass landmark mesh that fuses heterogeneous scoring signals, classifies convergence, and supports incremental freeze/residual refinement. This work was done between Phase 2 and Phase 6, filling the gap between anchor gap analysis (Phase 0.5) and SoM architecture (Phase 6). In the current architecture this retrieval stack should be interpreted primarily as theorem-level orchestration and frontier collapse, not as a direct solver for post-structural premise-step targets.*
+
+*Status: Implemented and validated. Multi-pass retrieval improves recall@16 from 26.7% to 43.3% (+17.6pp paired, seed=42, 164 samples, v3 DB). Lens guidance layer implemented but marginal (within +/- 2.7pp due to empty residuals from aggressive freezing).*
+
+#### 4.6.1 Multi-Pass Landmark Mesh
+
+**What**: Four selectors score each candidate landmark from orthogonal perspectives, then results are fused via signed Reciprocal Rank Fusion (RRF) with ternary voting.
+
+**Selectors** (each returns a ranked list with scores):
+
+| Selector | Signal | Rationale |
+|----------|--------|-----------|
+| `bridge_potential` | Semantic similarity between query embedding and candidate entity | Baseline dense retrieval signal |
+| `self_match` | Entity self-reference and structural centrality | Finds landmarks that are well-connected in the proof network |
+| `accessibility` | Import-graph reachability from the current theorem | Filters to premises that are actually accessible (extends Phase 0.5 accessible-premises) |
+| `hub_suppressor` | Inverse document frequency / hub penalty | Down-weights overly generic lemmas (e.g., `rfl`, `trivial`) that appear in many proofs but carry low information |
+
+**Fusion**: Signed RRF assigns each selector a ternary vote (+1 promote, 0 abstain, -1 suppress) per candidate. Votes are weighted by selector confidence and fused via reciprocal rank aggregation. This generalizes standard RRF to handle negative signals (hub suppression) natively.
+
+**Convergence classification**: After fusion, each candidate is classified as:
+- **Converged** — Multiple selectors agree (high inter-selector concordance)
+- **Isolated** — Only one selector promotes, others abstain
+- **Conflicted** — Selectors disagree (one promotes, another suppresses)
+
+Converged candidates are high-confidence retrievals. Isolated candidates may indicate novel connections. Conflicted candidates are deferred to the residual pipeline.
+
+#### 4.6.2 Freeze/Residual Pipeline
+
+**What**: Converged landmarks are frozen (committed as high-confidence retrievals). Remaining candidates enter the residual pipeline for further refinement in subsequent passes.
+
+**Components**:
+- `FrozenLandmarkState` — Immutable record of frozen landmarks with provenance (which selectors agreed, at what confidence)
+- `LandmarkResidualReport` — Describes unfrozen candidates: their scores, convergence status, and which selectors disagree. This report is the input to the lens guidance layer.
+
+**Behavior**: The freeze threshold is configurable. Aggressive freezing (low threshold) commits more candidates early but leaves fewer residuals for the lens layer to refine — this is the current bottleneck (see results below).
+
+#### 4.6.3 Lens Guidance Layer
+
+**What**: Five specialist "lenses" provide additional scoring signals on residual (unfrozen) candidates. The coherence engine combines lens outputs as modulation (scaling existing scores), not replacement.
+
+**Specialists** (each operates on the residual set):
+
+| Specialist | Focus |
+|------------|-------|
+| Domain relevance | Mathematical domain matching (algebra vs. topology vs. analysis) |
+| Structural similarity | Proof structure pattern matching |
+| Depth alignment | Proof depth / complexity matching |
+| Tactic affinity | Tactic-type compatibility |
+| Decomposition potential | Subgoal decomposition applicability |
+
+**Coherence engine**: Aggregates lens outputs, detects inter-lens conflicts, and produces a modulation factor (0.5x to 2.0x) applied to the residual candidates' fused scores. The design principle is modulation, not replacement — the lens layer cannot override the multi-pass mesh, only adjust confidence.
+
+#### 4.6.4 Files
+
+| File | Purpose |
+|------|---------|
+| `src/landmark_selectors.py` | Four selector implementations (bridge_potential, self_match, accessibility, hub_suppressor) |
+| `src/retrieval_scoring.py` | Signed RRF fusion, ternary voting, convergence classification |
+| `src/retrieval_stages.py` | Multi-pass orchestration, stage sequencing |
+| `src/landmark_freeze.py` | FrozenLandmarkState, LandmarkResidualReport, freeze/residual pipeline |
+| `src/lens_guidance.py` | Five specialist lenses, lens dispatch |
+| `src/lens_models.py` | Lens model definitions and interfaces |
+| `src/coherence_engine.py` | Coherence aggregation, conflict detection, modulation factor computation |
+
+#### 4.6.5 Results
+
+**Paired evaluation** (seed=42, 164 samples, v3 DB with 242K entities):
+
+| Configuration | Recall@16 | Delta vs. bridge_potential |
+|---------------|-----------|---------------------------|
+| `bridge_potential` only (single-pass) | 26.7% | — |
+| Multi-pass mesh (4 selectors + signed RRF) | 43.3% | +17.6pp |
+| Multi-pass + lens guidance | ~40.6% | +13.9pp |
+
+**Key findings**:
+- Multi-pass retrieval delivers a substantial improvement (+17.6pp) over single-pass bridge_potential alone
+- Lens guidance is currently marginal and slightly negative (-2.7pp vs. multi-pass alone) due to empty residuals from aggressive freezing — most candidates are frozen before the lens layer runs, leaving little for it to refine
+- The freeze threshold is the primary tuning lever; reducing freeze aggressiveness should restore residual volume and allow the lens layer to contribute
+
+**Next steps**: Reduce freeze overcommitment, wire retrieval config through runtime, re-evaluate with predicted (not perfect) queries from NAV-002.
+
+#### 4.6.6 Architectural Correction: Theorem-Level Retrieval vs Residual Execution
+
+Post-Mathlib experiments changed how this retrieval work should be used.
+
+- The multi-pass landmark mesh is valuable as **temporal orchestration**: lane bias, theorem-level frontier collapse, guidance packets, and hammer premise context.
+- It is **not** the right primary metric for local post-structural premise-step execution. Residual retrieval against step-level ground-truth premises is near-zero on the theorem-level v3 DB.
+- Therefore, theorem-level retrieval should not block local executor training. The local executor should first be trained with oracle premises from the residual dataset, then evaluated with retrieved premises as an approximation to that oracle.
+
+This produces a cleaner experimental decomposition:
+
+1. **Task A** — theorem-level orchestration / frontier collapse
+2. **Task B1** — residual tactic-family prediction
+3. **Task B2** — family-conditioned premise grounding inside the collapsed frontier
+
 ---
 
 ## Phase 5: Scale and Extend (Week 9+, contingent on results)
@@ -848,11 +966,25 @@ If all three are chaotic, the issue is capacity or data, not composition gap —
 #   3. Compute bank-signature centroid for the full sequence
 #   4. Cluster proofs by centroid similarity (k-means or DBSCAN)
 #   5. For each cluster: identify dominant tactic pattern → template label
-#   6. Output: template_taxonomy.json (template_id → bank_signature, tactic_pattern, count)
-#   7. Augment nav_train.jsonl with template_id labels
+#   6. Aggregate theorem/template-level move profiles from `SubtaskIR`
+#   7. Output: template_taxonomy.json (template_id → bank_signature, tactic_pattern, count, move_profile)
+#   8. Augment nav_training.jsonl with template_id labels + theorem-level `template_move_profile`
 ```
 
-**Output**: `data/template_taxonomy.json` and augmented training data with template labels.
+**Output**: `data/template_taxonomy.json` and `data/nav_train_templates.jsonl` with template labels and theorem-level move summaries.
+
+**Operational pipeline**: `scripts/run_enhanced_controller_pipeline.sh`
+- rebuild canonical local data if needed
+- refresh `SubtaskIR` training data + validation
+- rebuild `nav_training.jsonl` with stable theorem keys and canonical move metadata
+- rebuild `template_taxonomy.json` / `nav_train_templates.jsonl`
+- rebuild `move_inventory.json`
+
+**Main experimental entrypoint**: `scripts/run_main_experiment.sh`
+- Stage 1: run the enhanced controller data pipeline
+- Stage 2: train the template classifier with theorem-level move supervision
+- Stage 3: train the navigator with descriptive step-level move supervision
+- Stage 4: optionally benchmark the unified rewrite executor (`--cosine-rw --cosine-rw-seq`)
 
 **Validation**:
 - Template taxonomy should have 8-15 templates covering ≥ 90% of proofs
@@ -875,7 +1007,11 @@ If all three are chaotic, the issue is capacity or data, not composition gap —
 # Architecture: GoalAnalyzer features (256d) → Linear(256, 128) → ReLU
 #               → Linear(128, k) → softmax
 # Loss: Cross-entropy on template labels
-# Training: On augmented nav_train.jsonl with template_id
+#       + auxiliary move supervision on theorem-level move profiles:
+#         - dominant_subtask_kind
+#         - top_target_head
+#         - top_trigger_signatures
+# Training: On augmented nav_train_templates.jsonl with template_id + template_move_profile
 # Evaluation: Top-1 and top-3 accuracy on nav_eval.jsonl
 ```
 
@@ -884,6 +1020,10 @@ If all three are chaotic, the issue is capacity or data, not composition gap —
 - Top-3 template accuracy (target: ≥ 85%)
 - Per-template precision/recall (identify templates that are hard to classify)
 - PAB stability of the template classifier itself (should be "stable" — this is a Regime A task)
+
+**Alignment note:** `subtask_kind` belongs here (RECOGNITION / PLANNING), not on the navigator.
+The navigator may use only descriptive move metadata (`goal_target_head`, `trigger_signature`)
+for regularization.
 
 **Stop/go**: If top-3 accuracy < 50%, the templates may not be predictable from goal state features alone. Consider adding proof context (namespace, theorem statement) to the classifier input.
 
@@ -932,53 +1072,176 @@ If all three are chaotic, the issue is capacity or data, not composition gap —
 
 **Compute**: 3x 500 steps (~2 min total). Critical to do before investing in ternary-specific specialist architecture.
 
-### 6.4 EXECUTION Slot: Specialist Decomposition
+### 6.4 EXECUTION Slot: Theorem-Level Guidance + Residual Executor
 
-**What**: Decompose the v1 monolithic navigator into bank-cluster specialists, guided by PAB stability measurement.
+**What**: Split the old monolithic execution problem into:
+
+1. **Theorem-level execution guidance** — bank-cluster specialists over the raw theorem/proof-state stream
+2. **Residual local executor** — a small post-structural classifier over the normalized local goal
+3. **Family-conditioned premise grounding** — invoked only for premise-sensitive families
+
+The post-Mathlib finding is that the theorem-level system was being asked to solve the wrong local problem. It should orchestrate over time, not directly predict the final post-structural step.
 
 **How**:
 ```python
-# scripts/train_specialist.py
+# Theorem-level guidance specialists (from NAV-002 bank difficulty analysis):
+#   Guidance-A: DOMAIN, CONTEXT (Regime A banks, PAB target: stable)
+#   Guidance-B: STRUCTURE, AUTOMATION, DEPTH, DECOMPOSITION (Regime B banks)
 #
-# Initial decomposition (from NAV-002 bank difficulty analysis):
-#   Specialist-A: DOMAIN, CONTEXT (Regime A banks, PAB target: stable)
-#   Specialist-B: STRUCTURE, AUTOMATION, DEPTH, DECOMPOSITION (Regime B banks)
+# Residual local executor:
+#   - Input: post-structural residual goal
+#   - Vocabulary: rw, simp, exact, refine, apply, other
+#   - Output: top-k family gate for local search
 #
-# Each specialist has:
-#   - Own bridge (128d) — eliminates shared-bridge γ
-#   - Own hidden layers (TernaryLinear)
-#   - Own direction heads (only for assigned banks)
-#   - Shared: encoder (frozen), anchor logits, progress, critic (via fusion)
-#
-# Training: Same curriculum as v1, but each specialist sees only its bank losses
-# PAB: Track stability_regime per specialist independently
-#
-# Decomposition protocol (DESIGN §10.8):
-#   If Specialist-B PAB = "chaotic":
-#     Split into B1 (STRUCTURE, DECOMPOSITION) + B2 (AUTOMATION, DEPTH)
-#     Retrain, re-measure PAB
-#     Iterate until all specialists reach "stable"
+# Family-conditioned premise grounding:
+#   - Train first with oracle premises from residual dataset
+#   - Then replace oracle with retrieved frontier premises
+#   - Evaluate the oracle→retrieved gap directly
 ```
 
-**Metrics per specialist**:
-- PAB stability_regime (must reach "stable" or "transitional")
-- Per-bank accuracy (should improve over v1 monolithic for assigned banks)
-- Ternary crystallization rate
-- Total training compute vs v1 (should be less due to additive σ)
+**Architectural clarification from current experiments**:
+- theorem-level guidance is a temporal/frontier layer, not the final local-step oracle;
+- the residual executor predicts a bounded tactic family on the normalized local goal;
+- the next learned stage is a **family-specific constrained decoder** that emits structured local actions rather than raw Lean text.
+
+Residual tactic analysis makes this explicit:
+- `82%` of residual steps are parsable into family + structured arguments;
+- only `32%` are covered by the first simple template subset;
+- therefore the right next object is `ActionIR`, not raw tactic strings and not theorem-level step retrieval.
+
+**Metrics per stage**:
+- **Theorem-level guidance**: PAB stability_regime, per-bank accuracy, lane routing accuracy
+- **Residual executor**: family top-1, top-3, macro-F1 on post-structural residual goals
+- **Premise conditioning**: oracle-premise lift, retrieved-premise degradation from oracle, per-family gains (`rw`, `refine`, `apply`, `exact`)
+- **Constrained decoder**: parsable coverage, exact-IR match, compiler-valid rate, Lean-valid tactic rate, theorem lift over top-k family gating
+- **End-to-end**: theorem prove rate lift over bootstrap floor, learned-lane contribution, Lean calls / theorem
 
 **Comparison matrix**:
 
-| Config | Banks | Bridges | PAB Target | Compute |
-|--------|-------|---------|------------|---------|
-| v1 monolithic (NAV-002 baseline) | 6 | 1 shared | Chaotic (0.34) | 1.0x |
-| v2 two-specialist (A + B) | 2 + 4 | 2 independent | Both stable | ~1.3x |
-| v2 three-specialist (A + B1 + B2) | 2 + 2 + 2 | 3 independent | All stable | ~1.5x |
+| Config | Role | Target | Compute |
+|--------|------|--------|---------|
+| v1 monolithic (NAV-002 baseline) | Raw theorem → tactic/premise | Falsified on Mathlib learned lane | 1.0x |
+| v2 guidance specialists (A + B) | Theorem-level orchestration | Stable PAB + good frontier shaping | ~1.3x |
+| Residual executor (goal only) | Post-structural family prediction | Top-3 useful enough to gate local search | tiny (~166K params) |
+| Residual executor (goal + premise) | Family prediction with lemma context | Beat goal-only, especially on `rw`/`refine` | still laptop-scale |
 
-**Stop/go**: If two-specialist PAB is stable for both specialists AND combined accuracy ≥ v1 monolithic, the decomposition thesis is validated. If Specialist-A is stable but Specialist-B is still chaotic, proceed to three-specialist. If all specialists are chaotic, the decomposition boundary is wrong — try different bank groupings.
+**Stop/go**:
+- If guidance specialists are stable and beat the monolith on their own stage metrics, keep the decomposition.
+- If the residual executor does not beat majority/top-k baselines on the residual dataset, revisit the vocabulary or normalization regime before touching retrieval.
+- If oracle-premise conditioning does not improve residual family prediction, premise retrieval is not the bottleneck; revisit the family model.
+- If oracle helps but retrieved premises do not, retrieval quality becomes the limiting factor for Task B2.
+
+### 6.4b Constrained Output Layer: ActionIR + Deterministic Lowering
+
+**What**: Replace raw tactic-string prediction with a family-specific intermediate representation over local symbols. This is the theorem-proving version of the Balanced Sashimi constrained decoder: the neural model chooses bounded structure; deterministic code lowers it to Lean; the verifier checks truth.
+
+**Core contracts**:
+```python
+TermExpr      # local symbol, application, projection, hole, chain, ctor, lambda
+RewriteAtom   # direction + expression for rw
+ActionIR      # family-specific local action object
+```
+
+**Immediate execution ladder**:
+
+1. **Canonicalize residual tactics**
+   - Parse residual steps into `ActionIR`
+   - Target: >= 80% parsable coverage
+
+2. **Template-only subset**
+   - Compile the simple subset directly from premise names / local symbols
+   - Expected current coverage: ~32%
+
+3. **Family-specific IR decoder**
+   - Condition on residual goal + predicted family
+   - Decode `ActionIR` using the local symbol table only
+
+4. **Oracle-premise IR decoder**
+   - Add ground-truth premise embeddings for premise-sensitive families
+   - Measure the upper bound before touching retrieval
+
+5. **Retrieved-premise IR decoder**
+   - Replace oracle premises with theorem-level frontier premises or later step-level retrieval
+   - Measure the oracle→retrieved degradation directly
+
+**Family-specific scope (v1)**:
+- `rw`: rewrite list with optional backward arrows
+- `exact`: local term construction
+- `apply`: local term construction
+- `refine`: local term construction with holes
+- `simp`: bare `simp`, `simp [lemmas]`, `simpa ... using ...`
+
+**Out of scope for v1**:
+- tactic combinator scripts (`<;>`, `all_goals`, long tactic chains)
+- large lambda terms and complex structure constructors beyond the minimal local grammar
+
+**Metrics**:
+- parsable coverage
+- exact `ActionIR` match
+- family-conditioned term accuracy
+- compiler-valid rate (`ActionIR -> Lean tactic`)
+- Lean-valid tactic rate
+- end-to-end theorem lift over family-gating-only baseline
+
+**Stop/go**:
+- If parsable coverage < 70%, the canonicalizer / family taxonomy is wrong.
+- If `ActionIR` compiles but Lean-valid rate is low, the local symbol inventory or lowering is wrong.
+- If the compiler-valid and Lean-valid rates are good on oracle premises but collapse on retrieved premises, retrieval becomes the immediate bottleneck for Task B2/B3.
+
+### 6.4a Temporal Controller: Positive Progress Signal
+
+**What**: Add a stateful temporal controller inside the Arbiter that predicts which goal, lane, family band, and escalation level should be attempted next given prior proof progress.
+
+**Why**: The theorem-level system and residual executor are both conditional on proof history. Static goal rotation and fixed lane order discard this information. The controller should model:
+
+`P(next_goal, next_lane, next_family_band, next_escalation | proof_state, prior_progress)`
+
+**Current implementation status**:
+- `src/temporal_controller.py` exists and is tested.
+- It implements a rule-based v0 controller with four phases:
+  - `structural_setup`
+  - `local_close`
+  - `automation_close`
+  - `repair_or_replan`
+- Shadow mode and active mode are both implemented and operative.
+- Shadow traces collected from 50-theorem Mathlib benchmark (660 steps). All 12 proved theorems succeed at phase=structural_setup, escalation=0.
+- The controller is correctly routing, but the executor has nothing to route TO in local_close phase. Executor quality is the current bottleneck, not orchestration.
+
+**Interfaces**:
+```python
+TemporalState
+OrchestrationDecision
+TemporalController.decide(state) -> OrchestrationDecision
+TemporalController.update(state, goal, lane, family, tactic, success) -> None
+```
+
+**Experiment ladder**:
+
+| Variant | What it tests | Expected effect |
+|--------|----------------|----------------|
+| `TC0-log` | **DONE.** Shadow traces collected: 660 steps across 50 theorems. All 12 proved theorems succeed at phase=structural_setup, escalation=0. | Phase/lane signal validated but executor quality limits value |
+| `TC1-goal` | Controller drives subgoal ordering only. Active mode implemented; value depends on executor quality. | Fewer wasted rotations, faster early progress |
+| `TC2-lane` | Controller drives lane order + budget slices. Active mode implemented; value depends on executor quality. | Better use of search budget than fixed hammer→bootstrap→learned order |
+| `TC3-escalate` | Controller drives escalation and replanning | Fewer repeated dead-end attempts |
+| `TC4-learned` | Replace rule controller with learned temporal model | Higher prove rate / lower Lean calls if data signal is real |
+
+**Metrics**:
+- theorem prove rate
+- attempts / theorem
+- Lean calls / theorem
+- time-to-first-progress
+- lane hit rate: how often the controller’s top lane matches the lane that actually closes or advances the goal
+- phase calibration: agreement between predicted phase and trace-derived successful phase
+- replan utility: success after replan vs success without replan
+
+**Stop/go**:
+- Do not claim temporal-controller benefit until `TC1` or `TC2` beats the current static baseline on paired theorems.
+- `TC0-log` must show non-trivial lane/phase signal before training a learned controller.
+- If `TC2` increases Lean calls / theorem without improving prove rate, revert to shadow-only logging and revisit the state representation.
 
 ### 6.5 Integration: Full SoM Pipeline
 
-**What**: Wire all five slots together through the Arbiter and run end-to-end proof search.
+**What**: Wire all six slots together through the Arbiter and run end-to-end proof search.
 
 **How**:
 ```python
@@ -988,21 +1251,23 @@ If all three are chaotic, the issue is capacity or data, not composition gap —
 #   perception = slots.perceive(theorem.goal_state)
 #   recognition = slots.recognize(perception)
 #   sketch = slots.plan(perception, recognition)
+ #   temporal = TemporalState(theorem_id=theorem.id, open_goals=[theorem.goal_state])
 #
-#   for subgoal_spec in sketch.subgoals:
-#     # Route to appropriate specialist based on bank hints
-#     nav_output = slots.execute(perception, subgoal_spec)
-#     tactics, premises = resolve(nav_output, proof_network, context)
+#   while temporal.open_goals and budget_remaining:
+#     decision = slots.temporal.decide(temporal)
+#     current_goal = decision.next_goal_id
+#     exec_guidance = slots.execute(perception, current_goal, decision)
+#     residual_goal = structural_normalize(current_goal)
+#     family_topk = slots.residual_execute(residual_goal, exec_guidance, decision.family_prior)
+#     action_irs = decode_action_ir(family_topk, residual_goal, exec_guidance, context)
+#     action_candidates = [compile(ir) for ir in action_irs]
 #
-#     for tactic, premise_set in candidates(tactics, premises):
-#       result = slots.verify(subgoal_spec.goal_state, lower(tactic, premise_set))
+#     for candidate in action_candidates:
+#       result = slots.verify(current_goal, candidate.tactic_text)
+#       slots.temporal.update(temporal, current_goal, candidate.provenance, candidate.family, candidate.tactic_text, result.success)
 #       if result.success:
-#         advance to next subgoal
+#         advance and update temporal state
 #         break
-#
-#   if sketch incomplete and budget remaining:
-#     recognition = slots.recognize(perception, retry=True)  # try different template
-#     # ... recurse
 ```
 
 **Validation**: Run on same benchmark set as v1 (MiniF2F subset + Mathlib test split). Compare:
@@ -1049,11 +1314,11 @@ If all three are chaotic, the issue is capacity or data, not composition gap —
 
 ## Phase 7: Energy-Constrained Navigation (Week 16+, v3)
 
-*Phase 7 introduces a new architectural center — negative-boundary learning plus constraint/energy-guided planning — as a parallel v3 runtime. It does NOT modify v1 or v2 code paths. v1 and v2 remain frozen baselines for A/B/C/D comparison.*
+*Phase 7 introduces a new architectural center — negative-boundary learning, guidance/distillation over collapsed frontiers, and constraint/energy-guided planning — as a parallel v3 runtime. It does NOT modify v1 or v2 code paths. v1 and v2 remain frozen baselines for A/B/C/D comparison.*
 
 *Phase 7 is split by maturity into two tracks:*
 
-- ***v3A (practical, committed)**: Negative data collection, standalone Censor, inference-time pruning, contrastive navigator training, active boundary learning, OTP-derived scoring reforms (bank-IDF, zero-sparsity curriculum). All validated by direct measurement against v2 baselines.*
+- ***v3A (practical, committed)**: Negative data collection, standalone Censor, inference-time pruning, contrastive navigator training, active boundary learning, OTP-derived scoring reforms (bank-IDF, zero-sparsity curriculum), and guidance-layer distillation over collapsed retrieval frontiers. All validated by direct measurement against v2 baselines.*
 - ***v3B (experimental, gated on v3A)**: Energy function formalization, continuous ternary relaxation (Gumbel-softmax), energy-based sketch refinement. Ships only after v3A demonstrates value on real proof outcomes.*
 
 *Hard gate: Phase 7 benchmark evaluation does not begin until Phase 6.5 stop/go passes (v2 ≥ v1 on benchmark). v3A graduates from parallel runtime to default only when raw_success(v3A) ≥ raw_success(v2) AND lean_calls/theorem(v3A) < lean_calls/theorem(v2). Note: analytical work (7.1c ternary distribution analysis, 7.1a/b scoring reform design) can proceed in parallel with Phase 6 since they operate on existing training data, not benchmark verification.*
@@ -1064,6 +1329,7 @@ If all three are chaotic, the issue is capacity or data, not composition gap —
 |------|------|------|
 | **Wave 0** | Phase 6 complete. Shared interfaces defined. `--mode v1\|v2` benchmark. | Phase 6.5 stop/go passes |
 | **Wave 1 (v3A)** | Negative data, asymmetric censor, contrastive training, pruning, active boundary learning, OTP scoring reforms. `--mode v3` added. | Censor AUROC ≥ 0.80, raw_success(v3A) ≥ raw_success(v2) |
+| **Wave 1.5 (v3A.5)** | Guidance-layer distillation over deterministic collapse: symbolic lenses, modulation, learned specialist distillation, disagreement mining. | Modulation is non-destructive on paired eval and improves ambiguous-tail behavior or distillation yield |
 | **Wave 2 (v3B)** | Energy function, continuous ternary relaxation, sketch refinement loop. | v3A demonstrates value first. Energy-refined ≥ discrete v3A. |
 
 ### Parallel Runtime Architecture
@@ -1073,20 +1339,31 @@ v3 is a parallel orchestration path, not a modification of v1/v2. Benchmark runs
 **Shared interfaces** (defined as dataclasses in `src/contracts.py` during Wave 0):
 
 - **GoalContext**: theorem_id, goal_text, proof_history, accessible_premises, source_split_metadata.
-- **ActionCandidate**: tactic, premises, provenance, navigational_scores, template_provenance (optional).
+- **ResidualGoal**: structurally normalized local goal, local hypotheses, proof-history summary, lane context.
+- **ExecutionGuidance**: theorem-level directions, anchor logits, lane hints, frontier summaries, critic/progress estimates.
+- **TemporalState**: stateful proof-progress record used by the temporal controller.
+- **OrchestrationDecision**: next-goal, lane-order, family-prior, escalation, and replanning output from temporal control.
+- **FamilyPrediction**: tactic-family logits, top-k families, optional premise-sensitivity score.
+- **TermExpr**: typed local term node for constrained tactic synthesis.
+- **RewriteAtom**: direction + expression for rewrite families.
+- **ActionIR**: family-specific structured local action lowered deterministically to Lean.
+- **ActionCandidate**: lowered tactic text plus optional `ActionIR`, premises, provenance, navigational_scores, template_provenance (optional).
 - **NegativeExample**: canonical `nav_negative.jsonl` schema with source, failure_category, paired_positive, split_metadata.
+- **GuidancePacket**: collapsed retrieval frontier, residual diagnostics, conflict clusters, and candidate summaries passed to lens specialists.
+- **LensVote**: typed support / abstain / oppose output with confidence and provenance from one guidance lens.
 - **ConstraintReport**: bank scores, critic distance, censor score, anchor alignment, total score (or energy for v3B).
 - **SketchProposal**: template_id, proposed_steps, latent_form (optional for v3B), total_constraint_score.
 - **SearchTrace**: complete audit object for one theorem attempt, including pruning decisions and Lean calls.
 
 ### Theoretical Grounding
 
-*This phase synthesizes three theoretical streams:*
+*This phase synthesizes four theoretical streams:*
 - *OTP (Vinaik, 2025): The ternary alphabet {-1, 0, +1} where 0 is not absence but orthogonality — a third informational state. Wayfinder's 6-bank ternary decoder is an OTP projection; bank zeros are Informational Zeros (transparency, not ignorance). The Minority Channel Advantage predicts that sparse bank activations carry disproportionate information.*
 - *COEC (Vinaik, 2025): Constraint-Oriented Emergent Computation — specify what a system CANNOT do; behavior emerges from constraint interactions. The bank scores + critic + censor form a constraint system; proof search is trajectory through constrained state space.*
+- *Guidance-layer distillation (Wayfinder / LintGate / data geometry convergence): deterministic collapse creates a bounded frontier, then lossy orthogonal lenses emit support / abstain / oppose over the ambiguous remainder. Agreement becomes pseudo-label confidence; disagreement becomes active-learning signal and distillation data.*
 - *Energy-Based Models (cf. Logical Intelligence/Kona, 2026): Define a scalar energy function over entire solutions, then minimize via gradient-based refinement in continuous latent space. Avoids the autoregressive failure mode where sequential commitment prevents revision of earlier decisions.*
 
-*Learning-theoretic framing: Navigation (Slots 1-4) is PAC learning. Verification (Slot 5 + Lean kernel) is an exact oracle. Negative learning exploits the oracle to construct version-space boundaries from both sides. The energy function (v3B) unifies all constraint channels into a single differentiable objective.*
+*Learning-theoretic framing: Navigation (Slots 1-4) is PAC learning. Verification (Slot 5 + Lean kernel) is an exact oracle. Negative learning exploits the oracle to construct version-space boundaries from both sides. Guidance-layer distillation turns deterministic collapse + oracle feedback into dense local supervision over ambiguous frontiers. The energy function (v3B) unifies all constraint channels into a single differentiable objective.*
 
 ### 7.0 Prerequisites: Core Eval Validity [Wave 0 — gates both v3A and v3B]
 
@@ -1349,6 +1626,51 @@ v3 is a parallel orchestration path, not a modification of v1/v2. Benchmark runs
 
 **Stop/go**: If contrastive training degrades positive-only performance at all tested λ values, the negative data quality is suspect — return to 7.2 and audit labels.
 
+### 7.4b Guidance-Layer Distillation [v3A — Wave 1.5]
+
+**What**: Insert a guidance layer between deterministic retrieval collapse and downstream proof execution. The retrieval stack produces a bounded frontier plus provenance-rich diagnostics; symbolic or learned specialists operate only on that frontier and emit typed support / abstain / oppose decisions.
+
+**Why**: Small models should learn `H(candidate | collapsed_frontier, residual_state)`, not full theorem proving. Deterministic collapse does the expensive search-space reduction. The guidance layer spends learned capacity only on the ambiguous remainder and turns committee agreement/disagreement into distillation and active-learning signal.
+
+**Clarification from current experiments**: this guidance layer lives at the theorem/frontier level. It feeds the residual executor; it is not itself the final local-step predictor.
+
+**Execution ladder**:
+
+| Variant | What it tests | Shipping status |
+|---------|---------------|-----------------|
+| **G0-none** | No guidance layer after deterministic retrieval | Baseline for Wave 1.5 |
+| **G0-replace** | Guidance replaces deterministic ranking | Ablation only; falsification condition |
+| **G0-modulate** | Guidance modulates deterministic ranking | Default control regime |
+| **G1-symbolic** | Candidate-grounded symbolic lenses only | First committed implementation |
+| **G2-single** | One learned lens on ambiguous subset | Optional once G1 has stable targets |
+| **G3-committee** | Multi-lens learned committee over collapsed frontier | Gated on G2 value |
+| **G4-distill** | Distill committee outputs into lightweight reranker / specialist head | Preferred practical outcome |
+| **G5-disagree** | Mine disagreement cases for active learning and retraining | Ongoing data engine |
+
+**Metrics**:
+- **Paired `recall@16`, `perfect`, `zero`** on identical perfect-query samples
+- **Ambiguous-tail metrics**: gain on examples with non-converged landmark sets or non-zero residual entropy
+- **Harmful demotion rate**: fraction of GT candidates pushed below cutoff by the committee
+- **Abstention rate**: how often lenses emit informative zero rather than weak support/oppose
+- **Committee informativeness**: distribution of no-op vs modulate vs branch-worthy cases
+- **Distillation yield**: number of usable `GuidancePacket` / `LensVote` / verifier outcome triples
+
+**Default rule**:
+- `replace` remains ablation-only until it beats both `G0-none` and `G0-modulate` on paired evaluation.
+- `modulate` is the only shipping guidance mode in Wave 1.5.
+- If committee informativeness is low, modulation should converge toward a no-op rather than forcing rank inversions.
+
+**Stop/go**:
+- `G0-modulate` must remain within 3 percentage points of `G0-none` on paired recall, or exceed it outright.
+- Guidance must also improve at least one of: ambiguous-tail recall, zero-recall reduction, or distillation yield.
+- Candidate-grounded evidence is mandatory before symbolic guidance graduates from experimental to committed.
+- Learned lenses (`G2+`) must beat `G1-symbolic` on the ambiguous subset before default promotion.
+
+**Output artifacts**:
+- `data/guidance_packet.jsonl` — collapsed-frontier packets with residual diagnostics
+- `data/lens_votes.jsonl` — typed per-lens outputs over candidates / branches
+- `data/ambiguous_guidance_train.jsonl` — distillation dataset for learned specialists
+
 ### 7.5 Energy Function Formalization [v3B — Wave 2, gated on v3A]
 
 *Goal: Define a composite, differentiable energy function that unifies all of Wayfinder's constraint channels into a single scalar. This is the theoretical foundation for energy-based sketch refinement (7.6) and provides a formal connection between OTP/COEC theory and the proof search objective.*
@@ -1544,36 +1866,40 @@ energy_refinement:
 
 **What**: The Phase 7 inference pipeline exists in two variants. v3A ships first; v3B extends it with energy refinement after v3A demonstrates value.
 
-**v3A pipeline** (discrete scoring + censor pruning):
+**v3A pipeline** (discrete scoring + guidance modulation + censor pruning):
 ```python
 # v3A inference pipeline (in src/proof_search.py, --mode v3):
 #
 # 1. PERCEPTION: Encode goal state (existing)
 #    goal_embedding = encoder.encode(goal_state)
 #
-# 2. OTP SCORING: Navigate with bank-IDF weighting (7.1a)
+# 2. OTP SCORING + DETERMINISTIC COLLAPSE: Navigate with bank-IDF weighting (7.1a)
 #    candidates = proof_network.navigate(goal_embedding, bank_idf_weights)
+#    collapsed = landmark_expand_retrieve(goal_state, candidates)
 #
-# 3. CENSOR PRUNING: Asymmetric censor filters candidates (7.3)
-#    scored = censor.score(goal_state, candidates)
+# 3. GUIDANCE MODULATION (7.4b, optional)
+#    guided = guidance_layer.modulate(goal_state, collapsed)
+#
+# 4. CENSOR PRUNING: Asymmetric censor filters candidates (7.3)
+#    scored = censor.score(goal_state, guided)
 #    pruned = [c for c in scored if c.censor_confidence >= threshold]
 #    if len(pruned) == 0:
 #        pruned = top_k(scored, k=3)  # safety net: never prune ALL
 #
-# 4. TEMPLATE SELECTION: Classify proof template (Phase 6.2)
+# 5. TEMPLATE SELECTION: Classify proof template (Phase 6.2)
 #    templates = template_classifier.predict_top_k(goal_embedding, k=3)
 #
-# 5. DISCRETE SKETCH: Predict sketch, score via ConstraintReport (no energy)
+# 6. DISCRETE SKETCH: Predict sketch, score via ConstraintReport (no energy)
 #    for template in templates:
 #        sketch = sketch_predictor.predict(goal_state, template)
 #        report = constraint_report(sketch, bank_scores, critic, censor, anchors)
 #        if report.total_score > best_score:
 #            best_sketch, best_score = sketch, report.total_score
 #
-# 6. EXECUTION: Submit best tactics to Lean (Lane A)
+# 7. EXECUTION: Submit best tactics to Lean (Lane A)
 #    result = lean_kernel.apply_sequence(best_sketch.tactics)
 #
-# 7. RETRY: If failed, try next template (existing arbiter retry logic)
+# 8. RETRY: If failed, try next template (existing arbiter retry logic)
 ```
 
 **v3B pipeline** (extends v3A with energy refinement — gated on v3A success):
@@ -1595,7 +1921,7 @@ energy_refinement:
 
 ### 7.9 Validation Plan: A/B/C/D Comparison [v3A: A→B, v3B: C→D]
 
-**What**: Prove that each Phase 7 component produces genuine improvement. Conditions A through B are v3A validation; C and D are v3B validation (gated on v3A success).
+**What**: Prove that each Phase 7 component produces genuine improvement. Conditions A through B are v3A validation; C and D are v3B validation (gated on v3A success). Guidance-layer distillation (7.4b) is an orthogonal Wave 1.5 track: if `G0-modulate` passes its gate, A+/B/B+/C/D use guidance modulation as the default retrieval frontend. Otherwise guidance remains logging/distillation-only.
 
 **Experimental conditions**:
 
@@ -1671,6 +1997,15 @@ energy_refinement:
 | B+contrastive, no censor | v3A | Navigator change only (no pruning) |
 | B+active-5: Active boundary (5 iterations) | v3A | Standard active learning |
 | B+active-10: Active boundary (10 iterations) | v3A | Diminishing returns check |
+| **Guidance Distillation (v3A — Wave 1.5)** | | |
+| G0-none: no guidance layer | v3A | Deterministic collapse only |
+| G0-replace: committee replaces rerank | v3A | Falsification condition for guidance-as-driver |
+| G0-modulate: committee modulates rerank | v3A | Default control regime |
+| G1-symbolic: candidate-grounded symbolic lenses | v3A | Whether rule-based guidance adds value |
+| G2-single: one learned ambiguous-case lens | v3A | Whether learned local resolution beats symbolic-only |
+| G3-committee: multi-lens learned committee | v3A | Whether committee fusion adds value over single lens |
+| G4-distill: distill committee into lightweight head | v3A | Practical deployment path |
+| G5-disagree: train on disagreement cases | v3A | Active-learning value of committee conflict |
 | **Energy Refinement (v3B — gated on v3A)** | | |
 | C-5: Energy refinement, 5 steps | v3B | Minimal refinement budget |
 | C-20: Energy refinement, 20 steps | v3B | Default refinement budget |
@@ -1722,6 +2057,7 @@ The primary Wayfinder config works end-to-end:
 - [ ] Label quality verified (200 spot-checks per source, semantic vs infra separation confirmed)
 - [ ] Asymmetric censor trained, AUROC ≥ 0.80, false-prune rate < 5% (Phase 7.3)
 - [ ] Contrastive training does not degrade positive-only performance (Phase 7.4)
+- [ ] Guidance modulation is non-destructive on paired eval and improves ambiguous-tail or distillation metrics (Phase 7.4b)
 - [ ] Active boundary loop converges (uncertainty shrinks ≥ 10%/iteration) (Phase 7.7)
 - [ ] raw_success(v3A) ≥ raw_success(v2) AND lean_calls/theorem(v3A) < lean_calls/theorem(v2)
 
@@ -1772,9 +2108,10 @@ The primary Wayfinder config works end-to-end:
 | Train Censor (failure predictor) | `python -m scripts.train_censor --negatives data/nav_negative.jsonl` *(v3A — not yet implemented)* |
 | Run benchmark (mode-explicit) | `python -m scripts.run_benchmark --config configs/wayfinder.yaml --mode v1\|v2\|v3 --checkpoint runs/<run-id>/checkpoint.pt` |
 | Understand v3 boundary learning | `docs/WAYFINDER_PLAN.md` Phase 7 (v3A: 7.0-7.4, 7.7) |
+| Understand v3 guidance layer | `docs/WAYFINDER_PLAN.md` Section 7.4b, `src/lens_guidance.py`, `src/coherence_engine.py` |
 | Understand v3 energy refinement | `docs/WAYFINDER_PLAN.md` Phase 7 (v3B: 7.5-7.6, gated on v3A) |
-| Understand v3 runtime architecture | `docs/WAYFINDER_DESIGN.md` Section 12 *(planned)* |
-| Understand OTP/EBM theory | `docs/WAYFINDER_RESEARCH.md` Section 2.11 *(planned)* |
+| Understand v3 runtime architecture | `docs/WAYFINDER_DESIGN.md` Section 12 |
+| Understand OTP/guidance/EBM theory | `docs/WAYFINDER_RESEARCH.md` Section 2.11 |
 
 ## Key Data Files
 
@@ -1807,3 +2144,203 @@ The primary Wayfinder config works end-to-end:
 16. **Unchosen ≠ invalid (v2.1).** Tactics not chosen in LeanDojo traces are weak negatives only (0.1× loss weight). Many unchosen tactics are valid alternatives — treating them as hard negatives would corrupt the version-space boundaries.
 17. **Negative examples inherit split hygiene (v2.1).** Train/eval split for negatives follows `theorem_id` from the positive split. Additionally, negatives are split by `source` to prevent leakage between collection methodology and evaluation.
 18. **Censor false-prune rate < 5% at operating threshold (v2.1).** A Censor that prunes valid tactics is worse than no Censor. The safety net (never prune ALL candidates) is mandatory.
+
+---
+
+## Critical Path Assessment (2026-03-19, post-EXP-048 executable-selector benchmark)
+
+**Current state:** Pantograph is stable enough for benchmark iteration. The rewrite family is
+operationally frozen around the additive cosine executor:
+- single-step `cosine_rw`
+- sequential fallback `cosine_rw_seq`
+
+On the measured step-0 slices, `rw0` through `rw3` collapse to this cheap scoped cosine +
+verification pattern; no standalone learned rewrite decoder is justified on the current evidence.
+`NAV-004` is now the primary aligned checkpoint: it matches NAV-003 at `14/50` while removing the
+misplaced `subtask_kind` navigator head. The theorem-search gain over NAV-002 is confirmed as a
+routing/automation effect, not a learned local-tactic-lane effect. Declaration-faithful Tier B
+start states produce `91%` GoalStart on step-0 and `94%` base-state coverage on the step>0 replay
+sample. Step>0 replay is usable (`12/47 = 26%`) but remains a coverage track. The main execution
+milestone after rewrite collapse is no longer another always-on local lane. It is now
+**compile-aware executable action selection**:
+- `apply` is validated at the action-selection level by live Lean verification (`35/91` accepted
+  vs `15/91` for cosine top-1 on held-out step-0 apply goals)
+- the next dataset milestone is to expand that selector beyond canonical step-0 into
+  provenance-aware post-bootstrap and mid-search residuals
+- `refine_named` remains the next structured-action family after `apply`
+
+`ContextIR` remains the parallel compiler track that must unlock replay fidelity and future
+families, but it is no longer the reason to delay the next executable-selector track.
+
+**What is already validated:**
+- PERCEPTION → RECOGNITION → PLANNING → TEMPORAL CONTROLLER → EXECUTION → VERIFICATION is the right architectural split.
+- Theorem-level guidance is a temporal/frontier layer, not the final local-step oracle.
+- `rw0` is the correct first formal lane for validating local execution, but learning is not needed on the easy step-0 slice because cosine nearly saturates the oracle ceiling.
+- step>0 replayed states support the same scoped-cosine local execution regime as theorem-initial states once replay succeeds.
+- `rw1` is not a new premise-selection problem. On the current split, tier identity already provides almost all of the direction signal.
+- GoalStart / ReplaySuccess and LeanValid\|started are separate tracks and must remain separate in all reporting.
+- Declaration-faithful Tier B is the right state abstraction: source declaration + `by sorry` matches LeanDojo's post-`by` regime far better than `env_inspect.type.pp`.
+- Structured Lean compiler feedback is the right supervision object for the next learned stage:
+  `unification_mismatch`, `typeclass_missing`, `unknown_identifier`, `accepted_with_goals`, and
+  goal-start failures are meaningfully separable.
+- `apply` executable selection now has a real live-execution win: a small selector can improve
+  `LeanAccepted | started` materially over cosine on held-out goals.
+
+**What is not ready yet:**
+- The current wrapper path still reconstructs only a thin subset of Lean source context. It misses or conservatively drops many real Mathlib context effects: inline `... in`, local notation blocks, local attributes, scoped notation, and include/omit interactions.
+- Step>0 replay is usable but still shallow: most remaining failures are at prefix index `0`, and higher replay coverage still depends on source-context fidelity rather than lexical name repair.
+- `apply` is validated at the action-selection level, but theorem-level lift from the selector has
+  not yet been measured in the live search loop.
+- The executable-selector dataset is still too narrow. It must expand from canonical step-0 apply
+  into canonical mid-step, post-bootstrap residual, and mid-search apply-shaped states with full
+  provenance.
+- `simp` remains a helper lane rather than a productive theorem-winning family on the current
+  slice.
+- `refine_named` remains the next structured-action family after `apply`; `refine_anon` is still
+  a distinct harder regime.
+- Full SoM training is premature until multiple specialist contracts are validated on live
+  executable metrics rather than only offline ranking metrics.
+
+**ContextIR compiler findings (new):**
+- Whole-Mathlib census (`scripts/context_ir_census.py`) shows the relevant source-context constructs are common, not edge cases: `open scoped` 2370, `local notation` 496, `local attribute` 915, `scoped_notation` 402, `include` 1064, `omit` 422, and `inline_only` `... in` forms 6742.
+- On `rw0_eval.jsonl`, the benchmark audit (`scripts/context_ir_benchmark_audit.py`) finds these constructs active at theorem sites frequently: `open` on 693 processed examples, `open_scoped` on 262, `local_notation` on 42, `local_attribute` on 42, `include` on 47. The most common unsupported patterns are exactly the next-declaration and scoped forms the current wrapper path does not compile (`open Classical in`, `variable (M) in`, `include Q in`, `open scoped Classical in`).
+
+**Canonical next steps (in order):**
+
+1. **Freeze the aligned baseline.**
+   - Use `NAV-004` as the canonical checkpoint for all future theorem-search runs.
+   - Use `cosine_rw` plus interleaved bootstrap as the canonical runtime baseline.
+   - Treat standalone `cosine_rw_seq`, ungated `apply`, and global `simp` deployment as historical or diagnostic ablations, not the forward default.
+
+2. **Expand the executable dataset with provenance before broadening the selector story.**
+   - Collect `(goal, candidate)` probe rows from:
+     - canonical step-0 `apply`
+     - canonical mid-step `apply`
+     - post-bootstrap apply-shaped residuals
+     - mid-search apply-shaped states
+   - Preserve provenance on every row:
+     - `source_kind`
+     - `search_stage`
+     - `lane_provenance`
+     - `goal_shape_ir`
+     - `trigger_profile_ir`
+     - `subtask_kind` when available
+     - `feedback_category`
+     - `accepted`
+     - `closed`
+   - Keep the first learning target binary:
+     - `executable = accepted_with_goals ∪ closed`
+     - `non_executable = all remaining failure categories`
+
+3. **Train source-aware executable selectors, not another name reranker.**
+   - `apply` is now the first validated execution-level selector regime.
+   - Evaluate by source, not just pooled metrics:
+     - canonical step-0
+     - canonical mid-step
+     - post-bootstrap residual
+     - mid-search residual
+   - Keep ranking metrics secondary. Primary metrics are:
+     - `LeanAccepted | started`
+     - executable candidate recall
+     - failure-category composition
+   - Treat static shape filters as features and instrumentation, not as standalone gates.
+
+4. **Integrate the `apply` executable selector into theorem search.**
+   - Run theorem-search ablations with:
+     - baseline (`cosine_rw` + interleaved bootstrap)
+     - baseline + selector-driven `apply`
+     - baseline + selector-driven `apply` + residual-conditioned gating
+   - The question is no longer premise-name recovery. It is whether compiler-validated
+     `accepted_with_goals` converts into more solved theorems at acceptable call budget.
+
+5. **Keep `ContextIR` as the enabling compiler track, not the primary local-family milestone.**
+   - Parse theorem-site lexical context into an explicit IR: scope frames + directives + unsupported forms.
+   - Treat Lean source notation as a DSL with scoped side effects, not as header text.
+   - Prioritize the context effects that still matter for helper/specialist families:
+     - `attribute [local simp]`
+     - `open scoped`
+     - local notation
+     - local instances
+     - `include` / `omit`
+   - Validation scripts remain mandatory:
+     - `python -m scripts.context_ir_census`
+     - `python -m scripts.context_ir_benchmark_audit --dataset data/canonical/rw0_eval.jsonl`
+
+6. **Extend the same executable-selection regime family-by-family.**
+   - Immediate next family:
+     - `refine_named` via structured action / skeleton selection
+   - Immediate non-target:
+     - `refine_anon`
+   - Keep mixed-family lanes residual-conditioned, not globally enabled.
+   - `simp` remains a helper lane, not a default theorem-winning finisher.
+   - `apply` should remain residual-conditioned even after selector deployment unless theorem-level
+     cost/yield justifies broader use.
+   - Only promote a family to default-on theorem search after it shows nonzero theorem-level gain at acceptable call budget.
+
+7. **Keep step>0 replay and semantic `rw` as a coverage track only.**
+   - Keep state-guided replay and per-step alias rebuilding.
+   - Prioritize post-step subgoal selection and alpha-equivalent goal matching.
+   - Current replay gate: `ReplaySuccess | base_state >= 35%`.
+   - Primary step>0 metric remains `LeanValid@k | replayed`, not oracle-match.
+
+8. **Delay full SoM training until there are multiple validated specialist regimes.**
+   - Full specialist routing/training should sit on top of validated executor contracts:
+     - `rw` finisher
+     - interleaved bootstrap scaffolder
+     - `apply` executable selector
+     - `refine_named` structured-action selector
+   - Do not treat "Society of Mind" as a substitute for proving out these specialist contracts.
+
+9. **Move the learned frontier above the rewrite executor.**
+   - Do not spend more cycles trying to beat cosine on rewrite-family local execution with standalone rewrite decoders.
+   - Do not build a standalone direction head for the current `rw0/rw1` split; the family gate already carries that signal.
+   - Focus learning on the parts cheap geometry still does not solve:
+     - executable action selection over scoped candidate sets (`apply`)
+     - structured skeleton selection over scoped candidate sets (`refine_named`)
+     - residual-conditioned orchestration (`rw` vs helper/specialist families)
+     - controller-visible move selection over `SubtaskIR` / trigger profiles
+
+**Do not run yet:**
+- navigator aux-head tuning beyond the aligned `NAV-004` contract
+- more rewrite-family decoder experiments
+- theorem-level claims for new always-on local lanes that still fail the cost/yield gate
+- standalone learned direction-head experiments on the current `rw0/rw1` split
+- large step>0 learned `rw` benchmarks before replay coverage improves
+- full SoM specialist training regimes before at least `apply` and one additional specialist
+  family are validated at live executable metrics
+- temporal-controller value claims that assume `apply` / `refine` are already productive global lanes
+- theorem-search claims based only on offline gold recovery or MRR without live `LeanAccepted`
+
+**Key insight:** The deterministic compiler layer now has two parts:
+1. **Source-context compilation** (`ContextIR`) to reconstruct the executable theorem-site environment.
+2. **Action compilation** (`ActionIR`) to lower family-specific local choices into Lean syntax.
+3. **Executable feedback compilation** (`LeanFeedback` + probe datasets) to turn Lean's own
+   elaboration/unification outcomes into training targets for executable selectors.
+
+The remaining gap is no longer a missing rewrite-family scorer. It is the combination of:
+- a missing compiler layer that links theorem source notation to executable local proof states, and
+- family-specific executable-action selection over scoped candidates, and
+- the higher-level orchestration / mixed-family selection problems that cheap geometry does not solve by itself.
+
+**Planning-layer update (2026-03-18):** the project now also carries a controller-facing move
+representation above `ActionIR`:
+
+3. **Motivated move typing** (`SubtaskIR` + trigger profiles) to state:
+   - why a local family is admissible in the current goal (`TriggerProfileIR`)
+   - what local transformation the step is attempting (`SubtaskIR`)
+
+This layer does not replace `ActionIR`. It is derived from canonical proof data and is meant for
+controller training, auditability, and proof-schema mining. The relevant code path is now:
+- `src/subtask_ir.py`
+- `scripts/build_subtask_training_data.py`
+- `scripts/validate_subtask_ir.py`
+- `scripts/mine_move_schemas.py`
+
+**Updated order after rewrite-family collapse:**
+1. freeze `NAV-004` as the aligned theorem-search checkpoint
+2. freeze rewrite-family execution around `cosine_rw` + interleaved bootstrap
+3. expand the provenance-aware executable dataset for `apply`
+4. train and deploy source-aware `apply` executable selectors into theorem search
+5. extend the same executable-selection regime to `refine_named`
+6. use `SubtaskIR` / trigger profiles to lift validated specialist behavior into a planner-facing move space
+7. only then train the full SoM with explicit per-source / per-specialist training regimes

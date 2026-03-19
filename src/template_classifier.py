@@ -40,16 +40,25 @@ class TemplateClassifier(nn.Module):
         hidden_dim: int = 128,
         feature_dim: int = 64,
         num_templates: int | None = None,
+        auxiliary_heads: dict[str, int] | None = None,
     ) -> None:
         super().__init__()
         self.input_dim = input_dim
         self.hidden_dim = hidden_dim
         self.feature_dim = feature_dim
         self.num_templates = num_templates or get_num_templates()
+        self.auxiliary_head_sizes = auxiliary_heads or {}
 
         self.layer1 = nn.Linear(input_dim, hidden_dim)
         self.layer2 = nn.Linear(hidden_dim, feature_dim)
         self.classifier = nn.Linear(feature_dim, self.num_templates)
+        self.auxiliary_heads = nn.ModuleDict(
+            {
+                name: nn.Linear(feature_dim, size)
+                for name, size in self.auxiliary_head_sizes.items()
+                if size > 0
+            }
+        )
 
     def forward(self, features: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """Forward pass returning logits and template features.
@@ -66,6 +75,17 @@ class TemplateClassifier(nn.Module):
         template_features = F.relu(self.layer2(hidden))
         logits = self.classifier(template_features)
         return logits, template_features
+
+    def forward_with_aux(
+        self,
+        features: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor, dict[str, torch.Tensor]]:
+        """Forward pass with optional auxiliary move supervision heads."""
+        logits, template_features = self.forward(features)
+        aux_logits = {
+            name: head(template_features) for name, head in self.auxiliary_heads.items()
+        }
+        return logits, template_features, aux_logits
 
     def predict(self, features: torch.Tensor) -> RecognitionOutput:
         """Produce a RecognitionOutput for the planning slot (inference mode).

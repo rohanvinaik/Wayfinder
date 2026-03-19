@@ -39,6 +39,7 @@ class ProofNavigator(nn.Module):
         num_layers: int = 2,
         ternary_enabled: bool = True,
         navigable_banks: list[str] | None = None,
+        auxiliary_heads: dict[str, int] | None = None,
     ) -> None:
         super().__init__()
         self.input_dim = input_dim
@@ -46,6 +47,7 @@ class ProofNavigator(nn.Module):
         self.num_anchors = num_anchors
         self.ternary_enabled = ternary_enabled
         self.navigable_banks = navigable_banks or list(_DEFAULT_BANKS)
+        self.auxiliary_head_sizes = auxiliary_heads or {}
 
         hidden_cls = TernaryLinear if ternary_enabled else nn.Linear
 
@@ -74,6 +76,40 @@ class ProofNavigator(nn.Module):
         # Critic head: estimates solvability (scalar, sigmoid → [0, 1])
         self.critic_head = nn.Linear(hidden_dim, 1)
 
+        # Optional auxiliary heads used only during training-time regularization.
+        # In the aligned setup these should be descriptive local-state labels, not
+        # planning/controller targets such as SubtaskIR.
+        self.auxiliary_heads = nn.ModuleDict(
+            {
+                name: nn.Linear(hidden_dim, out_dim)
+                for name, out_dim in self.auxiliary_head_sizes.items()
+                if out_dim > 0
+            }
+        )
+
+    def forward_with_aux(
+        self, bridge_output: torch.Tensor
+    ) -> tuple[
+        dict[str, torch.Tensor],
+        torch.Tensor,
+        torch.Tensor,
+        torch.Tensor,
+        dict[str, torch.Tensor],
+    ]:
+        """Forward pass with optional training-only auxiliary heads."""
+        hidden = self.hidden_layers(bridge_output)
+
+        direction_logits = {bank: head(hidden) for bank, head in self.direction_heads.items()}
+        auxiliary_logits = {name: head(hidden) for name, head in self.auxiliary_heads.items()}
+
+        return (
+            direction_logits,
+            self.anchor_head(hidden),
+            self.progress_head(hidden),
+            torch.sigmoid(self.critic_head(hidden)),
+            auxiliary_logits,
+        )
+
     def forward(
         self, bridge_output: torch.Tensor
     ) -> tuple[dict[str, torch.Tensor], torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -89,16 +125,8 @@ class ProofNavigator(nn.Module):
                 progress: [batch, 1]
                 critic: [batch, 1]
         """
-        hidden = self.hidden_layers(bridge_output)
-
-        direction_logits = {bank: head(hidden) for bank, head in self.direction_heads.items()}
-
-        return (
-            direction_logits,
-            self.anchor_head(hidden),
-            self.progress_head(hidden),
-            torch.sigmoid(self.critic_head(hidden)),
-        )
+        direction_logits, anchor_logits, progress, critic, _ = self.forward_with_aux(bridge_output)
+        return direction_logits, anchor_logits, progress, critic
 
     def predict(self, bridge_output: torch.Tensor) -> NavOutput:
         """Produce a NavOutput for resolution (inference mode).

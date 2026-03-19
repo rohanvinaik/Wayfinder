@@ -29,6 +29,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from src.nav_contracts import StructuredQuery
+from src.premise_retrieval import landmark_expand_retrieve
 from src.proof_network import navigate
 
 
@@ -60,21 +61,45 @@ class GapRecord:
         return result
 
 
-def load_proof_steps(db_path: str, sample_size: int) -> list[dict]:
-    """Load random proof steps with ground-truth premises from the DB."""
+def load_proof_steps(
+    db_path: str, sample_size: int, seed: int | None = None
+) -> list[dict]:
+    """Load proof steps with ground-truth premises from the DB.
+
+    When seed is provided, uses deterministic Python-side sampling
+    for paired comparisons across strategies.
+    """
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
 
-    rows = conn.execute(
-        """
-        SELECT e.id, e.name, e.entity_type, e.namespace
-        FROM entities e
-        WHERE e.entity_type = 'lemma'
-        ORDER BY RANDOM()
-        LIMIT ?
-        """,
-        (sample_size,),
-    ).fetchall()
+    if seed is not None:
+        import random as _random
+
+        rng = _random.Random(seed)
+        all_ids = [
+            r[0]
+            for r in conn.execute(
+                "SELECT id FROM entities WHERE entity_type = 'lemma'"
+            ).fetchall()
+        ]
+        selected_ids = rng.sample(all_ids, min(sample_size, len(all_ids)))
+        ph = ",".join("?" * len(selected_ids))
+        rows = conn.execute(
+            f"SELECT id, name, entity_type, namespace "  # nosec B608
+            f"FROM entities WHERE id IN ({ph})",
+            selected_ids,
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            """
+            SELECT e.id, e.name, e.entity_type, e.namespace
+            FROM entities e
+            WHERE e.entity_type = 'lemma'
+            ORDER BY RANDOM()
+            LIMIT ?
+            """,
+            (sample_size,),
+        ).fetchall()
 
     steps = []
     for row in rows:
@@ -153,10 +178,28 @@ def build_perfect_query(conn: sqlite3.Connection, step: dict) -> StructuredQuery
 
 
 def navigate_with_query(
-    conn: sqlite3.Connection, query: StructuredQuery, limit: int = 16
+    conn: sqlite3.Connection,
+    query: StructuredQuery,
+    limit: int = 16,
+    strategy: str = "flat",
 ) -> list[str]:
-    """Execute a navigational query using the real proof network navigate()."""
-    results = navigate(conn, query, limit=limit, entity_type="lemma")
+    """Execute a navigational query using the configured retrieval strategy.
+
+    Strategies:
+        flat: direct navigate() over full entity space
+        bridge_potential: landmark_expand_retrieve with bridge scoring
+        multi_pass: landmark_expand_retrieve with 4-selector fusion
+    """
+    if strategy == "flat":
+        results = navigate(conn, query, limit=limit, entity_type="lemma")
+    else:
+        cfg = {}
+        if strategy == "multi_pass":
+            cfg["landmark_strategy"] = "multi_pass"
+        elif strategy == "multi_pass_lens":
+            cfg["landmark_strategy"] = "multi_pass"
+            cfg["lens_guidance"] = True
+        results, _ = landmark_expand_retrieve(query, conn, limit=limit, config=cfg)
     return [r.name for r in results]
 
 
@@ -200,10 +243,12 @@ def find_gap_anchors_from_conn(
     return sorted(gap_flat), gap_by_cat
 
 
-def analyze_step(conn: sqlite3.Connection, step: dict) -> GapRecord:
+def analyze_step(
+    conn: sqlite3.Connection, step: dict, strategy: str = "flat"
+) -> GapRecord:
     """Run gap analysis on a single proof step."""
     query = build_perfect_query(conn, step)
-    retrieved = navigate_with_query(conn, query, limit=16)
+    retrieved = navigate_with_query(conn, query, limit=16, strategy=strategy)
 
     gt_set = set(step["premises"])
     retrieved_set = set(retrieved)
@@ -296,11 +341,20 @@ def _summarize_records(records: list[GapRecord], output_path: str) -> dict:
     }
 
 
-def run_analysis(db_path: str, sample_size: int, output_path: str) -> dict:
+def run_analysis(
+    db_path: str,
+    sample_size: int,
+    output_path: str,
+    strategy: str = "flat",
+    seed: int | None = None,
+) -> dict:
     """Run full gap analysis and write results."""
     print(f"Loading {sample_size} proof steps from {db_path}...")
-    steps = load_proof_steps(db_path, sample_size)
+    if seed is not None:
+        print(f"  Using deterministic seed: {seed}")
+    steps = load_proof_steps(db_path, sample_size, seed=seed)
     print(f"  Loaded {len(steps)} steps")
+    print(f"  Retrieval strategy: {strategy}")
 
     conn = sqlite3.connect(db_path)
     conn.execute("PRAGMA foreign_keys=ON")
@@ -309,7 +363,7 @@ def run_analysis(db_path: str, sample_size: int, output_path: str) -> dict:
     for i, step in enumerate(steps):
         if not step["premises"]:
             continue
-        record = analyze_step(conn, step)
+        record = analyze_step(conn, step, strategy=strategy)
         records.append(record)
         if (i + 1) % 50 == 0:
             avg_recall = sum(r.recall_at_16 for r in records) / len(records)
@@ -332,6 +386,16 @@ def main() -> None:
     parser.add_argument("--samples", type=int, default=500)
     parser.add_argument("--output", type=str, default="data/gap_analysis.jsonl")
     parser.add_argument("--resume", action="store_true")
+    parser.add_argument(
+        "--seed", type=int, default=None, help="Deterministic seed for paired eval"
+    )
+    parser.add_argument(
+        "--strategy",
+        type=str,
+        default="flat",
+        choices=["flat", "bridge_potential", "multi_pass", "multi_pass_lens"],
+        help="Retrieval strategy: flat (navigate), bridge_potential, or multi_pass",
+    )
     args = parser.parse_args()
 
     if args.resume and Path(args.output).exists():
@@ -343,7 +407,9 @@ def main() -> None:
             return
         args.samples = remaining
 
-    result = run_analysis(args.db, args.samples, args.output)
+    result = run_analysis(
+        args.db, args.samples, args.output, strategy=args.strategy, seed=args.seed
+    )
     print(json.dumps(result, indent=2))
 
 

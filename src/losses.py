@@ -119,6 +119,7 @@ class NavigationalLoss(nn.Module):
         self.log_sigma_anchor = nn.Parameter(torch.tensor(initial_log_sigma))
         self.log_sigma_progress = nn.Parameter(torch.tensor(initial_log_sigma))
         self.log_sigma_critic = nn.Parameter(torch.tensor(initial_log_sigma))
+        self.log_sigma_move = nn.Parameter(torch.tensor(initial_log_sigma))
 
     def forward(
         self,
@@ -130,6 +131,10 @@ class NavigationalLoss(nn.Module):
         progress_target: torch.Tensor | None = None,
         critic_pred: torch.Tensor | None = None,
         critic_target: torch.Tensor | None = None,
+        move_logits: dict[str, torch.Tensor] | None = None,
+        move_targets: dict[str, torch.Tensor] | None = None,
+        move_masks: dict[str, torch.Tensor] | None = None,
+        move_target_types: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         device = next(iter(direction_logits.values())).device
 
@@ -158,12 +163,31 @@ class NavigationalLoss(nn.Module):
         else:
             L_critic = torch.tensor(0.0, device=device)
 
+        move_losses: dict[str, torch.Tensor] = {}
+        if move_logits is not None and move_targets is not None and move_masks is not None:
+            target_types = move_target_types or {}
+            for name, logits in move_logits.items():
+                if name not in move_targets or name not in move_masks:
+                    continue
+                mask = move_masks[name]
+                if mask.numel() == 0 or not bool(mask.any().item()):
+                    continue
+                if target_types.get(name) == "multiclass":
+                    move_losses[name] = F.cross_entropy(logits[mask], move_targets[name][mask])
+                elif target_types.get(name) == "multilabel":
+                    move_losses[name] = F.binary_cross_entropy_with_logits(
+                        logits[mask],
+                        move_targets[name][mask],
+                    )
+        L_move = sum(move_losses.values()) if move_losses else torch.tensor(0.0, device=device)
+
         # UW-SO adaptive weighting
         p_nav = torch.exp(-self.log_sigma_nav)
         p_anchor = torch.exp(-self.log_sigma_anchor)
         p_progress = torch.exp(-self.log_sigma_progress)
         p_critic = torch.exp(-self.log_sigma_critic)
-        p_sum = p_nav + p_anchor + p_progress + p_critic + 1e-8
+        p_move = torch.exp(-self.log_sigma_move)
+        p_sum = p_nav + p_anchor + p_progress + p_critic + p_move + 1e-8
 
         L_total = (
             p_nav * L_nav
@@ -174,6 +198,8 @@ class NavigationalLoss(nn.Module):
             + self.log_sigma_progress
             + p_critic * L_critic
             + self.log_sigma_critic
+            + p_move * L_move
+            + self.log_sigma_move
         )
 
         return {
@@ -182,9 +208,12 @@ class NavigationalLoss(nn.Module):
             "L_anchor": L_anchor,
             "L_progress": L_progress,
             "L_critic": L_critic,
+            "L_move": L_move,
             "bank_losses": bank_losses,
+            "move_losses": move_losses,
             "w_nav": p_nav / p_sum,
             "w_anchor": p_anchor / p_sum,
             "w_progress": p_progress / p_sum,
             "w_critic": p_critic / p_sum,
+            "w_move": p_move / p_sum,
         }

@@ -2,6 +2,8 @@
 
 import unittest
 
+import torch
+
 from src.proof_navigator import ProofNavigator
 from src.ternary_decoder import TernaryLinear
 
@@ -32,6 +34,21 @@ class TestProofNavigatorInit(unittest.TestCase):
     def test_direction_head_3_classes(self):
         nav = ProofNavigator(input_dim=64, hidden_dim=32, navigable_banks=["structure"])
         self.assertEqual(nav.direction_heads["structure"].out_features, 3)
+
+    def test_auxiliary_heads_created_and_returned(self):
+        nav = ProofNavigator(
+            input_dim=64,
+            hidden_dim=32,
+            navigable_banks=["structure"],
+            auxiliary_heads={"subtask_kind": 4, "trigger_signature": 3},
+        )
+        self.assertIn("subtask_kind", nav.auxiliary_heads)
+        self.assertIn("trigger_signature", nav.auxiliary_heads)
+
+        bridge = torch.randn(2, 64)
+        _, _, _, _, aux_logits = nav.forward_with_aux(bridge)
+        self.assertEqual(aux_logits["subtask_kind"].shape, (2, 4))
+        self.assertEqual(aux_logits["trigger_signature"].shape, (2, 3))
 
 
 if __name__ == "__main__":

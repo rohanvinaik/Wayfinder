@@ -11,13 +11,16 @@ For each proof step in a theorem:
   - Goal + tactic + premises → ground-truth anchors
   - Remaining steps → progress label
   - Previously closed goals → proof history
+  - Optional canonical metadata → controller-facing local move labels (`SubtaskIR`)
 
 Input:  data/proof_network_entities.jsonl (from extract_proof_network.py)
 Output: data/nav_training.jsonl (NavigationalExample per proof step)
 
 Usage:
   python scripts/build_nav_training_data.py --input data/proof_network_entities.jsonl \
-      --output data/nav_training.jsonl [--resume] [--shard 0:2]
+      --output data/nav_training.jsonl [--resume] [--shard 0:2] \
+      [--canonical data/canonical/canonical_residual_train.jsonl] \
+      [--canonical data/canonical/canonical_residual_eval.jsonl]
 """
 
 from __future__ import annotations
@@ -27,6 +30,9 @@ import json
 import sys
 from pathlib import Path
 from typing import NamedTuple
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from scripts.tactic_maps import DEFAULT_DIRECTION, TACTIC_ANCHORS, TACTIC_DIRECTIONS
 
@@ -69,6 +75,13 @@ def _resolve_step_directions(entity: dict, step_idx: int, tactic: str) -> dict:
     return directions
 
 
+def _stable_theorem_key(entity: dict) -> str:
+    """Build a theorem-stable key robust to duplicate theorem_id values."""
+    theorem_id = entity.get("theorem_id", "")
+    file_path = entity.get("file_path", "")
+    return f"{file_path}::{theorem_id}" if file_path and theorem_id else theorem_id
+
+
 def _resolve_step_anchors(anchors: list[str], tactic: str) -> list[str]:
     """Merge theorem-level and tactic-specific anchors."""
     merged = set(anchors)
@@ -81,7 +94,60 @@ def _encode_bank_positions(positions: dict) -> dict:
     return {bank: [info.get("sign", 0), info.get("depth", 0)] for bank, info in positions.items()}
 
 
+def _load_canonical_index(paths: list[Path]) -> dict[tuple[str, int], dict]:
+    """Load SubtaskIR/trigger metadata keyed by (theorem_full_name, step_index)."""
+    index: dict[tuple[str, int], dict] = {}
+    for path in paths:
+        if not path.exists():
+            continue
+        with open(path) as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                row = json.loads(line)
+                theorem_id = row.get("theorem_full_name", "")
+                step_index = int(row.get("step_index", 0))
+                if not theorem_id:
+                    continue
+                key = (theorem_id, step_index)
+                trigger = row.get("trigger_profile_ir", {})
+                features = trigger.get("features", [])
+                index[key] = {
+                    "local_family": row.get("family", ""),
+                    "subtask_kind": row.get("subtask_ir", {}).get("kind", ""),
+                    "subtask_summary": row.get("subtask_ir", {}).get("summary", ""),
+                    "subtask_effect": row.get("subtask_ir", {}).get("expected_effect", ""),
+                    "primary_premise": row.get("subtask_ir", {}).get("primary_premise", ""),
+                    "goal_target_head": row.get("goal_shape_ir", {}).get("target_head", ""),
+                    "trigger_signature": [
+                        f"{feature.get('kind', '')}={feature.get('value', '')}"
+                        for feature in features
+                        if feature.get("kind", "")
+                    ],
+                }
+    return index
+
+
+def _step_metadata(
+    theorem_id: str,
+    step_idx: int,
+    canonical_index: dict[tuple[str, int], dict] | None,
+) -> dict:
+    """Return controller-facing metadata for a step, if available."""
+    if canonical_index is None:
+        return {}
+    return dict(canonical_index.get((theorem_id, step_idx), {}))
+
+
 def _build_nav_examples(entity: dict) -> list[dict]:
+    """Convert one entity record into NavigationalExample dicts, one per step."""
+    return _build_nav_examples_with_index(entity, canonical_index=None)
+
+
+def _build_nav_examples_with_index(
+    entity: dict,
+    canonical_index: dict[tuple[str, int], dict] | None,
+) -> list[dict]:
     """Convert one entity record into NavigationalExample dicts, one per step."""
     goal_states = entity.get("goal_states", [])
     tactic_names = entity.get("tactic_names", [])
@@ -98,10 +164,13 @@ def _build_nav_examples(entity: dict) -> list[dict]:
 
     for step_idx in range(min(total_steps, len(goal_states))):
         tactic = tactic_names[step_idx] if step_idx < len(tactic_names) else ""
+        metadata = _step_metadata(entity["theorem_id"], step_idx, canonical_index)
+        theorem_key = _stable_theorem_key(entity)
         examples.append(
             {
                 "goal_state": goal_states[step_idx],
                 "theorem_id": entity["theorem_id"],
+                "theorem_key": theorem_key,
                 "step_index": step_idx,
                 "total_steps": total_steps,
                 "nav_directions": _resolve_step_directions(entity, step_idx, tactic),
@@ -112,6 +181,7 @@ def _build_nav_examples(entity: dict) -> list[dict]:
                 "solvable": True,
                 "proof_history": list(proof_history),
                 "bank_positions": bank_positions,
+                "metadata": metadata,
             }
         )
         proof_history.append(goal_states[step_idx])
@@ -132,7 +202,8 @@ def _build_skip_set(output_path: Path) -> set[str]:
             for line in f:
                 line = line.strip()
                 if line:
-                    seen.add(json.loads(line).get("theorem_id", ""))
+                    row = json.loads(line)
+                    seen.add(row.get("theorem_key", row.get("theorem_id", "")))
     return seen
 
 
@@ -155,6 +226,7 @@ def _process_entities(
     input_path: Path,
     output_path: Path,
     shard_config: ShardConfig,
+    canonical_index: dict[tuple[str, int], dict] | None,
 ) -> tuple[int, int, int]:
     """Process entity records into NavigationalExample JSONL.
 
@@ -170,11 +242,11 @@ def _process_entities(
 
     with open(output_path, mode) as fout:
         for entity in entities:
-            if entity.get("theorem_id", "") in shard_config.skip_ids:
+            if _stable_theorem_key(entity) in shard_config.skip_ids:
                 skipped += 1
                 continue
 
-            examples = _build_nav_examples(entity)
+            examples = _build_nav_examples_with_index(entity, canonical_index)
             if not examples:
                 unmapped += 1
                 continue
@@ -200,6 +272,12 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--output", required=True, help="Output JSONL (nav examples)")
     parser.add_argument("--resume", action="store_true", help="Skip processed")
     parser.add_argument("--shard", default=None, help="'idx:total' (e.g., '0:2')")
+    parser.add_argument(
+        "--canonical",
+        action="append",
+        default=[],
+        help="Optional canonical JSONL(s) with SubtaskIR metadata. Repeatable.",
+    )
     return parser.parse_args()
 
 
@@ -226,8 +304,18 @@ def main() -> None:
         append=args.resume,
     )
 
+    canonical_paths = [Path(p) for p in args.canonical]
+    canonical_index = _load_canonical_index(canonical_paths) if canonical_paths else None
+    if canonical_paths:
+        print(f"Loaded canonical metadata for {len(canonical_index or {})} step keys")
+
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    processed, skipped, examples = _process_entities(input_path, output_path, shard_config)
+    processed, skipped, examples = _process_entities(
+        input_path,
+        output_path,
+        shard_config,
+        canonical_index,
+    )
     print(f"\nDone. Theorems: {processed}, Skipped: {skipped}, Examples: {examples}")
     if processed > 0:
         print(f"Avg examples/theorem: {examples / processed:.1f}")

@@ -60,6 +60,7 @@ def build_navigational_modules(
         num_layers=nav_cfg["num_layers"],
         ternary_enabled=nav_cfg.get("ternary_enabled", True),
         navigable_banks=nav_cfg.get("navigable_banks"),
+        auxiliary_heads=nav_cfg.get("auxiliary_heads"),
     ).to(device)
 
     return {

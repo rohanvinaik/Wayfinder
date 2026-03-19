@@ -132,6 +132,8 @@ class _DataCache:
         "provenances",
         "anchor_categories",
         "anchor_confidences",
+        "hub_in_degrees",
+        "landmark_profiles",
     )
 
     def __init__(
@@ -142,6 +144,8 @@ class _DataCache:
         provenances: dict[int, str],
         anchor_categories: dict[int, str] | None = None,
         anchor_confidences: dict[int, dict[int, float]] | None = None,
+        hub_in_degrees: dict[int, int] | None = None,
+        landmark_profiles: dict[int, dict] | None = None,
     ) -> None:
         self.positions = positions
         self.anchor_sets = anchor_sets
@@ -149,6 +153,8 @@ class _DataCache:
         self.provenances = provenances
         self.anchor_categories = anchor_categories or {}
         self.anchor_confidences = anchor_confidences or {}
+        self.hub_in_degrees = hub_in_degrees or {}
+        self.landmark_profiles = landmark_profiles or {}
 
 
 _data_cache: dict[int, _DataCache] = {}
@@ -184,9 +190,7 @@ def _get_data_cache(conn: sqlite3.Connection) -> _DataCache:
     # Load all names and provenances
     names: dict[int, str] = {}
     provenances: dict[int, str] = {}
-    for eid, name, prov in conn.execute(
-        "SELECT id, name, provenance FROM entities"
-    ).fetchall():
+    for eid, name, prov in conn.execute("SELECT id, name, provenance FROM entities").fetchall():
         names[eid] = name
         provenances[eid] = prov
 
@@ -202,6 +206,35 @@ def _get_data_cache(conn: sqlite3.Connection) -> _DataCache:
     ).fetchall():
         anchor_confidences[eid][aid] = conf
 
+    # Load hub in-degrees (depends_on incoming edge counts)
+    hub_in_degrees: dict[int, int] = {}
+    try:
+        for tid, cnt in conn.execute(
+            "SELECT target_id, COUNT(*) FROM entity_links "
+            "WHERE relation = 'depends_on' GROUP BY target_id"
+        ).fetchall():
+            hub_in_degrees[tid] = cnt
+    except Exception:
+        pass  # graceful: entity_links may not exist
+
+    # Load landmark neighborhood profiles (graceful: table may not exist)
+    landmark_profiles: dict[int, dict] = {}
+    try:
+        for row in conn.execute(
+            "SELECT entity_id, outdegree, nbr_constant_anchor_count, "
+            "nbr_structural_anchor_count, proof_motif, bank_signature "
+            "FROM landmark_neighborhood_profiles"
+        ).fetchall():
+            landmark_profiles[row[0]] = {
+                "outdegree": row[1],
+                "nbr_constant_anchor_count": row[2],
+                "nbr_structural_anchor_count": row[3],
+                "proof_motif": row[4],
+                "bank_signature": row[5],
+            }
+    except Exception:
+        pass  # graceful: table may not exist
+
     cache = _DataCache(
         positions=dict(positions),
         anchor_sets=dict(anchor_sets),
@@ -209,18 +242,34 @@ def _get_data_cache(conn: sqlite3.Connection) -> _DataCache:
         provenances=provenances,
         anchor_categories=anchor_categories,
         anchor_confidences=dict(anchor_confidences),
+        hub_in_degrees=hub_in_degrees,
+        landmark_profiles=landmark_profiles,
     )
     _data_cache[conn_id] = cache
     return cache
 
 
 def clear_caches() -> None:
-    """Clear all module-level caches. Call between test cases or DB swaps."""
+    """Clear all module-level caches. Call between test cases or DB swaps.
+
+    Also clears caches in downstream modules (retrieval_stages, landmark_selectors)
+    to prevent stale neighborhood/accessibility data in long-lived processes.
+    """
     _idf_cache.clear()
     _accessible_cache.clear()
     _entity_id_cache.clear()
     _data_cache.clear()
     bank_score.cache_clear()
+
+    # Clear downstream module caches (import here to avoid circular deps)
+    try:
+        from src.landmark_selectors import clear_selector_caches
+        from src.retrieval_stages import _neighborhood_cache
+
+        clear_selector_caches()
+        _neighborhood_cache.clear()
+    except ImportError:
+        pass  # modules may not be available in minimal test setups
 
 
 # ---------------------------------------------------------------------------
@@ -248,23 +297,18 @@ def init_db(path: str | Path) -> sqlite3.Connection:
 
 def _score_candidates(
     candidate_ids: list[int],
-    positions: dict[int, dict[str, int]],
-    entity_anchor_sets: dict[int, set[int]],
+    data: _DataCache,
     idf_cache: dict[int, float],
-    names: dict[int, str],
     query: StructuredQuery,
     seed_anchors: set[int],
     mechanism: str,
-    provenances: dict[int, str] | None = None,
-    anchor_categories: dict[int, str] | None = None,
-    anchor_confidences: dict[int, dict[int, float]] | None = None,
 ) -> list[ScoredEntity]:
     """Score and rank candidate entities against a navigational query.
 
     Uses NumPy vectorization for bank scoring (the hot inner loop),
     with per-entity anchor/seed/observability scoring.
 
-    When anchor_categories is provided, uses multi-lens coherence scoring:
+    When anchor_categories is populated, uses multi-lens coherence scoring:
     per-category anchor overlap with geometric mean across populated lenses.
     Otherwise falls back to flat anchor scoring.
     """
@@ -273,33 +317,36 @@ def _score_candidates(
 
     # Vectorized bank scoring (replaces 242K × 6 Python calls)
     if mechanism == "confidence_weighted":
-        bank_scores = _vectorized_bank_scores(candidate_ids, positions, query)
+        bank_scores = _vectorized_bank_scores(candidate_ids, data.positions, query)
     else:
         bank_scores = np.array(
-            [_compute_bank_score(positions.get(eid, {}), query, mechanism) for eid in candidate_ids]
+            [
+                _compute_bank_score(data.positions.get(eid, {}), query, mechanism)
+                for eid in candidate_ids
+            ]
         )
 
     # Early pruning: skip candidates with zero bank score
     nonzero_mask = bank_scores > 0
     nonzero_indices = np.nonzero(nonzero_mask)[0]
 
-    use_lenses = anchor_categories is not None and len(anchor_categories) > 0
+    use_lenses = len(data.anchor_categories) > 0
 
     results: list[ScoredEntity] = []
     for idx in nonzero_indices:
         eid = candidate_ids[idx]
         b_score = float(bank_scores[idx])
-        ea_set = entity_anchor_sets.get(eid, set())
+        ea_set = data.anchor_sets.get(eid, set())
 
         if use_lenses and query.prefer_anchors:
             # Multi-lens coherence: per-category anchor overlap
-            entity_confs = anchor_confidences.get(eid) if anchor_confidences else None
+            entity_confs = data.anchor_confidences.get(eid)
             lens_scores = compute_lens_scores(
                 ea_set,
                 query.prefer_anchors,
                 query.prefer_weights,
                 idf_cache,
-                anchor_categories,
+                data.anchor_categories,
                 entity_confs,
             )
             if lens_scores:
@@ -321,12 +368,12 @@ def _score_candidates(
         s_score = _compute_seed_score(ea_set, seed_anchors, idf_cache)
 
         # Observability: channel coverage, not just anchor count
-        if provenances is not None:
+        if data.provenances:
             o_score = compute_observability_score(
-                positions.get(eid, {}),
+                data.positions.get(eid, {}),
                 ea_set,
-                provenances.get(eid, "traced"),
-                anchor_categories,
+                data.provenances.get(eid, "traced"),
+                data.anchor_categories,
             )
         else:
             o_score = 1.0
@@ -336,7 +383,7 @@ def _score_candidates(
             results.append(
                 ScoredEntity(
                     entity_id=eid,
-                    name=names.get(eid, ""),
+                    name=data.names.get(eid, ""),
                     final_score=final,
                     bank_score=b_score,
                     anchor_score=a_score,
@@ -365,31 +412,16 @@ def navigate(
 
     # Use in-memory data cache (pre-loaded on first call, ~3s startup, 0ms thereafter)
     data = _get_data_cache(conn)
-    positions = data.positions
-    entity_anchor_sets = data.anchor_sets
-    names = data.names
     idf_cache = _get_idf_cache(conn)
 
     # Precompute seed anchor set
     seed_anchors: set[int] = set()
     if query.seed_entity_ids:
         for sid in query.seed_entity_ids:
-            seed_anchors.update(entity_anchor_sets.get(sid, set()))
+            seed_anchors.update(data.anchor_sets.get(sid, set()))
 
     # Pure scoring with multi-lens coherence + observability
-    results = _score_candidates(
-        candidate_ids,
-        positions,
-        entity_anchor_sets,
-        idf_cache,
-        names,
-        query,
-        seed_anchors,
-        mechanism,
-        provenances=data.provenances,
-        anchor_categories=data.anchor_categories,
-        anchor_confidences=data.anchor_confidences,
-    )
+    results = _score_candidates(candidate_ids, data, idf_cache, query, seed_anchors, mechanism)
     return results[:limit]
 
 
@@ -460,9 +492,7 @@ def recompute_idf(conn: sqlite3.Connection) -> None:
     conn.execute("DELETE FROM anchor_category_idf")
 
     # Get per-category entity counts
-    categories = conn.execute(
-        "SELECT DISTINCT category FROM anchors"
-    ).fetchall()
+    categories = conn.execute("SELECT DISTINCT category FROM anchors").fetchall()
 
     for (cat,) in categories:
         # Count entities that have at least one anchor in this category
@@ -481,8 +511,7 @@ def recompute_idf(conn: sqlite3.Connection) -> None:
         log_cat_total = math.log(cat_total)
 
         conn.executemany(
-            "INSERT INTO anchor_category_idf (anchor_id, category, idf_value) "
-            "VALUES (?, ?, ?)",
+            "INSERT INTO anchor_category_idf (anchor_id, category, idf_value) VALUES (?, ?, ?)",
             conn.execute(
                 """
                 SELECT a.id, a.category, ? - LOG(MAX(COUNT(ea.entity_id), 1))

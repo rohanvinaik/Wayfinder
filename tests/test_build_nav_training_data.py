@@ -1,8 +1,16 @@
 """Tests for build_nav_training_data — pure helper functions."""
 
+import tempfile
 import unittest
+from pathlib import Path
 
-from scripts.build_nav_training_data import _encode_bank_positions, _resolve_step_directions
+from scripts.build_nav_training_data import (
+    _build_nav_examples_with_index,
+    _encode_bank_positions,
+    _load_canonical_index,
+    _resolve_step_directions,
+    _stable_theorem_key,
+)
 
 
 class TestEncodeBankPositions(unittest.TestCase):
@@ -180,6 +188,54 @@ class TestResolveStepDirections(unittest.TestCase):
         result["structure"] = 999
         # Original should be unmodified
         self.assertEqual(dirs["structure"], 0)
+
+
+class TestCanonicalMetadataJoin(unittest.TestCase):
+    def test_stable_theorem_key_uses_file_path(self):
+        entity = {"theorem_id": "Foo.bar", "file_path": "Mathlib/Foo.lean"}
+        self.assertEqual(_stable_theorem_key(entity), "Mathlib/Foo.lean::Foo.bar")
+
+    def test_load_canonical_index(self):
+        with tempfile.NamedTemporaryFile("w", suffix=".jsonl", delete=False) as tmp:
+            path = Path(tmp.name)
+            tmp.write(
+                '{"theorem_full_name":"Foo.bar","step_index":1,"family":"rw",'
+                '"goal_shape_ir":{"target_head":"eq"},'
+                '"trigger_profile_ir":{"features":[{"kind":"rewrite_count","value":"1"}]},'
+                '"subtask_ir":{"kind":"normalize_target_forward","summary":"x","expected_effect":"y","primary_premise":"h"}}\n'
+            )
+        self.addCleanup(lambda: path.unlink(missing_ok=True))
+
+        index = _load_canonical_index([path])
+        self.assertIn(("Foo.bar", 1), index)
+        row = index[("Foo.bar", 1)]
+        self.assertEqual(row["local_family"], "rw")
+        self.assertEqual(row["subtask_kind"], "normalize_target_forward")
+        self.assertEqual(row["goal_target_head"], "eq")
+        self.assertEqual(row["trigger_signature"], ["rewrite_count=1"])
+
+    def test_build_examples_with_metadata(self):
+        entity = {
+            "theorem_id": "Foo.bar",
+            "file_path": "Mathlib/Foo.lean",
+            "goal_states": ["⊢ A", "⊢ B"],
+            "tactic_names": ["simp", "apply"],
+            "premises": ["p"],
+            "anchors": ["a"],
+            "positions": {"domain": {"sign": 1, "depth": 1}},
+            "tactic_directions": [],
+        }
+        canonical_index = {
+            ("Foo.bar", 1): {
+                "subtask_kind": "reduce_goal_by_lemma",
+                "trigger_signature": ["term_shape=const"],
+            }
+        }
+        examples = _build_nav_examples_with_index(entity, canonical_index)
+        self.assertEqual(len(examples), 2)
+        self.assertEqual(examples[0]["metadata"], {})
+        self.assertEqual(examples[0]["theorem_key"], "Mathlib/Foo.lean::Foo.bar")
+        self.assertEqual(examples[1]["metadata"]["subtask_kind"], "reduce_goal_by_lemma")
 
 
 if __name__ == "__main__":

@@ -3,10 +3,12 @@
 
 # --- Data paths ---
 data:
-  nav_train: data/nav_train.jsonl
+  nav_train: data/nav_training.jsonl
   nav_eval: data/nav_eval.jsonl
+  template_train: data/nav_train_templates.jsonl
   proof_network_db: data/proof_network.db
   anchor_labels: data/anchor_labels.json
+  move_inventory: data/move_inventory.json
 
 # --- Model components ---
 model:
@@ -82,6 +84,25 @@ training:
 
   proof_history: true
   soft_critic_targets: true
+  template_classifier:
+    learning_rate: 1.0e-3
+    batch_size: 32
+    max_iterations: 2000
+    auxiliary_loss_weight: 0.25
+  auxiliary:
+    enabled: true
+    navigator_heads:
+      - goal_target_head
+      - trigger_signature
+    template_heads:
+      - subtask_kind
+      - goal_target_head
+      - trigger_signature
+    subtask_min_support: 25
+    goal_head_min_support: 100
+    max_goal_heads: 64
+    trigger_min_support: 250
+    max_trigger_signatures: 128
 
 # --- Search ---
 search:
@@ -90,6 +111,8 @@ search:
   accessible_premises: true
   max_candidates_per_step: 8
   hammer_timeout: 60
+  cosine_rw_seq_max_atoms: 10
+  cosine_rw_seq_max_calls: 50
 
 # --- Lean kernel (Lane A: step-wise tactic search) ---
 lean:
