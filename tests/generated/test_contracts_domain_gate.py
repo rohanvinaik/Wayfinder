@@ -5,6 +5,7 @@ from __future__ import annotations
 
 # Source module: src.domain_gate
 
+
 # from src.domain_gate import to_dict
 def test_to_dict_returns_dict_str_any() -> None:
     """Contract: to_dict returns dict[str, Any]."""
@@ -12,10 +13,10 @@ def test_to_dict_returns_dict_str_any() -> None:
     # result = to_dict()
     # assert isinstance(result, dict)
 
+
 # from src.domain_gate import predict
 def test_predict_returns_list_gatedecision() -> None:
     """Contract: predict returns list[GateDecision]."""
     # TODO: Provide valid arguments
     # result = predict(..., ...)
     # assert isinstance(result, list)
-

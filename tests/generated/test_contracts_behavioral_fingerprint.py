@@ -5,12 +5,14 @@ from __future__ import annotations
 
 # Source module: src.behavioral_fingerprint
 
+
 # from src.behavioral_fingerprint import compute_action_entropy
 def test_compute_action_entropy_returns_float() -> None:
     """Contract: compute_action_entropy returns float."""
     # TODO: Provide valid arguments
     # result = compute_action_entropy(...)
     # assert isinstance(result, (int, float))
+
 
 # from src.behavioral_fingerprint import compute_action_entropy
 def test_compute_action_entropy_http() -> None:
@@ -24,12 +26,14 @@ def test_compute_action_entropy_http() -> None:
     with patch("requests.get", return_value=mock_resp):
         pass  # TODO: call compute_action_entropy with valid args and assert result
 
+
 # from src.behavioral_fingerprint import compute_action_distribution
 def test_compute_action_distribution_returns_dict_str_float() -> None:
     """Contract: compute_action_distribution returns dict[str, float]."""
     # TODO: Provide valid arguments
     # result = compute_action_distribution(...)
     # assert isinstance(result, dict)
+
 
 # from src.behavioral_fingerprint import compute_action_distribution
 def test_compute_action_distribution_http() -> None:
@@ -43,12 +47,14 @@ def test_compute_action_distribution_http() -> None:
     with patch("requests.get", return_value=mock_resp):
         pass  # TODO: call compute_action_distribution with valid args and assert result
 
+
 # from src.behavioral_fingerprint import compute_variance_eigenvalues
 def test_compute_variance_eigenvalues_returns_list_float() -> None:
     """Contract: compute_variance_eigenvalues returns list[float]."""
     # TODO: Provide valid arguments
     # result = compute_variance_eigenvalues(..., ...)
     # assert isinstance(result, list)
+
 
 # from src.behavioral_fingerprint import compute_discreteness
 def test_compute_discreteness_returns_float() -> None:
@@ -57,6 +63,7 @@ def test_compute_discreteness_returns_float() -> None:
     # result = compute_discreteness(...)
     # assert isinstance(result, (int, float))
 
+
 def test_compute_discreteness_preserves_length() -> None:
     """Contract: compute_discreteness output length matches input length (map pattern)."""
     # TODO: Provide test input for 'probs'
@@ -64,12 +71,14 @@ def test_compute_discreteness_preserves_length() -> None:
     # result = compute_discreteness(input_data)
     # assert len(result) == len(input_data)
 
+
 # from src.behavioral_fingerprint import fingerprint_stability
 def test_fingerprint_stability_returns_dict_str_float() -> None:
     """Contract: fingerprint_stability returns dict[str, float]."""
     # TODO: Provide valid arguments
     # result = fingerprint_stability(...)
     # assert isinstance(result, dict)
+
 
 # from src.behavioral_fingerprint import save
 def test_save_file_io(tmp_path) -> None:
@@ -79,6 +88,7 @@ def test_save_file_io(tmp_path) -> None:
     # TODO: call save(str(test_file)) and assert result
     pass
 
+
 # from src.behavioral_fingerprint import load
 def test_load_file_io(tmp_path) -> None:
     """Contract: load handles file I/O."""
@@ -86,4 +96,3 @@ def test_load_file_io(tmp_path) -> None:
     test_file.write_text("test content")
     # TODO: call load(str(test_file)) and assert result
     pass
-

@@ -13,13 +13,12 @@ support planning, analysis, dataset construction, and future move-typing work.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import re
+from dataclasses import dataclass, field
 from typing import Any
 
 from src.tactic_canonicalizer import canonicalize
 from src.tactic_ir import ActionIR, Direction, TermKind
-
 
 _IDENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_']*")
 _LOCAL_LINE_RE = re.compile(r"^\s*([^\n:⊢]+?)\s*:\s*.+$")
@@ -206,9 +205,7 @@ def derive_trigger_profile(
 
     local_names = action.local_var_names()
     if local_names:
-        features.append(
-            TriggerFeatureIR("local_inputs", ",".join(local_names), "action_ir")
-        )
+        features.append(TriggerFeatureIR("local_inputs", ",".join(local_names), "action_ir"))
 
     if family == "rw":
         rewrite_count = len(action.rewrites)
@@ -256,7 +253,11 @@ def derive_subtask_ir(
             kind = "specialize_rewrite"
             summary = "specialize a rewrite rule with local terms before rewriting"
             effect = "rewrite after instantiating the lemma with local context"
-        elif action is not None and action.rewrites and action.rewrites[0].direction == Direction.BACKWARD:
+        elif (
+            action is not None
+            and action.rewrites
+            and action.rewrites[0].direction == Direction.BACKWARD
+        ):
             kind = "normalize_target_backward"
             summary = "rewrite the goal using a backward local equivalence"
             effect = "expose a more library-matchable target form"

@@ -33,6 +33,7 @@ logger = logging.getLogger(__name__)
 # Result dataclass
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class ExampleResult:
     """Result for one rw0 example across all conditions."""
@@ -76,6 +77,7 @@ class ExampleResult:
 # Premise lookup
 # ---------------------------------------------------------------------------
 
+
 def load_entity_maps(conn: sqlite3.Connection) -> tuple[dict[int, str], dict[str, int]]:
     """Load entity ID ↔ name maps from DB."""
     rows = conn.execute("SELECT id, name FROM entities").fetchall()
@@ -102,6 +104,7 @@ def get_premise_names(
 # Cosine baseline
 # ---------------------------------------------------------------------------
 
+
 def cosine_rank_symbols(
     goal_text: str,
     symbols: list[str],
@@ -116,6 +119,7 @@ def cosine_rank_symbols(
 
     try:
         from sentence_transformers import SentenceTransformer
+
         model: SentenceTransformer = encoder  # type: ignore[assignment]
         goal_emb = model.encode([goal_text], normalize_embeddings=True)
         sym_embs = model.encode(symbols, normalize_embeddings=True)
@@ -130,6 +134,7 @@ def cosine_rank_symbols(
 # ---------------------------------------------------------------------------
 # Benchmark runner
 # ---------------------------------------------------------------------------
+
 
 def try_tactic_safe(
     kernel: LeanKernel,
@@ -223,7 +228,9 @@ def run_one_example(
 
     oracle_tactic = res.canonical_action_ir
     if oracle_tactic:
-        ok, err, remaining, crashed = try_tactic_safe(kernel, goal_str, oracle_tactic, goal_id=goal_id)
+        ok, err, remaining, crashed = try_tactic_safe(
+            kernel, goal_str, oracle_tactic, goal_id=goal_id
+        )
         if crashed:
             res.crash_retries += 1
             res.oracle_error = err
@@ -267,6 +274,7 @@ def run_one_example(
     if not example_crashed and not skip_learned and decoder is not None and scope.all_symbols:
         try:
             import torch
+
             from src.rw_decoder import RwDecoder
 
             model: RwDecoder = decoder  # type: ignore[assignment]
@@ -313,6 +321,7 @@ def _extract_target(goal_state: str) -> str:
 # Aggregate reporting
 # ---------------------------------------------------------------------------
 
+
 def print_report(results: list[ExampleResult], total: int) -> None:
     """Print the aggregate benchmark report."""
     started = [r for r in results if r.goal_started]
@@ -336,7 +345,7 @@ def print_report(results: list[ExampleResult], total: int) -> None:
     print("rw0 Benchmark Report")
     print("=" * 60)
 
-    print(f"\nGoalStart@rw0: {len(started)}/{total} ({100*len(started)/max(total,1):.1f}%)")
+    print(f"\nGoalStart@rw0: {len(started)}/{total} ({100 * len(started) / max(total, 1):.1f}%)")
     print(f"  Tier A (step-0): {len(step0_started)}/{len(step0)}")
     print(f"  Tier C (replay):  {len(step_gt0_started)}/{len(step_gt0)}")
     print(f"  Server crashes: {crashes}")
@@ -355,13 +364,13 @@ def print_report(results: list[ExampleResult], total: int) -> None:
     cosine_ok = sum(1 for r in started if r.cosine_success)
     learned_ok = sum(1 for r in started if r.learned_success)
 
-    print(f"\nLeanValid@rw0 (primary, semantic mode):")
-    print(f"  Oracle canonical: {oracle_ok}/{total} ({100*oracle_ok/max(total,1):.1f}%)")
+    print("\nLeanValid@rw0 (primary, semantic mode):")
+    print(f"  Oracle canonical: {oracle_ok}/{total} ({100 * oracle_ok / max(total, 1):.1f}%)")
 
     print(f"\nLeanValid@rw0|started (N={n}):")
-    print(f"  Oracle canonical: {oracle_ok}/{n} ({100*oracle_ok/max(n,1):.1f}%)")
-    print(f"  Cosine top-1:    {cosine_ok}/{n} ({100*cosine_ok/max(n,1):.1f}%)")
-    print(f"  Learned top-1:   {learned_ok}/{n} ({100*learned_ok/max(n,1):.1f}%)")
+    print(f"  Oracle canonical: {oracle_ok}/{n} ({100 * oracle_ok / max(n, 1):.1f}%)")
+    print(f"  Cosine top-1:    {cosine_ok}/{n} ({100 * cosine_ok / max(n, 1):.1f}%)")
+    print(f"  Learned top-1:   {learned_ok}/{n} ({100 * learned_ok / max(n, 1):.1f}%)")
 
     m = len(gold_in_scope)
     if m > 0:
@@ -369,22 +378,28 @@ def print_report(results: list[ExampleResult], total: int) -> None:
         cosine_scope = sum(1 for r in gold_in_scope if r.cosine_success)
         learned_scope = sum(1 for r in gold_in_scope if r.learned_success)
         print(f"\nLeanValid@rw0|started,gold_in_scope (M={m}):")
-        print(f"  Oracle canonical: {oracle_scope}/{m} ({100*oracle_scope/max(m,1):.1f}%)")
-        print(f"  Cosine top-1:    {cosine_scope}/{m} ({100*cosine_scope/max(m,1):.1f}%)")
-        print(f"  Learned top-1:   {learned_scope}/{m} ({100*learned_scope/max(m,1):.1f}%)")
+        print(f"  Oracle canonical: {oracle_scope}/{m} ({100 * oracle_scope / max(m, 1):.1f}%)")
+        print(f"  Cosine top-1:    {cosine_scope}/{m} ({100 * cosine_scope / max(m, 1):.1f}%)")
+        print(f"  Learned top-1:   {learned_scope}/{m} ({100 * learned_scope / max(m, 1):.1f}%)")
 
-    print(f"\nStep breakdown:")
+    print("\nStep breakdown:")
     s0_ok = sum(1 for r in step0_started if r.oracle_success)
     sg_ok = sum(1 for r in step_gt0_started if r.oracle_success)
-    print(f"  Step-0:  {len(step0_started)}/{len(step0)} started, {s0_ok}/{len(step0_started)} valid (oracle)")
-    print(f"  Step>0:  {len(step_gt0_started)}/{len(step_gt0)} started, {sg_ok}/{len(step_gt0_started)} valid (oracle)")
+    print(
+        f"  Step-0:  {len(step0_started)}/{len(step0)} started, {s0_ok}/{len(step0_started)} valid (oracle)"
+    )
+    print(
+        f"  Step>0:  {len(step_gt0_started)}/{len(step_gt0)} started, {sg_ok}/{len(step_gt0_started)} valid (oracle)"
+    )
 
     scope_miss = sum(1 for r in started if r.annotated_premise and not r.gold_in_scope)
     acc_miss = sum(1 for r in started if r.annotated_premise and not r.gold_in_accessible)
     scope_sizes = [r.n_scope_symbols for r in started if r.n_scope_symbols > 0]
-    print(f"\nScope stats:")
-    print(f"  Gold in accessible: {len(gold_in_accessible)}/{n} ({100*len(gold_in_accessible)/max(n,1):.1f}%)")
-    print(f"  Gold in scope: {m}/{n} ({100*m/max(n,1):.1f}%)")
+    print("\nScope stats:")
+    print(
+        f"  Gold in accessible: {len(gold_in_accessible)}/{n} ({100 * len(gold_in_accessible) / max(n, 1):.1f}%)"
+    )
+    print(f"  Gold in scope: {m}/{n} ({100 * m / max(n, 1):.1f}%)")
     if scope_sizes:
         print(f"  Mean scope size: {np.mean(scope_sizes):.1f}")
     print(f"  data_scope_miss: {scope_miss}")
@@ -401,6 +416,7 @@ def print_report(results: list[ExampleResult], total: int) -> None:
 # Main
 # ---------------------------------------------------------------------------
 
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="rw0 benchmark runner")
     parser.add_argument("--db", default="data/proof_network_v3.db", help="Proof network DB path")
@@ -412,7 +428,9 @@ def main() -> None:
     parser.add_argument("--skip-cosine", action="store_true", help="Skip cosine condition")
     parser.add_argument("--skip-learned", action="store_true", help="Skip learned condition")
     parser.add_argument("--resume", action="store_true", help="Resume from checkpoint")
-    parser.add_argument("--restart-every", type=int, default=100, help="Restart server every N examples")
+    parser.add_argument(
+        "--restart-every", type=int, default=100, help="Restart server every N examples"
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -427,10 +445,16 @@ def main() -> None:
     logger.info("Loaded %d rw0 examples", len(examples))
 
     if args.limit > 0:
-        examples = examples[:args.limit]
+        examples = examples[: args.limit]
 
     # Sort by file_path for environment coherence
-    examples.sort(key=lambda x: (x.get("file_path", ""), x.get("theorem_full_name", ""), x.get("step_index", 0)))
+    examples.sort(
+        key=lambda x: (
+            x.get("file_path", ""),
+            x.get("theorem_full_name", ""),
+            x.get("step_index", 0),
+        )
+    )
     total = len(examples)
 
     # Load existing results for resume
@@ -443,9 +467,15 @@ def main() -> None:
                     d = json.loads(line)
                     key = (d["theorem_full_name"], d["step_index"])
                     done_keys.add(key)
-                    prior_results.append(ExampleResult(**{
-                        k: v for k, v in d.items() if k in ExampleResult.__dataclass_fields__
-                    }))
+                    prior_results.append(
+                        ExampleResult(
+                            **{
+                                k: v
+                                for k, v in d.items()
+                                if k in ExampleResult.__dataclass_fields__
+                            }
+                        )
+                    )
         logger.info("Resuming: %d examples already done", len(done_keys))
 
     # Connect to DB
@@ -458,6 +488,7 @@ def main() -> None:
     if not args.skip_cosine or not args.skip_learned:
         try:
             from sentence_transformers import SentenceTransformer
+
             encoder = SentenceTransformer("all-MiniLM-L6-v2")
             logger.info("Loaded MiniLM encoder")
         except ImportError:
@@ -470,22 +501,28 @@ def main() -> None:
     if not args.skip_learned and args.model and os.path.exists(args.model):
         try:
             import torch
+
             from src.rw_decoder import RwDecoder
+
             checkpoint = torch.load(args.model, map_location="cpu", weights_only=True)
             decoder = RwDecoder()
-            decoder.load_state_dict(checkpoint["model_state_dict"] if "model_state_dict" in checkpoint else checkpoint)
+            decoder.load_state_dict(
+                checkpoint["model_state_dict"] if "model_state_dict" in checkpoint else checkpoint
+            )
             decoder.eval()
             logger.info("Loaded RW decoder from %s", args.model)
         except Exception as e:
             logger.warning("Failed to load decoder: %s", e)
 
     # Initialize Lean kernel
-    kernel = LeanKernel(LeanConfig(
-        backend="pantograph",
-        timeout=120,
-        project_root=args.lean_project,
-        imports=["Mathlib"],
-    ))
+    kernel = LeanKernel(
+        LeanConfig(
+            backend="pantograph",
+            timeout=120,
+            project_root=args.lean_project,
+            imports=["Mathlib"],
+        )
+    )
     logger.info("Initializing Pantograph with Mathlib (this takes ~40s)...")
 
     # Run benchmark
@@ -515,7 +552,9 @@ def main() -> None:
                 n_done = len(done_keys) + len(results) - len(prior_results)
                 logger.info(
                     "Progress: %d/%d (%.0f%%) — started: %d, oracle: %d, crashes: %d",
-                    n_done, total, 100 * n_done / max(total, 1),
+                    n_done,
+                    total,
+                    100 * n_done / max(total, 1),
                     sum(1 for r in results if r.goal_started),
                     sum(1 for r in results if r.oracle_success),
                     n_crashes_total,
@@ -535,7 +574,12 @@ def main() -> None:
                     project_root=args.lean_project,
                 )
             except Exception as e:
-                logger.error("Unhandled error on %s step %d: %s", ex["theorem_full_name"], ex["step_index"], e)
+                logger.error(
+                    "Unhandled error on %s step %d: %s",
+                    ex["theorem_full_name"],
+                    ex["step_index"],
+                    e,
+                )
                 res = ExampleResult(
                     theorem_full_name=ex["theorem_full_name"],
                     file_path=ex.get("file_path", ""),

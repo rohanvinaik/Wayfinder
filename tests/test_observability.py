@@ -10,8 +10,14 @@ class TestComputeObservabilityScore(unittest.TestCase):
 
     def test_traced_full_positions_high_score(self):
         """Fully observed traced entity should score near 1.0."""
-        positions = {"structure": 1, "domain": -1, "depth": 1,
-                     "automation": -1, "context": 0, "decomposition": 1}
+        positions = {
+            "structure": 1,
+            "domain": -1,
+            "depth": 1,
+            "automation": -1,
+            "context": 0,
+            "decomposition": 1,
+        }
         anchors = set(range(15))  # 15 anchors
         score = compute_observability_score(positions, anchors, "traced")
         self.assertGreater(score, 0.8)
@@ -36,8 +42,7 @@ class TestComputeObservabilityScore(unittest.TestCase):
         anchors = set(range(10))
         sparse = compute_observability_score({"domain": -1}, anchors, "traced")
         rich = compute_observability_score(
-            {"structure": 1, "domain": -1, "depth": 1, "automation": -1},
-            anchors, "traced"
+            {"structure": 1, "domain": -1, "depth": 1, "automation": -1}, anchors, "traced"
         )
         self.assertGreater(rich, sparse)
 

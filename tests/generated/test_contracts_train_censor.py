@@ -5,12 +5,14 @@ from __future__ import annotations
 
 # Source module: scripts.train_censor
 
+
 # from scripts.train_censor import train_censor
 def test_train_censor_returns_dict() -> None:
     """Contract: train_censor returns dict."""
     # TODO: Provide valid arguments
     # result = train_censor(..., ..., ..., ..., ...)
     # assert isinstance(result, dict)
+
 
 # from scripts.train_censor import train_censor
 def test_train_censor_http() -> None:
@@ -24,6 +26,7 @@ def test_train_censor_http() -> None:
     with patch("requests.get", return_value=mock_resp):
         pass  # TODO: call train_censor with valid args and assert result
 
+
 # from scripts.train_censor import main
 def test_main_file_io(tmp_path) -> None:
     """Contract: main handles file I/O."""
@@ -31,4 +34,3 @@ def test_main_file_io(tmp_path) -> None:
     test_file.write_text("test content")
     # TODO: call main(str(test_file)) and assert result
     pass
-

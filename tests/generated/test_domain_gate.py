@@ -16,7 +16,6 @@ class TestGateDecisionConfig:
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
 
 
-
 class TestDomainGateConfig:
     """Configuration tests for DomainGate."""
 
@@ -31,6 +30,7 @@ class TestDomainGateConfig:
         # TODO: Provide override values and assert exact field values
         obj = DomainGate()
         assert obj == EXPECTED  # TODO: Replace with expected instance
+
 
 class TestDomainGateState:
     """State invariant tests for DomainGate."""
@@ -52,6 +52,3 @@ class TestDomainGateState:
         obj = DomainGate()
         obj.predict()  # TODO: Provide arguments
         # TODO: Assert state changed correctly
-
-
-

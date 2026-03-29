@@ -5,12 +5,14 @@ from __future__ import annotations
 
 # Source module: src.proof_spreading
 
+
 # from src.proof_spreading import spread
 def test_spread_returns_dict_int_float() -> None:
     """Contract: spread returns dict[int, float]."""
     # TODO: Provide valid arguments
     # result = spread(..., ..., ..., ..., ...)
     # assert isinstance(result, dict)
+
 
 # from src.proof_spreading import spread
 def test_spread_http() -> None:
@@ -23,4 +25,3 @@ def test_spread_http() -> None:
     mock_resp.text = ""
     with patch("requests.get", return_value=mock_resp):
         pass  # TODO: call spread with valid args and assert result
-

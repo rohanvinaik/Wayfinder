@@ -52,7 +52,14 @@ class TestExtractTemplates(unittest.TestCase):
                 goal_state="⊢ a = a",
                 step_index=0,
                 total_steps=2,
-                nav_directions={"structure": 0, "domain": 0, "depth": 0, "automation": 0, "context": 0, "decomposition": 0},
+                nav_directions={
+                    "structure": 0,
+                    "domain": 0,
+                    "depth": 0,
+                    "automation": 0,
+                    "context": 0,
+                    "decomposition": 0,
+                },
                 ground_truth_tactic="rw",
                 metadata={
                     "local_family": "rw",
@@ -66,7 +73,14 @@ class TestExtractTemplates(unittest.TestCase):
                 goal_state="⊢ True",
                 step_index=1,
                 total_steps=2,
-                nav_directions={"structure": 0, "domain": 0, "depth": 0, "automation": 0, "context": 0, "decomposition": 0},
+                nav_directions={
+                    "structure": 0,
+                    "domain": 0,
+                    "depth": 0,
+                    "automation": 0,
+                    "context": 0,
+                    "decomposition": 0,
+                },
                 ground_truth_tactic="rfl",
                 metadata={
                     "local_family": "exact",
@@ -95,11 +109,16 @@ class TestExtractTemplates(unittest.TestCase):
             self.assertEqual(move_profile["steps_with_metadata"], 2)
             self.assertEqual(move_profile["top_local_families"][0]["count"], 1)
 
-            rows = [json.loads(line) for line in (output_dir / "nav_train_templates.jsonl").read_text().splitlines()]
+            rows = [
+                json.loads(line)
+                for line in (output_dir / "nav_train_templates.jsonl").read_text().splitlines()
+            ]
             self.assertEqual(len(rows), 2)
             self.assertEqual(rows[0]["template_name"], template_name)
             self.assertEqual(rows[0]["template_move_profile"]["steps_with_metadata"], 2)
-            self.assertEqual(rows[0]["template_move_profile"]["dominant_subtask_kind"], "rewrite_chain")
+            self.assertEqual(
+                rows[0]["template_move_profile"]["dominant_subtask_kind"], "rewrite_chain"
+            )
 
     def test_groups_by_theorem_key_not_display_name(self):
         examples = [
@@ -109,7 +128,14 @@ class TestExtractTemplates(unittest.TestCase):
                 goal_state="⊢ P",
                 step_index=0,
                 total_steps=1,
-                nav_directions={"structure": 0, "domain": 0, "depth": 0, "automation": 0, "context": 0, "decomposition": 0},
+                nav_directions={
+                    "structure": 0,
+                    "domain": 0,
+                    "depth": 0,
+                    "automation": 0,
+                    "context": 0,
+                    "decomposition": 0,
+                },
                 ground_truth_tactic="rw",
             ),
             NavigationalExample(
@@ -118,7 +144,14 @@ class TestExtractTemplates(unittest.TestCase):
                 goal_state="⊢ Q",
                 step_index=0,
                 total_steps=1,
-                nav_directions={"structure": 0, "domain": 0, "depth": 0, "automation": 0, "context": 0, "decomposition": 0},
+                nav_directions={
+                    "structure": 0,
+                    "domain": 0,
+                    "depth": 0,
+                    "automation": 0,
+                    "context": 0,
+                    "decomposition": 0,
+                },
                 ground_truth_tactic="simp",
             ),
         ]

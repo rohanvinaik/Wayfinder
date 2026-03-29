@@ -5,12 +5,14 @@ from __future__ import annotations
 
 # Source module: scripts.collect_negatives
 
+
 # from scripts.collect_negatives import collect_weak_negatives
 def test_collect_weak_negatives_returns_list_negativeexample() -> None:
     """Contract: collect_weak_negatives returns list[NegativeExample]."""
     # TODO: Provide valid arguments
     # result = collect_weak_negatives(..., ..., ...)
     # assert isinstance(result, list)
+
 
 # from scripts.collect_negatives import collect_weak_negatives
 def test_collect_weak_negatives_http() -> None:
@@ -33,6 +35,7 @@ def test_collect_weak_negatives_file_io(tmp_path) -> None:
     # TODO: call collect_weak_negatives(str(test_file)) and assert result
     pass
 
+
 # from scripts.collect_negatives import write_negatives
 def test_write_negatives_file_io(tmp_path) -> None:
     """Contract: write_negatives handles file I/O."""
@@ -41,6 +44,7 @@ def test_write_negatives_file_io(tmp_path) -> None:
     # TODO: call write_negatives(str(test_file)) and assert result
     pass
 
+
 # from scripts.collect_negatives import collect
 def test_collect_returns_list_negativeexample() -> None:
     """Contract: collect returns list[NegativeExample]."""
@@ -48,12 +52,6 @@ def test_collect_returns_list_negativeexample() -> None:
     # result = collect(...)
     # assert isinstance(result, list)
 
-# from scripts.collect_negatives import collect
-def test_collect_returns_list_negativeexample() -> None:
-    """Contract: collect returns list[NegativeExample]."""
-    # TODO: Provide valid arguments
-    # result = collect(..., ...)
-    # assert isinstance(result, list)
 
 # from scripts.collect_negatives import collect
 def test_collect_returns_list_negativeexample() -> None:
@@ -62,3 +60,10 @@ def test_collect_returns_list_negativeexample() -> None:
     # result = collect(..., ...)
     # assert isinstance(result, list)
 
+
+# from scripts.collect_negatives import collect
+def test_collect_returns_list_negativeexample() -> None:
+    """Contract: collect returns list[NegativeExample]."""
+    # TODO: Provide valid arguments
+    # result = collect(..., ...)
+    # assert isinstance(result, list)

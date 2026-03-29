@@ -23,6 +23,7 @@ def test_compute_stability_returns_expected_output() -> None:
     result = compute_stability(..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
 
+
 def test_compute_stability_boundary_values() -> None:
     """Test compute_stability with edge cases that mutation testing targets."""
     # Boundary: prev_loss
@@ -32,11 +33,11 @@ def test_compute_stability_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_compute_generalization_gap_returns_expected_output() -> None:
     """Test compute_generalization_gap with valid input."""
     result = compute_generalization_gap(..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_compute_generalization_gap_boundary_values() -> None:
     """Test compute_generalization_gap with edge cases that mutation testing targets."""
@@ -47,11 +48,11 @@ def test_compute_generalization_gap_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_compute_feature_importance_returns_expected_output() -> None:
     """Test compute_feature_importance with valid input."""
     result = compute_feature_importance(...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_compute_feature_importance_boundary_values() -> None:
     """Test compute_feature_importance with edge cases that mutation testing targets."""
@@ -61,11 +62,11 @@ def test_compute_feature_importance_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_compute_predictability_returns_expected_output() -> None:
     """Test compute_predictability with valid input."""
     result = compute_predictability(...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_compute_predictability_boundary_values() -> None:
     """Test compute_predictability with edge cases that mutation testing targets."""
@@ -75,11 +76,11 @@ def test_compute_predictability_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_compute_repr_evolution_returns_expected_output() -> None:
     """Test compute_repr_evolution with valid input."""
     result = compute_repr_evolution(..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_compute_repr_evolution_boundary_values() -> None:
     """Test compute_repr_evolution with edge cases that mutation testing targets."""
@@ -90,11 +91,11 @@ def test_compute_repr_evolution_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_compute_crystallization_returns_expected_output() -> None:
     """Test compute_crystallization with valid input."""
     result = compute_crystallization(..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_compute_crystallization_boundary_values() -> None:
     """Test compute_crystallization with edge cases that mutation testing targets."""
@@ -105,11 +106,11 @@ def test_compute_crystallization_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_classify_domain_returns_expected_output() -> None:
     """Test classify_domain with valid input."""
     result = classify_domain(..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_classify_domain_boundary_values() -> None:
     """Test classify_domain with edge cases that mutation testing targets."""
@@ -120,11 +121,11 @@ def test_classify_domain_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_is_oscillating_returns_expected_output() -> None:
     """Test is_oscillating with valid input."""
     result = is_oscillating(..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_is_oscillating_boundary_values() -> None:
     """Test is_oscillating with edge cases that mutation testing targets."""
@@ -135,11 +136,11 @@ def test_is_oscillating_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_monotonic_trend_returns_expected_output() -> None:
     """Test monotonic_trend with valid input."""
     result = monotonic_trend(...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_monotonic_trend_boundary_values() -> None:
     """Test monotonic_trend with edge cases that mutation testing targets."""
@@ -149,11 +150,11 @@ def test_monotonic_trend_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_find_tier_convergence_returns_expected_output() -> None:
     """Test find_tier_convergence with valid input."""
     result = find_tier_convergence(..., ..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_find_tier_convergence_boundary_values() -> None:
     """Test find_tier_convergence with edge cases that mutation testing targets."""
@@ -165,11 +166,11 @@ def test_find_tier_convergence_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_linear_slope_returns_expected_output() -> None:
     """Test linear_slope with valid input."""
     result = linear_slope(...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_linear_slope_boundary_values() -> None:
     """Test linear_slope with edge cases that mutation testing targets."""
@@ -177,6 +178,3 @@ def test_linear_slope_boundary_values() -> None:
     # TODO: Test with boundary inputs (0, -1, empty string, None)
     result = linear_slope(...)
     assert result == EXPECTED  # TODO: Replace with actual expected value
-
-
-

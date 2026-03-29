@@ -21,6 +21,7 @@ def test_load_config_returns_expected_output() -> None:
     result = load_config(...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
 
+
 def test_load_config_boundary_values() -> None:
     """Test load_config with edge cases that mutation testing targets."""
     # Boundary: path
@@ -29,11 +30,11 @@ def test_load_config_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_load_checkpoint_returns_expected_output() -> None:
     """Test load_checkpoint with valid input."""
     result = load_checkpoint(..., ..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_load_checkpoint_boundary_values() -> None:
     """Test load_checkpoint with edge cases that mutation testing targets."""
@@ -45,11 +46,11 @@ def test_load_checkpoint_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_nav_retrieve_returns_expected_output() -> None:
     """Test nav_retrieve with valid input."""
     result = nav_retrieve(..., ..., ..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_nav_retrieve_boundary_values() -> None:
     """Test nav_retrieve with edge cases that mutation testing targets."""
@@ -61,11 +62,11 @@ def test_nav_retrieve_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_dense_retrieve_returns_expected_output() -> None:
     """Test dense_retrieve with valid input."""
     result = dense_retrieve(..., ..., ..., ..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_dense_retrieve_boundary_values() -> None:
     """Test dense_retrieve with edge cases that mutation testing targets."""
@@ -77,11 +78,11 @@ def test_dense_retrieve_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_compute_recall_at_k_returns_expected_output() -> None:
     """Test compute_recall_at_k with valid input."""
     result = compute_recall_at_k(..., ..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_compute_recall_at_k_boundary_values() -> None:
     """Test compute_recall_at_k with edge cases that mutation testing targets."""
@@ -93,11 +94,11 @@ def test_compute_recall_at_k_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_compute_universe_coverage_returns_expected_output() -> None:
     """Test compute_universe_coverage with valid input."""
     result = compute_universe_coverage(..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_compute_universe_coverage_boundary_values() -> None:
     """Test compute_universe_coverage with edge cases that mutation testing targets."""
@@ -108,11 +109,11 @@ def test_compute_universe_coverage_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_compute_conditional_recall_at_k_returns_expected_output() -> None:
     """Test compute_conditional_recall_at_k with valid input."""
     result = compute_conditional_recall_at_k(..., ..., ..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_compute_conditional_recall_at_k_boundary_values() -> None:
     """Test compute_conditional_recall_at_k with edge cases that mutation testing targets."""
@@ -124,11 +125,11 @@ def test_compute_conditional_recall_at_k_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_evaluate_returns_expected_output() -> None:
     """Test evaluate with valid input."""
     result = evaluate(..., ..., ..., ..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_evaluate_boundary_values() -> None:
     """Test evaluate with edge cases that mutation testing targets."""
@@ -140,11 +141,7 @@ def test_evaluate_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_main_returns_expected_output() -> None:
     """Test main with valid input."""
     result = main()
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
-
-
-

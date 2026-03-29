@@ -17,6 +17,7 @@ def test_gumbel_softmax_ternary_returns_expected_output() -> None:
     result = gumbel_softmax_ternary(..., ..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
 
+
 def test_gumbel_softmax_ternary_boundary_values() -> None:
     """Test gumbel_softmax_ternary with edge cases that mutation testing targets."""
     # Boundary: logits
@@ -27,11 +28,11 @@ def test_gumbel_softmax_ternary_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_snap_to_ternary_returns_expected_output() -> None:
     """Test snap_to_ternary with valid input."""
     result = snap_to_ternary(...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_snap_to_ternary_boundary_values() -> None:
     """Test snap_to_ternary with edge cases that mutation testing targets."""
@@ -41,11 +42,11 @@ def test_snap_to_ternary_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_energy_refine_returns_expected_output() -> None:
     """Test energy_refine with valid input."""
     result = energy_refine(..., ..., ..., ..., ..., ..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_energy_refine_boundary_values() -> None:
     """Test energy_refine with edge cases that mutation testing targets."""
@@ -57,7 +58,6 @@ def test_energy_refine_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 class TestRefineConfigConfig:
     """Configuration tests for RefineConfig."""
 
@@ -66,7 +66,6 @@ class TestRefineConfigConfig:
         obj = RefineConfig()
         # TODO: Assert specific field values, not just existence
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
-
 
 
 class TestEnergyFunctionConfig:
@@ -83,6 +82,7 @@ class TestEnergyFunctionConfig:
         # TODO: Provide override values and assert exact field values
         obj = EnergyFunction()
         assert obj == EXPECTED  # TODO: Replace with expected instance
+
 
 class TestEnergyFunctionState:
     """State invariant tests for EnergyFunction."""
@@ -122,6 +122,3 @@ class TestEnergyFunctionState:
         obj = EnergyFunction()
         obj.forward()  # TODO: Provide arguments
         # TODO: Assert state changed correctly
-
-
-

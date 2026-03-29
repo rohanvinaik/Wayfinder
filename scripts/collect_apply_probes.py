@@ -54,25 +54,25 @@ logging.basicConfig(
 # ---------------------------------------------------------------------------
 
 _SHAPE_COMPAT: dict[str, set[str]] = {
-    "eq":     {"eq", "iff", "le", "ge", "dvd", "prop"},
-    "iff":    {"iff", "eq", "prop"},
-    "le":     {"le", "lt", "eq", "prop"},
-    "lt":     {"le", "lt", "prop"},
-    "ge":     {"ge", "gt", "eq", "prop"},
-    "gt":     {"ge", "gt", "prop"},
-    "mem":    {"mem", "subset", "prop"},
+    "eq": {"eq", "iff", "le", "ge", "dvd", "prop"},
+    "iff": {"iff", "eq", "prop"},
+    "le": {"le", "lt", "eq", "prop"},
+    "lt": {"le", "lt", "prop"},
+    "ge": {"ge", "gt", "eq", "prop"},
+    "gt": {"ge", "gt", "prop"},
+    "mem": {"mem", "subset", "prop"},
     "subset": {"subset", "mem", "prop"},
-    "dvd":    {"dvd", "eq", "prop"},
-    "and":    {"and", "prop"},
-    "or":     {"or", "prop"},
-    "not":    {"not", "prop"},
-    "prop":   set(),
-    "other":  set(),
+    "dvd": {"dvd", "eq", "prop"},
+    "and": {"and", "prop"},
+    "or": {"or", "prop"},
+    "not": {"not", "prop"},
+    "prop": set(),
+    "other": set(),
 }
 
 _AUTO_HEADS = {"True", "False", "trivial"}
-_BINDER_RE  = re.compile(r"^(∀\s*[\{\[\(].*?[\}\]\)],?\s*)+")
-_HEAD_RE    = re.compile(r"⊢\s*(\S+)")
+_BINDER_RE = re.compile(r"^(∀\s*[\{\[\(].*?[\}\]\)],?\s*)+")
+_HEAD_RE = re.compile(r"⊢\s*(\S+)")
 
 
 def _strip_binders(pp: str) -> str:
@@ -88,9 +88,18 @@ def _conclusion_of(pp: str) -> str:
 
 def _prop_shape(conclusion: str) -> str:
     for sym, shape in [
-        ("=", "eq"), ("↔", "iff"), ("≤", "le"), ("≥", "ge"),
-        ("<", "lt"), (">", "gt"), ("∈", "mem"), ("⊆", "subset"),
-        ("∣", "dvd"), ("∧", "and"), ("∨", "or"), ("¬", "not"),
+        ("=", "eq"),
+        ("↔", "iff"),
+        ("≤", "le"),
+        ("≥", "ge"),
+        ("<", "lt"),
+        (">", "gt"),
+        ("∈", "mem"),
+        ("⊆", "subset"),
+        ("∣", "dvd"),
+        ("∧", "and"),
+        ("∨", "or"),
+        ("¬", "not"),
     ]:
         if sym in conclusion[:60]:
             return shape
@@ -108,7 +117,7 @@ def _goal_shape(goal_str: str) -> str:
     m = _HEAD_RE.search(goal_str)
     if not m:
         return "other"
-    tail = goal_str[m.end():].strip()
+    tail = goal_str[m.end() :].strip()
     return _prop_shape(m.group(1) + " " + tail)
 
 
@@ -139,9 +148,7 @@ def _get_decl_type(kernel: LeanKernel, name: str) -> str | None:
         _type_cache[name] = None
         return None
     try:
-        info = kernel._server.env_inspect(
-            name=name, print_value=False, print_dependency=False
-        )
+        info = kernel._server.env_inspect(name=name, print_value=False, print_dependency=False)
         pp = getattr(info, "type", None)
         if pp is None and isinstance(info, dict):
             pp = info.get("type")
@@ -156,14 +163,18 @@ def _get_decl_type(kernel: LeanKernel, name: str) -> str | None:
 # Outcome
 # ---------------------------------------------------------------------------
 
+
 def _outcome_class(accepted: bool, closed: bool, fb_cat: str) -> str:
     if closed:
         return "closed"
     if accepted:
         return "accepted_with_goals"
     if fb_cat in {
-        "unification_mismatch", "typeclass_missing",
-        "unknown_identifier", "parse_error", "other",
+        "unification_mismatch",
+        "typeclass_missing",
+        "unknown_identifier",
+        "parse_error",
+        "other",
     }:
         return fb_cat
     return "other"
@@ -172,6 +183,7 @@ def _outcome_class(accepted: bool, closed: bool, fb_cat: str) -> str:
 # ---------------------------------------------------------------------------
 # Cosine scoring
 # ---------------------------------------------------------------------------
+
 
 def _cosine_scores(
     encoder: SentenceTransformer,
@@ -189,6 +201,7 @@ def _cosine_scores(
 # Per-example processing
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class ProbeRow:
     # Identity
@@ -196,14 +209,14 @@ class ProbeRow:
     file_path: str
     step_index: int
     # Provenance — locked schema for v2 selector
-    source_split: str         # "train" | "eval"
-    source_kind: str          # "canonical_step0" | "canonical_midstep" |
-                              # "post_bootstrap_residual" | "search_residual"
-    search_stage: str         # "n/a" | "initial" | "post_intro" | "post_simp" |
-                              # "post_aesop" | "mid_search"
-    lane_provenance: str      # "canonical" | "bootstrap" | "hammer" | "learned"
+    source_split: str  # "train" | "eval"
+    source_kind: str  # "canonical_step0" | "canonical_midstep" |
+    # "post_bootstrap_residual" | "search_residual"
+    search_stage: str  # "n/a" | "initial" | "post_intro" | "post_simp" |
+    # "post_aesop" | "mid_search"
+    lane_provenance: str  # "canonical" | "bootstrap" | "hammer" | "learned"
     # Semantic IR (from canonical data)
-    goal_shape_ir: dict       # raw goal_shape_ir dict from training data
+    goal_shape_ir: dict  # raw goal_shape_ir dict from training data
     trigger_profile_ir: dict  # raw trigger_profile_ir dict from training data
     # Goal
     canonical_apply: str
@@ -221,7 +234,7 @@ class ProbeRow:
     feedback_stage: str
     accepted: bool
     closed: bool
-    executable: int           # 1 if accepted or closed
+    executable: int  # 1 if accepted or closed
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -322,31 +335,33 @@ def process_example(
 
         executable = 1 if (accepted or closed) else 0
 
-        rows.append(ProbeRow(
-            theorem_full_name=name,
-            file_path=ex.get("file_path", ""),
-            step_index=step,
-            source_split="train",
-            source_kind=source_kind,
-            search_stage="n/a",
-            lane_provenance="canonical",
-            goal_shape_ir=goal_shape_ir,
-            trigger_profile_ir=trigger_profile_ir,
-            canonical_apply=canonical_apply,
-            goal_state=goal_str,
-            goal_target_head=g_head,
-            goal_shape=g_shape,
-            candidate=cand,
-            candidate_type_pp=cand_pp[:256],
-            cosine_score=score,
-            cosine_rank=cosine_rank,
-            passed_static_filter=passed,
-            feedback_category=_outcome_class(accepted, closed, fb_cat),
-            feedback_stage=fb_stage,
-            accepted=accepted,
-            closed=closed,
-            executable=executable,
-        ))
+        rows.append(
+            ProbeRow(
+                theorem_full_name=name,
+                file_path=ex.get("file_path", ""),
+                step_index=step,
+                source_split="train",
+                source_kind=source_kind,
+                search_stage="n/a",
+                lane_provenance="canonical",
+                goal_shape_ir=goal_shape_ir,
+                trigger_profile_ir=trigger_profile_ir,
+                canonical_apply=canonical_apply,
+                goal_state=goal_str,
+                goal_target_head=g_head,
+                goal_shape=g_shape,
+                candidate=cand,
+                candidate_type_pp=cand_pp[:256],
+                cosine_score=score,
+                cosine_rank=cosine_rank,
+                passed_static_filter=passed,
+                feedback_category=_outcome_class(accepted, closed, fb_cat),
+                feedback_stage=fb_stage,
+                accepted=accepted,
+                closed=closed,
+                executable=executable,
+            )
+        )
 
     return rows
 
@@ -355,26 +370,32 @@ def process_example(
 # CLI
 # ---------------------------------------------------------------------------
 
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--train",
-        default="data/canonical/canonical_residual_train.jsonl")
-    parser.add_argument("--db",
-        default="data/proof_network_v3.db")
-    parser.add_argument("--lean-project",
-        default="data/lean_project/")
-    parser.add_argument("--output",
-        default="data/apply_exec_train.jsonl")
-    parser.add_argument("--limit", type=int, default=0,
-        help="Max examples to process (0 = no limit)")
-    parser.add_argument("--step0-only", action="store_true",
-        help="Restrict to step_index==0 (fast: no prefix replay)")
-    parser.add_argument("--top-n", type=int, default=20,
-        help="Number of cosine-ranked candidates to probe per goal")
-    parser.add_argument("--restart-every", type=int, default=64,
-        help="Periodic server restart every N examples")
-    parser.add_argument("--resume", action="store_true",
-        help="Skip already-written theorem_full_name+step_index pairs")
+    parser.add_argument("--train", default="data/canonical/canonical_residual_train.jsonl")
+    parser.add_argument("--db", default="data/proof_network_v3.db")
+    parser.add_argument("--lean-project", default="data/lean_project/")
+    parser.add_argument("--output", default="data/apply_exec_train.jsonl")
+    parser.add_argument(
+        "--limit", type=int, default=0, help="Max examples to process (0 = no limit)"
+    )
+    parser.add_argument(
+        "--step0-only",
+        action="store_true",
+        help="Restrict to step_index==0 (fast: no prefix replay)",
+    )
+    parser.add_argument(
+        "--top-n", type=int, default=20, help="Number of cosine-ranked candidates to probe per goal"
+    )
+    parser.add_argument(
+        "--restart-every", type=int, default=64, help="Periodic server restart every N examples"
+    )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Skip already-written theorem_full_name+step_index pairs",
+    )
     args = parser.parse_args()
 
     Path(args.output).parent.mkdir(parents=True, exist_ok=True)
@@ -390,9 +411,7 @@ def main() -> None:
 
     # DB
     conn = sqlite3.connect(args.db)
-    id_to_name = {
-        eid: n for eid, n in conn.execute("SELECT id, name FROM entities")
-    }
+    id_to_name = {eid: n for eid, n in conn.execute("SELECT id, name FROM entities")}
     name_to_id = {v: k for k, v in id_to_name.items()}
     logger.info("DB: %d entities", len(id_to_name))
 
@@ -417,7 +436,7 @@ def main() -> None:
             examples.append(ex)
 
     if args.limit:
-        examples = examples[:args.limit]
+        examples = examples[: args.limit]
 
     logger.info("Processing %d apply examples", len(examples))
 
@@ -442,8 +461,14 @@ def main() -> None:
 
             try:
                 probe_rows = process_example(
-                    ex, kernel, encoder, conn, id_to_name, name_to_id,
-                    args.lean_project, top_n=args.top_n,
+                    ex,
+                    kernel,
+                    encoder,
+                    conn,
+                    id_to_name,
+                    name_to_id,
+                    args.lean_project,
+                    top_n=args.top_n,
                 )
             except ServerCrashError as exc:
                 logger.warning("Server crash on %s step %d: %s", name, step, exc)
@@ -464,7 +489,10 @@ def main() -> None:
     pos_pct = 100 * exec_total / max(rows_total, 1)
     logger.info(
         "Done: %d rows, %d executable (%.1f%%), %.1fs",
-        rows_total, exec_total, pos_pct, elapsed,
+        rows_total,
+        exec_total,
+        pos_pct,
+        elapsed,
     )
 
     print("\n" + "=" * 60)

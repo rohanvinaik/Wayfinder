@@ -29,18 +29,19 @@ class ApplyScope:
     """Scoped vocabulary for apply/refine hint selection."""
 
     hypotheses: list[str] = field(default_factory=list)
-    head_matches: list[str] = field(default_factory=list)   # name contains goal head
+    head_matches: list[str] = field(default_factory=list)  # name contains goal head
     shape_matches: list[str] = field(default_factory=list)  # suffix encodes goal shape
-    premises: list[str] = field(default_factory=list)       # remaining cosine fallback
+    premises: list[str] = field(default_factory=list)  # remaining cosine fallback
     all_symbols: list[str] = field(default_factory=list)
-    source_tags: list[str] = field(default_factory=list)    # per-symbol tier label
+    source_tags: list[str] = field(default_factory=list)  # per-symbol tier label
     goal_head: str = ""
-    goal_shape: str = ""                                    # "eq" | "le" | "iff" | ...
+    goal_shape: str = ""  # "eq" | "le" | "iff" | ...
 
 
 # ---------------------------------------------------------------------------
 # Goal analysis
 # ---------------------------------------------------------------------------
+
 
 def extract_goal_head(goal_state: str) -> str:
     """Extract the top-level head symbol from the ⊢ target.
@@ -70,8 +71,14 @@ def extract_goal_head(goal_state: str) -> str:
             m_rel = re.search(r"\s(≤|<|≥|>|=|≠)\s", target[:60])
             if m_rel:
                 op = m_rel.group(1)
-                return {"≤": "LE.le", "<": "LT.lt", "≥": "GE.ge",
-                        ">": "GT.gt", "=": "Eq", "≠": "Ne"}[op]
+                return {
+                    "≤": "LE.le",
+                    "<": "LT.lt",
+                    "≥": "GE.ge",
+                    ">": "GT.gt",
+                    "=": "Eq",
+                    "≠": "Ne",
+                }[op]
             # First identifier token (function application head)
             m = re.match(r"\(?(\w[\w\.]*)", target)
             if m:
@@ -121,16 +128,16 @@ def classify_goal_shape(goal_state: str) -> str:
 
 # Suffixes that indicate a conclusion-type match for the given shape
 _SHAPE_SUFFIXES: dict[str, list[str]] = {
-    "eq":          ["_eq", "_eq_", "eq_", ".eq", "_comm", "_assoc", "_congr", "_sub_eq", "_add_eq"],
-    "le":          ["_le", "_le_", "le_", ".le", "_mono", "_nonneg", "_pos", "_bound"],
-    "lt":          ["_lt", "_lt_", "lt_", ".lt"],
-    "iff":         ["_iff", "_iff_", "iff_", ".iff", "_congr_iff"],
-    "mem":         ["_mem", "_mem_", "mem_", ".mem", "_in_", "_subset"],
-    "surjective":  ["_surjective", "surjective_", "_bijective"],
-    "injective":   ["_injective", "injective_", "_inj"],
-    "tendsto":     ["tendsto_", "_tendsto", "Tendsto"],
-    "continuous":  ["continuous_", "_continuous", "Continuous"],
-    "measurable":  ["measurable_", "_measurable", "Measurable"],
+    "eq": ["_eq", "_eq_", "eq_", ".eq", "_comm", "_assoc", "_congr", "_sub_eq", "_add_eq"],
+    "le": ["_le", "_le_", "le_", ".le", "_mono", "_nonneg", "_pos", "_bound"],
+    "lt": ["_lt", "_lt_", "lt_", ".lt"],
+    "iff": ["_iff", "_iff_", "iff_", ".iff", "_congr_iff"],
+    "mem": ["_mem", "_mem_", "mem_", ".mem", "_in_", "_subset"],
+    "surjective": ["_surjective", "surjective_", "_bijective"],
+    "injective": ["_injective", "injective_", "_inj"],
+    "tendsto": ["tendsto_", "_tendsto", "Tendsto"],
+    "continuous": ["continuous_", "_continuous", "Continuous"],
+    "measurable": ["measurable_", "_measurable", "Measurable"],
 }
 
 
@@ -155,6 +162,7 @@ def _name_matches_shape(name: str, shape: str) -> bool:
 # ---------------------------------------------------------------------------
 # Main scoping function
 # ---------------------------------------------------------------------------
+
 
 def scope_for_apply(
     goal_state: str,

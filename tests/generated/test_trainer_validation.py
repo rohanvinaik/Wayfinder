@@ -11,6 +11,7 @@ def test_validate_single_proof_returns_expected_output() -> None:
     result = validate_single_proof(..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
 
+
 def test_validate_single_proof_boundary_values() -> None:
     """Test validate_single_proof with edge cases that mutation testing targets."""
     # Boundary: example
@@ -20,11 +21,7 @@ def test_validate_single_proof_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_get_default_verifier_returns_expected_output() -> None:
     """Test get_default_verifier with valid input."""
     result = get_default_verifier()
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
-
-
-

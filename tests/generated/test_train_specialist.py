@@ -11,6 +11,7 @@ def test_train_specialist_returns_expected_output() -> None:
     result = train_specialist(..., ..., ..., ..., ..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
 
+
 def test_train_specialist_boundary_values() -> None:
     """Test train_specialist with edge cases that mutation testing targets."""
     # Boundary: config
@@ -21,12 +22,10 @@ def test_train_specialist_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_main_returns_expected_output() -> None:
     """Test main with valid input."""
     result = main()
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
-
 
 
 class Test_TrainCtxConfig:
@@ -37,6 +36,3 @@ class Test_TrainCtxConfig:
         obj = _TrainCtx()
         # TODO: Assert specific field values, not just existence
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
-
-
-

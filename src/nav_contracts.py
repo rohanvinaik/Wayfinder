@@ -185,9 +185,9 @@ class LeanFeedback:
     none               -- No feedback (success with all goals closed).
     """
 
-    stage: str       # goal_creation | tactic_parse | elaboration | tactic_exec
-    category: str    # see docstring
-    messages: list[dict]   # serialised Message objects (severity, kind, data, pos)
+    stage: str  # goal_creation | tactic_parse | elaboration | tactic_exec
+    category: str  # see docstring
+    messages: list[dict]  # serialised Message objects (severity, kind, data, pos)
     raw_error: str
 
     def to_dict(self) -> dict[str, Any]:
@@ -200,9 +200,7 @@ class LeanFeedback:
 
     @staticmethod
     def success() -> "LeanFeedback":
-        return LeanFeedback(
-            stage="tactic_exec", category="none", messages=[], raw_error=""
-        )
+        return LeanFeedback(stage="tactic_exec", category="none", messages=[], raw_error="")
 
 
 @dataclass

@@ -40,7 +40,6 @@ from scripts.run_benchmark import (
 )
 from src.proof_search import SearchConfig, SearchResult, search
 
-
 # ---------------------------------------------------------------------------
 # Per-theorem result
 # ---------------------------------------------------------------------------
@@ -73,8 +72,15 @@ def _dominant_lane(result: SearchResult) -> str:
     prov = result.close_provenance
     if not result.success:
         return "failed"
-    for label in ("learned", "cosine_simp", "cosine_rw_seq", "cosine_rw",
-                  "solver_bootstrap", "structural_core", "automation"):
+    for label in (
+        "learned",
+        "cosine_simp",
+        "cosine_rw_seq",
+        "cosine_rw",
+        "solver_bootstrap",
+        "structural_core",
+        "automation",
+    ):
         if any(p == label or p.startswith(label) for p in prov):
             return label
     return prov[0] if prov else "unknown"
@@ -82,7 +88,9 @@ def _dominant_lane(result: SearchResult) -> str:
 
 def _count_simp_closes(result: SearchResult) -> int:
     """Count goal closes attributed to cosine_simp lane."""
-    return sum(1 for p in result.close_provenance if p == "cosine_simp" or p.startswith("cosine_simp"))
+    return sum(
+        1 for p in result.close_provenance if p == "cosine_simp" or p.startswith("cosine_simp")
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -154,7 +162,9 @@ def _run_condition(
     return results
 
 
-def _merge(combined: list[TheoremResult], cond_results: list[TheoremResult], condition: str) -> None:
+def _merge(
+    combined: list[TheoremResult], cond_results: list[TheoremResult], condition: str
+) -> None:
     by_id = {r.theorem_id: r for r in cond_results}
     for res in combined:
         cr = by_id.get(res.theorem_id)
@@ -211,35 +221,45 @@ def print_report(results: list[TheoremResult]) -> None:
     print(f"\nTheorems: {n}")
     print(f"\n{'Condition':<40} {'Proved':>8} {'Rate':>7} {'Delta':>8}")
     print("-" * 65)
-    print(f"{'baseline':<40} {base_ok:>8} {100*base_ok/max(n,1):>6.1f}%        —")
-    print(f"{'+ cosine_rw':<40} {rw_ok:>8} {100*rw_ok/max(n,1):>6.1f}%  {rw_ok - base_ok:>+6}")
-    print(f"{'+ cosine_rw + cosine_simp':<40} {rw_simp_ok:>8} {100*rw_simp_ok/max(n,1):>6.1f}%  {rw_simp_ok - base_ok:>+6}")
+    print(f"{'baseline':<40} {base_ok:>8} {100 * base_ok / max(n, 1):>6.1f}%        —")
+    print(f"{'+ cosine_rw':<40} {rw_ok:>8} {100 * rw_ok / max(n, 1):>6.1f}%  {rw_ok - base_ok:>+6}")
+    print(
+        f"{'+ cosine_rw + cosine_simp':<40} {rw_simp_ok:>8} {100 * rw_simp_ok / max(n, 1):>6.1f}%  {rw_simp_ok - base_ok:>+6}"
+    )
 
-    print(f"\nNo-regression check:")
+    print("\nNo-regression check:")
     print(f"  baseline proved, +cosine_rw lost:      {len(rw_lost)}")
     print(f"  baseline proved, +cosine_rw+simp lost: {len(rw_simp_lost)}")
 
-    print(f"\ncosine_simp lane activity (+cosine_rw+simp condition):")
+    print("\ncosine_simp lane activity (+cosine_rw+simp condition):")
     print(f"  theorems touched (≥1 simp subgoal close): {simp_touched}")
     print(f"  total simp subgoal closes:                {simp_total_closes}")
-    print(f"  theorems won by +simp (vs +cosine_rw):    {len([r for r in results if not r.rw_success and r.rw_simp_success])}")
+    print(
+        f"  theorems won by +simp (vs +cosine_rw):    {len([r for r in results if not r.rw_success and r.rw_simp_success])}"
+    )
 
-    print(f"\nLean calls / theorem:")
-    print(f"  baseline:              {base_calls/max(n,1):.1f}  (total {base_calls})")
-    print(f"  +cosine_rw:            {rw_calls/max(n,1):.1f}  (+{(rw_calls - base_calls)/max(n,1):.1f}/thm)")
-    print(f"  +cosine_rw+cosine_simp:{rw_simp_calls/max(n,1):.1f}  (+{(rw_simp_calls - base_calls)/max(n,1):.1f}/thm)")
+    print("\nLean calls / theorem:")
+    print(f"  baseline:              {base_calls / max(n, 1):.1f}  (total {base_calls})")
+    print(
+        f"  +cosine_rw:            {rw_calls / max(n, 1):.1f}  (+{(rw_calls - base_calls) / max(n, 1):.1f}/thm)"
+    )
+    print(
+        f"  +cosine_rw+cosine_simp:{rw_simp_calls / max(n, 1):.1f}  (+{(rw_simp_calls - base_calls) / max(n, 1):.1f}/thm)"
+    )
 
-    print(f"\nTime / theorem:")
-    print(f"  baseline:              {base_time/max(n,1):.1f}s  (total {base_time:.0f}s)")
-    print(f"  +cosine_rw:            {rw_time/max(n,1):.1f}s")
-    print(f"  +cosine_rw+cosine_simp:{rw_simp_time/max(n,1):.1f}s")
+    print("\nTime / theorem:")
+    print(f"  baseline:              {base_time / max(n, 1):.1f}s  (total {base_time:.0f}s)")
+    print(f"  +cosine_rw:            {rw_time / max(n, 1):.1f}s")
+    print(f"  +cosine_rw+cosine_simp:{rw_simp_time / max(n, 1):.1f}s")
 
     if rw_simp_won:
-        print(f"\nTheorems won by +cosine_rw+cosine_simp (vs baseline):")
+        print("\nTheorems won by +cosine_rw+cosine_simp (vs baseline):")
         for r in rw_simp_won:
-            print(f"  {r.theorem_id}  (lane={r.rw_simp_close_lane}, simp_closes={r.simp_subgoal_closes})")
+            print(
+                f"  {r.theorem_id}  (lane={r.rw_simp_close_lane}, simp_closes={r.simp_subgoal_closes})"
+            )
     if rw_simp_lost:
-        print(f"\nRegressions in +cosine_rw+cosine_simp vs baseline:")
+        print("\nRegressions in +cosine_rw+cosine_simp vs baseline:")
         for r in rw_simp_lost:
             print(f"  {r.theorem_id}  (baseline_lane={r.baseline_close_lane})")
     print("=" * 70)
@@ -284,6 +304,7 @@ def main() -> None:
     encoder = None
     try:
         from sentence_transformers import SentenceTransformer
+
         encoder = SentenceTransformer("all-MiniLM-L6-v2")
         logger.info("Loaded MiniLM encoder")
     except ImportError:
@@ -310,18 +331,20 @@ def main() -> None:
     combined = [TheoremResult(theorem_id=t["theorem_id"], source=t["source"]) for t in theorems]
 
     for condition, cfg, enc, label in [
-        ("baseline", cfg_baseline, None,    "baseline (no cosine)"),
-        ("rw",       cfg_rw,       encoder, "+cosine_rw"),
-        ("rw_simp",  cfg_rw_simp,  encoder, "+cosine_rw +cosine_simp"),
+        ("baseline", cfg_baseline, None, "baseline (no cosine)"),
+        ("rw", cfg_rw, encoder, "+cosine_rw"),
+        ("rw_simp", cfg_rw_simp, encoder, "+cosine_rw +cosine_simp"),
     ]:
         logger.info("Condition: %s (%d theorems)", label, len(theorems))
         t0 = time.time()
         cond_results = _run_condition(condition, theorems, cfg, pipeline, lean, conn, enc)
         elapsed = time.time() - t0
         proved = sum(
-            r.baseline_success if condition == "baseline" else
-            r.rw_success if condition == "rw" else
-            r.rw_simp_success
+            r.baseline_success
+            if condition == "baseline"
+            else r.rw_success
+            if condition == "rw"
+            else r.rw_simp_success
             for r in cond_results
         )
         logger.info("  %d/%d proved in %.0fs", proved, len(theorems), elapsed)
@@ -333,11 +356,15 @@ def main() -> None:
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w") as f:
-        json.dump({
-            "experiment": "EXP-RW-038",
-            "n_theorems": len(combined),
-            "results": [asdict(r) for r in combined],
-        }, f, indent=2)
+        json.dump(
+            {
+                "experiment": "EXP-RW-038",
+                "n_theorems": len(combined),
+                "results": [asdict(r) for r in combined],
+            },
+            f,
+            indent=2,
+        )
     logger.info("Written to %s", output_path)
 
     print_report(combined)

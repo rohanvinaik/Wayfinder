@@ -23,17 +23,47 @@ _DEFAULT_MODEL_NAME = "all-MiniLM-L6-v2"
 
 _T5_MODEL_TYPES = {"t5", "byt5", "mt5", "umt5", "longt5"}
 _DECODER_MODEL_TYPES = {
-    "mistral", "qwen2", "qwen3", "qwen3_moe", "llama", "gpt2", "gpt_neox",
-    "mpt", "falcon", "phi", "phi3", "gemma", "gemma2", "gemma3_text",
-    "starcoder2", "codegen", "rwkv", "rwkv7", "stablelm", "deepseek_v3",
+    "mistral",
+    "qwen2",
+    "qwen3",
+    "qwen3_moe",
+    "llama",
+    "gpt2",
+    "gpt_neox",
+    "mpt",
+    "falcon",
+    "phi",
+    "phi3",
+    "gemma",
+    "gemma2",
+    "gemma3_text",
+    "starcoder2",
+    "codegen",
+    "rwkv",
+    "rwkv7",
+    "stablelm",
+    "deepseek_v3",
 }
 _DECODER_ARCHITECTURES = {
-    "MistralForCausalLM", "Qwen2ForCausalLM", "Qwen3MoeForCausalLM",
-    "LlamaForCausalLM", "GPT2LMHeadModel", "GPTNeoXForCausalLM",
-    "MPTForCausalLM", "FalconForCausalLM", "PhiForCausalLM", "Phi3ForCausalLM",
-    "GemmaForCausalLM", "Gemma2ForCausalLM", "Gemma3ForCausalLM",
-    "RWKV7ForCausalLM", "RWKVForCausalLM", "StableLmForCausalLM",
-    "Starcoder2ForCausalLM", "QWenLMHeadModel", "Qwen2ForSequenceClassification",
+    "MistralForCausalLM",
+    "Qwen2ForCausalLM",
+    "Qwen3MoeForCausalLM",
+    "LlamaForCausalLM",
+    "GPT2LMHeadModel",
+    "GPTNeoXForCausalLM",
+    "MPTForCausalLM",
+    "FalconForCausalLM",
+    "PhiForCausalLM",
+    "Phi3ForCausalLM",
+    "GemmaForCausalLM",
+    "Gemma2ForCausalLM",
+    "Gemma3ForCausalLM",
+    "RWKV7ForCausalLM",
+    "RWKVForCausalLM",
+    "StableLmForCausalLM",
+    "Starcoder2ForCausalLM",
+    "QWenLMHeadModel",
+    "Qwen2ForSequenceClassification",
 }
 _PEFT_BASE_MODELS = {
     "FrenzyMath/LeanSearch-PS": "intfloat/e5-mistral-7b-instruct",
@@ -46,9 +76,7 @@ _SKIP_TRUST_REMOTE_CODE = {
 
 def get_encoder_model_name(config: dict[str, Any]) -> str:
     """Return the configured encoder model name/path."""
-    return str(
-        config.get("type") or config.get("model_name") or _DEFAULT_MODEL_NAME
-    )
+    return str(config.get("type") or config.get("model_name") or _DEFAULT_MODEL_NAME)
 
 
 def _read_model_config(model_name: str) -> dict[str, Any] | None:
@@ -81,19 +109,13 @@ def _resolve_base_model_name(model_name: str) -> str:
 
 def _is_peft_model(model_name: str) -> bool:
     """Return True when the model is a known or local PEFT adapter."""
-    return (
-        model_name in _PEFT_BASE_MODELS
-        or _read_adapter_config(model_name) is not None
-    )
+    return model_name in _PEFT_BASE_MODELS or _read_adapter_config(model_name) is not None
 
 
 def _should_trust_remote_code(model_name: str) -> bool:
     """Some models break under transformers 5.x; avoid remote code there."""
     base_name = _resolve_base_model_name(model_name)
-    return (
-        model_name not in _SKIP_TRUST_REMOTE_CODE
-        and base_name not in _SKIP_TRUST_REMOTE_CODE
-    )
+    return model_name not in _SKIP_TRUST_REMOTE_CODE and base_name not in _SKIP_TRUST_REMOTE_CODE
 
 
 def _preferred_torch_dtype(device: str) -> torch.dtype:
@@ -117,25 +139,14 @@ def _get_instruction_prefix(model_name: str) -> str:
     if config is not None and (
         config.get("is_instruction_model") or config.get("instruction_template")
     ):
-        return (
-            "Instruct: Retrieve semantically similar mathematical"
-            " proof states\nQuery: "
-        )
+        return "Instruct: Retrieve semantically similar mathematical proof states\nQuery: "
     lower = _resolve_base_model_name(model_name).lower()
-    if any(
-        token in lower
-        for token in ("e5-mistral", "gte-qwen", "pplx-embed", "qwen3-embedding")
-    ):
-        return (
-            "Instruct: Retrieve semantically similar mathematical"
-            " proof states\nQuery: "
-        )
+    if any(token in lower for token in ("e5-mistral", "gte-qwen", "pplx-embed", "qwen3-embedding")):
+        return "Instruct: Retrieve semantically similar mathematical proof states\nQuery: "
     return ""
 
 
-def _apply_instruction_prefix(
-    model_name: str, goal_states: list[str]
-) -> list[str]:
+def _apply_instruction_prefix(model_name: str, goal_states: list[str]) -> list[str]:
     """Prefix inputs for instruction-aware query format."""
     prefix = _get_instruction_prefix(model_name)
     return [prefix + goal for goal in goal_states] if prefix else goal_states
@@ -143,14 +154,10 @@ def _apply_instruction_prefix(
 
 def _ensure_pad_token(tokenizer: Any) -> None:
     """Decoder models often ship without a pad token; reuse EOS."""
-    if (
-        getattr(tokenizer, "pad_token", None) is None
-        and getattr(tokenizer, "eos_token", None)
-    ):
+    if getattr(tokenizer, "pad_token", None) is None and getattr(tokenizer, "eos_token", None):
         tokenizer.pad_token = tokenizer.eos_token
-    if (
-        getattr(tokenizer, "pad_token_id", None) is None
-        and getattr(tokenizer, "eos_token_id", None)
+    if getattr(tokenizer, "pad_token_id", None) is None and getattr(
+        tokenizer, "eos_token_id", None
     ):
         tokenizer.pad_token_id = tokenizer.eos_token_id
 
@@ -173,9 +180,7 @@ def _detect_backend(model_name: str) -> str:
             return "decoder"
         if any(arch in _DECODER_ARCHITECTURES for arch in architectures):
             return "decoder"
-        if any(
-            "CausalLM" in arch or "LMHead" in arch for arch in architectures
-        ):
+        if any("CausalLM" in arch or "LMHead" in arch for arch in architectures):
             return "decoder"
 
     lower = _resolve_base_model_name(model_name).lower()
@@ -184,8 +189,17 @@ def _detect_backend(model_name: str) -> str:
     if any(
         k in lower
         for k in (
-            "mistral", "qwen2", "qwen3", "llama", "mpt", "rwkv",
-            "falcon", "gpt", "deepseek", "pplx-embed", "gte-qwen",
+            "mistral",
+            "qwen2",
+            "qwen3",
+            "llama",
+            "mpt",
+            "rwkv",
+            "falcon",
+            "gpt",
+            "deepseek",
+            "pplx-embed",
+            "gte-qwen",
             "qwen3-embedding",
         )
     ):

@@ -497,14 +497,24 @@ class TestSignedRRF(unittest.TestCase):
         """High-confidence hub suppression outweighs low-confidence."""
         high = [
             SelectorVote(
-                vote=-1, confidence=0.9, raw_score=50.0,
-                selector_name="hub", family="suppression", evidence="", rank=0,
+                vote=-1,
+                confidence=0.9,
+                raw_score=50.0,
+                selector_name="hub",
+                family="suppression",
+                evidence="",
+                rank=0,
             )
         ]
         low = [
             SelectorVote(
-                vote=-1, confidence=0.5, raw_score=30.0,
-                selector_name="hub", family="suppression", evidence="", rank=0,
+                vote=-1,
+                confidence=0.5,
+                raw_score=30.0,
+                selector_name="hub",
+                family="suppression",
+                evidence="",
+                rank=0,
             )
         ]
         self.assertGreater(compute_rrf(high, -1), compute_rrf(low, -1))
@@ -802,7 +812,9 @@ class TestResolveWiring(unittest.TestCase):
         ctx = SearchContext()
         # With landmark_expand strategy
         candidates = resolve(
-            nav, self.conn, ctx,
+            nav,
+            self.conn,
+            ctx,
             retrieval_config={"strategy": "landmark_expand"},
         )
         self.assertIsInstance(candidates, list)

@@ -46,6 +46,7 @@ logger = logging.getLogger(__name__)
 # Result dataclass
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class SimpExampleResult:
     """Result for one simp0 example across all conditions."""
@@ -56,7 +57,7 @@ class SimpExampleResult:
     goal_state_before: str = ""
     canonical_action_ir: str = ""
     annotated_premise: str = ""
-    subset: str = ""           # "simp_bare" | "simp_hints" | "diagnostic"
+    subset: str = ""  # "simp_bare" | "simp_hints" | "diagnostic"
 
     # Goal creation
     goal_started: bool = False
@@ -98,6 +99,7 @@ class SimpExampleResult:
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def parse_simp_hints(canonical_action_ir: str) -> list[str]:
     """Extract hint names from a canonical simp tactic string.
@@ -142,6 +144,7 @@ def classify_subset(example: dict) -> str:
 # Premise lookup
 # ---------------------------------------------------------------------------
 
+
 def load_entity_maps(conn: sqlite3.Connection) -> tuple[dict[int, str], dict[str, int]]:
     rows = conn.execute("SELECT id, name FROM entities").fetchall()
     id_to_name = {eid: name for eid, name in rows}
@@ -166,6 +169,7 @@ def get_premise_names(
 # Cosine ranking
 # ---------------------------------------------------------------------------
 
+
 def cosine_rank_symbols(
     goal_text: str,
     symbols: list[str],
@@ -176,6 +180,7 @@ def cosine_rank_symbols(
         return [(0.0, s) for s in symbols]
     try:
         from sentence_transformers import SentenceTransformer
+
         model: SentenceTransformer = encoder  # type: ignore[assignment]
         goal_emb = model.encode([goal_text], normalize_embeddings=True)
         sym_embs = model.encode(symbols, normalize_embeddings=True)
@@ -189,6 +194,7 @@ def cosine_rank_symbols(
 # ---------------------------------------------------------------------------
 # Tactic execution
 # ---------------------------------------------------------------------------
+
 
 def try_tactic_safe(
     kernel: LeanKernel,
@@ -215,6 +221,7 @@ def try_tactic_safe(
 # ---------------------------------------------------------------------------
 # Per-example runner
 # ---------------------------------------------------------------------------
+
 
 def run_one_example(
     example: dict,
@@ -319,7 +326,9 @@ def run_one_example(
                 res.cosine_top1_error = err
                 # Fallback: try bare simp if top-1 hint didn't work
                 if not acc and not crash:
-                    acc2, closed2, _, crash2 = try_tactic_safe(kernel, goal_str, "simp", goal_id=goal_id)
+                    acc2, closed2, _, crash2 = try_tactic_safe(
+                        kernel, goal_str, "simp", goal_id=goal_id
+                    )
                     if crash2:
                         res.crash_retries += 1
                         crashed = True
@@ -343,7 +352,9 @@ def run_one_example(
                 res.cosine_top5_closed = closed
                 res.cosine_top5_error = err
                 if not acc and not crash:
-                    acc2, closed2, _, crash2 = try_tactic_safe(kernel, goal_str, "simp", goal_id=goal_id)
+                    acc2, closed2, _, crash2 = try_tactic_safe(
+                        kernel, goal_str, "simp", goal_id=goal_id
+                    )
                     if crash2:
                         res.crash_retries += 1
                         crashed = True
@@ -360,10 +371,11 @@ def run_one_example(
 # Reporting
 # ---------------------------------------------------------------------------
 
+
 def _pct(num: int, den: int) -> str:
     if den == 0:
         return "N/A"
-    return f"{100*num/den:.1f}%"
+    return f"{100 * num / den:.1f}%"
 
 
 def print_report(results: list[SimpExampleResult], total: int) -> None:
@@ -442,13 +454,17 @@ def print_report(results: list[SimpExampleResult], total: int) -> None:
     total_gold = sum(r.gold_hints_total for r in hints_started)
     in_scope_gold = sum(r.gold_hints_in_scope for r in hints_started)
 
-    print(f"\nScope stats:")
+    print("\nScope stats:")
     print(f"  Mean scope size: {np.mean(scope_sizes):.1f}" if scope_sizes else "  No scope data")
     if hints_started:
-        print(f"  Gold hints in scope: {in_scope_gold}/{total_gold} ({_pct(in_scope_gold, total_gold)})")
+        print(
+            f"  Gold hints in scope: {in_scope_gold}/{total_gold} ({_pct(in_scope_gold, total_gold)})"
+        )
         print(f"  Examples with ≥1 gold hint: {len(hints_started)}")
         full_recall = sum(1 for r in hints_started if r.gold_hints_in_scope == r.gold_hints_total)
-        print(f"  Full gold recall (all hints in scope): {full_recall}/{len(hints_started)} ({_pct(full_recall, len(hints_started))})")
+        print(
+            f"  Full gold recall (all hints in scope): {full_recall}/{len(hints_started)} ({_pct(full_recall, len(hints_started))})"
+        )
 
     elapsed = [r.elapsed_s for r in results if r.elapsed_s > 0]
     if elapsed:
@@ -461,6 +477,7 @@ def print_report(results: list[SimpExampleResult], total: int) -> None:
 # Main
 # ---------------------------------------------------------------------------
 
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="simp0 benchmark runner")
     parser.add_argument("--db", default="data/proof_network_v3.db")
@@ -468,8 +485,12 @@ def main() -> None:
     parser.add_argument("--lean-project", default="data/lean_project/")
     parser.add_argument("--output", default="runs/simp0_results.jsonl")
     parser.add_argument("--limit", type=int, default=0, help="Max examples (0=all)")
-    parser.add_argument("--subset", choices=["simp_bare", "simp_hints", "diagnostic", "all"],
-                        default="all", help="Which subset to run")
+    parser.add_argument(
+        "--subset",
+        choices=["simp_bare", "simp_hints", "diagnostic", "all"],
+        default="all",
+        help="Which subset to run",
+    )
     parser.add_argument("--skip-cosine", action="store_true")
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--restart-every", type=int, default=100)
@@ -484,7 +505,11 @@ def main() -> None:
         for line in f:
             if line.strip():
                 e = json.loads(line)
-                if e.get("step_index", 0) == 0 and e.get("tactic_base", "") in ("simp", "simpa", "simp_all"):
+                if e.get("step_index", 0) == 0 and e.get("tactic_base", "") in (
+                    "simp",
+                    "simpa",
+                    "simp_all",
+                ):
                     examples.append(e)
 
     logger.info("Loaded %d simp step-0 examples", len(examples))
@@ -495,9 +520,15 @@ def main() -> None:
         logger.info("Filtered to %d examples (subset=%s)", len(examples), args.subset)
 
     if args.limit > 0:
-        examples = examples[:args.limit]
+        examples = examples[: args.limit]
 
-    examples.sort(key=lambda x: (x.get("file_path", ""), x.get("theorem_full_name", ""), x.get("step_index", 0)))
+    examples.sort(
+        key=lambda x: (
+            x.get("file_path", ""),
+            x.get("theorem_full_name", ""),
+            x.get("step_index", 0),
+        )
+    )
     total = len(examples)
 
     # Resume
@@ -510,10 +541,15 @@ def main() -> None:
                     d = json.loads(line)
                     key = (d["theorem_full_name"], d["step_index"])
                     done_keys.add(key)
-                    prior_results.append(SimpExampleResult(**{
-                        k: v for k, v in d.items()
-                        if k in SimpExampleResult.__dataclass_fields__
-                    }))
+                    prior_results.append(
+                        SimpExampleResult(
+                            **{
+                                k: v
+                                for k, v in d.items()
+                                if k in SimpExampleResult.__dataclass_fields__
+                            }
+                        )
+                    )
         logger.info("Resuming: %d examples already done", len(done_keys))
 
     # DB
@@ -526,6 +562,7 @@ def main() -> None:
     if not args.skip_cosine:
         try:
             from sentence_transformers import SentenceTransformer
+
             encoder = SentenceTransformer("all-MiniLM-L6-v2")
             logger.info("Loaded MiniLM encoder")
         except ImportError:
@@ -533,12 +570,14 @@ def main() -> None:
             args.skip_cosine = True
 
     # Lean kernel
-    kernel = LeanKernel(LeanConfig(
-        backend="pantograph",
-        timeout=120,
-        project_root=args.lean_project,
-        imports=["Mathlib"],
-    ))
+    kernel = LeanKernel(
+        LeanConfig(
+            backend="pantograph",
+            timeout=120,
+            project_root=args.lean_project,
+            imports=["Mathlib"],
+        )
+    )
     logger.info("Initializing Pantograph with Mathlib (~40s)...")
 
     results = list(prior_results)
@@ -566,8 +605,11 @@ def main() -> None:
                 accepted_so_far = sum(1 for r in results if r.oracle_hints_accepted)
                 logger.info(
                     "Progress: %d/%d (%.0f%%) — started: %d, oracle_hints_accepted: %d",
-                    n_done, total, 100 * n_done / max(total, 1),
-                    started_so_far, accepted_so_far,
+                    n_done,
+                    total,
+                    100 * n_done / max(total, 1),
+                    started_so_far,
+                    accepted_so_far,
                 )
 
             try:

@@ -11,6 +11,7 @@ def test_extract_templates_returns_expected_output() -> None:
     result = extract_templates(..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
 
+
 def test_extract_templates_boundary_values() -> None:
     """Test extract_templates with edge cases that mutation testing targets."""
     # Boundary: data_path
@@ -20,11 +21,7 @@ def test_extract_templates_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_main_returns_expected_output() -> None:
     """Test main with valid input."""
     result = main()
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
-
-
-

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 # Source module: src.v3_scoring
 
+
 # from src.v3_scoring import compute_bank_idf
 def test_compute_bank_idf_returns_dict_str_float() -> None:
     """Contract: compute_bank_idf returns dict[str, float]."""
@@ -12,12 +13,14 @@ def test_compute_bank_idf_returns_dict_str_float() -> None:
     # result = compute_bank_idf(...)
     # assert isinstance(result, dict)
 
+
 # from src.v3_scoring import apply_bank_idf
 def test_apply_bank_idf_returns_dict_str_float() -> None:
     """Contract: apply_bank_idf returns dict[str, float]."""
     # TODO: Provide valid arguments
     # result = apply_bank_idf(..., ...)
     # assert isinstance(result, dict)
+
 
 # from src.v3_scoring import apply_bank_idf
 def test_apply_bank_idf_http() -> None:
@@ -31,12 +34,14 @@ def test_apply_bank_idf_http() -> None:
     with patch("requests.get", return_value=mock_resp):
         pass  # TODO: call apply_bank_idf with valid args and assert result
 
+
 # from src.v3_scoring import compute_otp_dimensionality
 def test_compute_otp_dimensionality_returns_int() -> None:
     """Contract: compute_otp_dimensionality returns int."""
     # TODO: Provide valid arguments
     # result = compute_otp_dimensionality(...)
     # assert isinstance(result, int)
+
 
 # from src.v3_scoring import build_constraint_report
 def test_build_constraint_report_http() -> None:
@@ -50,6 +55,7 @@ def test_build_constraint_report_http() -> None:
     with patch("requests.get", return_value=mock_resp):
         pass  # TODO: call build_constraint_report with valid args and assert result
 
+
 # from src.v3_scoring import nav_output_to_candidates
 def test_nav_output_to_candidates_returns_list_actioncandidate() -> None:
     """Contract: nav_output_to_candidates returns list[ActionCandidate]."""
@@ -57,10 +63,10 @@ def test_nav_output_to_candidates_returns_list_actioncandidate() -> None:
     # result = nav_output_to_candidates(..., ..., ..., ...)
     # assert isinstance(result, list)
 
+
 def test_nav_output_to_candidates_preserves_length() -> None:
     """Contract: nav_output_to_candidates output length matches input length (map pattern)."""
     # TODO: Provide test input for 'tactic_names'
     # input_data = [...]
     # result = nav_output_to_candidates(input_data)
     # assert len(result) == len(input_data)
-

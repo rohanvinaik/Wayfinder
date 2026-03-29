@@ -9,12 +9,13 @@ examples, then runs three new conditions side-by-side:
 Cross-tabulates against the original heuristic results to produce the
 args-redundant / args-necessary / unexecutable-oracle partition.
 """
+
 from __future__ import annotations
 
 import argparse
 import json
-import os
 import logging
+import os
 import sqlite3
 import subprocess
 import sys
@@ -25,8 +26,6 @@ from pathlib import Path
 
 import numpy as np
 
-from src.lean_interface import LeanConfig, LeanKernel, ReplayResult
-from src.rw_scoper import scope_for_rw
 from scripts.run_rw2_benchmark import (
     cosine_rank_symbols,
     get_premise_names,
@@ -34,6 +33,8 @@ from scripts.run_rw2_benchmark import (
     resolve_gold_premise_name,
     try_tactic_safe,
 )
+from src.lean_interface import LeanConfig, LeanKernel, ReplayResult
+from src.rw_scoper import scope_for_rw
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +42,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Tactic builders
 # ---------------------------------------------------------------------------
+
 
 def _build_bare(premise: str, direction: str) -> str:
     arrow = "← " if direction == "backward" else ""
@@ -54,6 +56,7 @@ def _gold_direction(grammar_tier: str) -> str:
 # ---------------------------------------------------------------------------
 # Per-example second pass
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class BareResult:
@@ -163,6 +166,7 @@ def run_bare_example(
 # Partition logic
 # ---------------------------------------------------------------------------
 
+
 def partition_bucket(orig_row: dict, bare: BareResult) -> str:
     """
     args_redundant   — bare premise succeeds (heuristic arg beam not needed)
@@ -184,6 +188,7 @@ def partition_bucket(orig_row: dict, bare: BareResult) -> str:
 # Report
 # ---------------------------------------------------------------------------
 
+
 def print_report(orig_rows: list[dict], bare_results: list[BareResult]) -> None:
     n = len(orig_rows)
     assert len(bare_results) == n
@@ -203,14 +208,14 @@ def print_report(orig_rows: list[dict], bare_results: list[BareResult]) -> None:
     print(f"\nStarted examples: {n}")
     print(f"\n{'Condition':<35} {'Accepted':>10} {'Rate':>8}")
     print("-" * 55)
-    print(f"{'Oracle bare (gold, gold-dir, no args)':<35} {ob_ok:>10} {100*ob_ok/n:>7.1f}%")
-    print(f"{'Cosine top-1 bare':<35} {c1b_ok:>10} {100*c1b_ok/n:>7.1f}%")
-    print(f"{'Cosine top-5 bare':<35} {c5b_ok:>10} {100*c5b_ok/n:>7.1f}%")
+    print(f"{'Oracle bare (gold, gold-dir, no args)':<35} {ob_ok:>10} {100 * ob_ok / n:>7.1f}%")
+    print(f"{'Cosine top-1 bare':<35} {c1b_ok:>10} {100 * c1b_ok / n:>7.1f}%")
+    print(f"{'Cosine top-5 bare':<35} {c5b_ok:>10} {100 * c5b_ok / n:>7.1f}%")
     print()
     print(f"{'--- Original EXP-RW-032 (for comparison) ---'}")
-    print(f"{'Oracle qualified (with args)':<35} {orig_oracle:>10} {100*orig_oracle/n:>7.1f}%")
-    print(f"{'Cosine top-1 + heuristic args':<35} {orig_c1:>10} {100*orig_c1/n:>7.1f}%")
-    print(f"{'Cosine top-5 + heuristic args':<35} {orig_c5:>10} {100*orig_c5/n:>7.1f}%")
+    print(f"{'Oracle qualified (with args)':<35} {orig_oracle:>10} {100 * orig_oracle / n:>7.1f}%")
+    print(f"{'Cosine top-1 + heuristic args':<35} {orig_c1:>10} {100 * orig_c1 / n:>7.1f}%")
+    print(f"{'Cosine top-5 + heuristic args':<35} {orig_c5:>10} {100 * orig_c5 / n:>7.1f}%")
 
     # Partition
     buckets = Counter(partition_bucket(o, b) for o, b in zip(orig_rows, bare_results))
@@ -218,17 +223,29 @@ def print_report(orig_rows: list[dict], bare_results: list[BareResult]) -> None:
     total = sum(buckets.values())
     for bkt in ("args_redundant", "args_necessary", "unexecutable"):
         v = buckets[bkt]
-        print(f"  {bkt:<25}: {v:>3}/{total} ({100*v/total:.1f}%)")
+        print(f"  {bkt:<25}: {v:>3}/{total} ({100 * v / total:.1f}%)")
 
     # Cross-tab: bare vs heuristic
-    both_ok = sum(1 for o, b in zip(orig_rows, bare_results)
-                  if o.get("cosine_top5_success") and b.cosine5_bare_success)
-    bare_only = sum(1 for o, b in zip(orig_rows, bare_results)
-                    if not o.get("cosine_top5_success") and b.cosine5_bare_success)
-    heur_only = sum(1 for o, b in zip(orig_rows, bare_results)
-                    if o.get("cosine_top5_success") and not b.cosine5_bare_success)
-    neither = sum(1 for o, b in zip(orig_rows, bare_results)
-                  if not o.get("cosine_top5_success") and not b.cosine5_bare_success)
+    both_ok = sum(
+        1
+        for o, b in zip(orig_rows, bare_results)
+        if o.get("cosine_top5_success") and b.cosine5_bare_success
+    )
+    bare_only = sum(
+        1
+        for o, b in zip(orig_rows, bare_results)
+        if not o.get("cosine_top5_success") and b.cosine5_bare_success
+    )
+    heur_only = sum(
+        1
+        for o, b in zip(orig_rows, bare_results)
+        if o.get("cosine_top5_success") and not b.cosine5_bare_success
+    )
+    neither = sum(
+        1
+        for o, b in zip(orig_rows, bare_results)
+        if not o.get("cosine_top5_success") and not b.cosine5_bare_success
+    )
 
     print(f"\n{'=== Cosine-5 cross-tab: heuristic vs bare ==='}")
     print(f"  Both succeed:     {both_ok}")
@@ -238,9 +255,9 @@ def print_report(orig_rows: list[dict], bare_results: list[BareResult]) -> None:
 
     calls_bare = sum(r.cosine5_bare_calls for r in bare_results)
     calls_heur = sum(o.get("cosine_top5_calls", 0) for o in orig_rows)
-    print(f"\nLean call budget:")
-    print(f"  Heuristic+args (EXP-RW-032): {calls_heur} total, {calls_heur/n:.1f}/example")
-    print(f"  Bare only (this run):        {calls_bare} total, {calls_bare/n:.1f}/example")
+    print("\nLean call budget:")
+    print(f"  Heuristic+args (EXP-RW-032): {calls_heur} total, {calls_heur / n:.1f}/example")
+    print(f"  Bare only (this run):        {calls_bare} total, {calls_bare / n:.1f}/example")
 
     elapsed = [r.elapsed_s for r in bare_results if r.elapsed_s > 0]
     if elapsed:
@@ -252,20 +269,35 @@ def print_report(orig_rows: list[dict], bare_results: list[BareResult]) -> None:
 # Worker / parallel
 # ---------------------------------------------------------------------------
 
-def _worker_cmd(args: argparse.Namespace, shard_index: int, num_shards: int, shard_out: str) -> list[str]:
+
+def _worker_cmd(
+    args: argparse.Namespace, shard_index: int, num_shards: int, shard_out: str
+) -> list[str]:
     cmd = [
-        sys.executable, "-m", "scripts.rw2_bare_ablation",
+        sys.executable,
+        "-m",
+        "scripts.rw2_bare_ablation",
         "--worker",
-        "--shard-index", str(shard_index),
-        "--num-shards", str(num_shards),
-        "--output", shard_out,
-        "--orig", args.orig,
-        "--data", args.data,
-        "--db", args.db,
-        "--lean-project", args.lean_project,
-        "--cosine-topk", str(args.cosine_topk),
-        "--max-scope-premises", str(args.max_scope_premises),
-        "--restart-every", str(args.restart_every),
+        "--shard-index",
+        str(shard_index),
+        "--num-shards",
+        str(num_shards),
+        "--output",
+        shard_out,
+        "--orig",
+        args.orig,
+        "--data",
+        args.data,
+        "--db",
+        args.db,
+        "--lean-project",
+        args.lean_project,
+        "--cosine-topk",
+        str(args.cosine_topk),
+        "--max-scope-premises",
+        str(args.max_scope_premises),
+        "--restart-every",
+        str(args.restart_every),
     ]
     if args.limit > 0:
         cmd += ["--limit", str(args.limit)]
@@ -315,11 +347,18 @@ def run_parallel(args: argparse.Namespace) -> None:
             if row.get("goal_started"):
                 orig_map[(row["theorem_full_name"], row["step_index"])] = row
 
-    bare_results = [BareResult(**{k: v for k, v in row.items() if k in BareResult.__dataclass_fields__})
-                    for row in merged]
-    orig_rows = [orig_map[(b.theorem_full_name, b.step_index)] for b in bare_results
-                 if (b.theorem_full_name, b.step_index) in orig_map]
-    assert len(orig_rows) == len(bare_results), f"Mismatch: {len(orig_rows)} orig vs {len(bare_results)} bare"
+    bare_results = [
+        BareResult(**{k: v for k, v in row.items() if k in BareResult.__dataclass_fields__})
+        for row in merged
+    ]
+    orig_rows = [
+        orig_map[(b.theorem_full_name, b.step_index)]
+        for b in bare_results
+        if (b.theorem_full_name, b.step_index) in orig_map
+    ]
+    assert len(orig_rows) == len(bare_results), (
+        f"Mismatch: {len(orig_rows)} orig vs {len(bare_results)} bare"
+    )
     print_report(orig_rows, bare_results)
 
 
@@ -348,8 +387,13 @@ def run_worker(args: argparse.Namespace) -> None:
     if args.num_shards > 1:
         orig_keys = [k for i, k in enumerate(orig_keys) if i % args.num_shards == args.shard_index]
     if args.limit > 0:
-        orig_keys = orig_keys[:args.limit]
-    logger.info("Worker shard %d/%d: %d started examples", args.shard_index + 1, args.num_shards, len(orig_keys))
+        orig_keys = orig_keys[: args.limit]
+    logger.info(
+        "Worker shard %d/%d: %d started examples",
+        args.shard_index + 1,
+        args.num_shards,
+        len(orig_keys),
+    )
 
     conn = sqlite3.connect(args.db)
     id_to_name, name_to_id = load_entity_maps(conn)
@@ -357,14 +401,19 @@ def run_worker(args: argparse.Namespace) -> None:
     encoder = None
     try:
         from sentence_transformers import SentenceTransformer
+
         encoder = SentenceTransformer("all-MiniLM-L6-v2")
     except ImportError:
         logger.warning("sentence-transformers not available")
 
-    kernel = LeanKernel(LeanConfig(
-        backend="pantograph", timeout=120,
-        project_root=args.lean_project, imports=["Mathlib"],
-    ))
+    kernel = LeanKernel(
+        LeanConfig(
+            backend="pantograph",
+            timeout=120,
+            project_root=args.lean_project,
+            imports=["Mathlib"],
+        )
+    )
 
     out_path = Path(args.output)
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -421,10 +470,17 @@ def run_worker(args: argparse.Namespace) -> None:
 # CLI
 # ---------------------------------------------------------------------------
 
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="rw2 bare-premise ablation (second pass)")
-    parser.add_argument("--orig", default="runs/rw2_step0_results.jsonl", help="Original EXP-RW-032 results")
-    parser.add_argument("--data", default="data/canonical/canonical_rw_eval.jsonl", help="Source JSONL for prefix_tactics")
+    parser.add_argument(
+        "--orig", default="runs/rw2_step0_results.jsonl", help="Original EXP-RW-032 results"
+    )
+    parser.add_argument(
+        "--data",
+        default="data/canonical/canonical_rw_eval.jsonl",
+        help="Source JSONL for prefix_tactics",
+    )
     parser.add_argument("--db", default="data/proof_network.db", help="Proof network DB")
     parser.add_argument("--lean-project", default="data/lean_project/")
     parser.add_argument("--output", default="runs/rw2_bare_ablation.jsonl")

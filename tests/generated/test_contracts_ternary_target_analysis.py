@@ -5,12 +5,14 @@ from __future__ import annotations
 
 # Source module: scripts.ternary_target_analysis
 
+
 # from scripts.ternary_target_analysis import load_directions
 def test_load_directions_returns_list_dict_str_int() -> None:
     """Contract: load_directions returns list[dict[str, int]]."""
     # TODO: Provide valid arguments
     # result = load_directions(..., ...)
     # assert isinstance(result, list)
+
 
 # from scripts.ternary_target_analysis import load_directions
 def test_load_directions_file_io(tmp_path) -> None:
@@ -20,12 +22,14 @@ def test_load_directions_file_io(tmp_path) -> None:
     # TODO: call load_directions(str(test_file)) and assert result
     pass
 
+
 def test_per_bank_distribution_preserves_length() -> None:
     """Contract: per_bank_distribution output length matches input length (map pattern)."""
     # TODO: Provide test input for 'BANKS'
     # input_data = [...]
     # result = per_bank_distribution(input_data)
     # assert len(result) == len(input_data)
+
 
 # from scripts.ternary_target_analysis import per_bank_distribution
 def test_per_bank_distribution_http() -> None:
@@ -39,12 +43,14 @@ def test_per_bank_distribution_http() -> None:
     with patch("requests.get", return_value=mock_resp):
         pass  # TODO: call per_bank_distribution with valid args and assert result
 
+
 def test_otp_dimensionality_preserves_length() -> None:
     """Contract: otp_dimensionality output length matches input length (map pattern)."""
     # TODO: Provide test input for 'directions'
     # input_data = [...]
     # result = otp_dimensionality(input_data)
     # assert len(result) == len(input_data)
+
 
 # from scripts.ternary_target_analysis import otp_dimensionality
 def test_otp_dimensionality_http() -> None:
@@ -58,10 +64,10 @@ def test_otp_dimensionality_http() -> None:
     with patch("requests.get", return_value=mock_resp):
         pass  # TODO: call otp_dimensionality with valid args and assert result
 
+
 # from scripts.ternary_target_analysis import fmt
 def test_fmt_returns_str() -> None:
     """Contract: fmt returns str."""
     # TODO: Provide valid arguments
     # result = fmt(...)
     # assert isinstance(result, str)
-

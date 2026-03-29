@@ -22,6 +22,7 @@ def test_load_proofs_jsonl_returns_expected_output() -> None:
     result = load_proofs_jsonl(...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
 
+
 def test_load_proofs_jsonl_boundary_values() -> None:
     """Test load_proofs_jsonl with edge cases that mutation testing targets."""
     # Boundary: path
@@ -29,10 +30,12 @@ def test_load_proofs_jsonl_boundary_values() -> None:
     result = load_proofs_jsonl(...)
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
+
 def test_load_proofs_jsonl_raises_valueerror_on_invalid_input() -> None:
     """Test load_proofs_jsonl raises ValueError on invalid input."""
     with pytest.raises(ValueError):
         load_proofs_jsonl(None)
+
 
 def test_load_proofs_jsonl_handles_errors_gracefully() -> None:
     """Test load_proofs_jsonl error handling."""
@@ -40,11 +43,11 @@ def test_load_proofs_jsonl_handles_errors_gracefully() -> None:
     pass
 
 
-
 def test_save_proofs_jsonl_returns_expected_output() -> None:
     """Test save_proofs_jsonl with valid input."""
     result = save_proofs_jsonl(..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_save_proofs_jsonl_boundary_values() -> None:
     """Test save_proofs_jsonl with edge cases that mutation testing targets."""
@@ -55,11 +58,11 @@ def test_save_proofs_jsonl_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_load_ood_prompts_jsonl_returns_expected_output() -> None:
     """Test load_ood_prompts_jsonl with valid input."""
     result = load_ood_prompts_jsonl(...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_load_ood_prompts_jsonl_boundary_values() -> None:
     """Test load_ood_prompts_jsonl with edge cases that mutation testing targets."""
@@ -68,10 +71,12 @@ def test_load_ood_prompts_jsonl_boundary_values() -> None:
     result = load_ood_prompts_jsonl(...)
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
+
 def test_load_ood_prompts_jsonl_raises_valueerror_on_invalid_input() -> None:
     """Test load_ood_prompts_jsonl raises ValueError on invalid input."""
     with pytest.raises(ValueError):
         load_ood_prompts_jsonl(None)
+
 
 def test_load_ood_prompts_jsonl_handles_errors_gracefully() -> None:
     """Test load_ood_prompts_jsonl error handling."""
@@ -79,11 +84,11 @@ def test_load_ood_prompts_jsonl_handles_errors_gracefully() -> None:
     pass
 
 
-
 def test_load_nav_examples_jsonl_returns_expected_output() -> None:
     """Test load_nav_examples_jsonl with valid input."""
     result = load_nav_examples_jsonl(...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_load_nav_examples_jsonl_boundary_values() -> None:
     """Test load_nav_examples_jsonl with edge cases that mutation testing targets."""
@@ -92,16 +97,17 @@ def test_load_nav_examples_jsonl_boundary_values() -> None:
     result = load_nav_examples_jsonl(...)
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
+
 def test_load_nav_examples_jsonl_raises_valueerror_on_invalid_input() -> None:
     """Test load_nav_examples_jsonl raises ValueError on invalid input."""
     with pytest.raises(ValueError):
         load_nav_examples_jsonl(None)
 
+
 def test_load_nav_examples_jsonl_handles_errors_gracefully() -> None:
     """Test load_nav_examples_jsonl error handling."""
     # TODO: Trigger error condition and verify handling
     pass
-
 
 
 class TestProofDatasetConfig:
@@ -113,6 +119,7 @@ class TestProofDatasetConfig:
         # TODO: Assert specific field values, not just existence
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
 
+
 class TestProofDatasetState:
     """State invariant tests for ProofDataset."""
 
@@ -121,7 +128,6 @@ class TestProofDatasetState:
         obj = ProofDataset()
         # TODO: Assert exact initial field values
         assert obj.field == EXPECTED  # TODO: Replace with actual field checks
-
 
 
 class TestNegativeBankDatasetConfig:
@@ -133,6 +139,7 @@ class TestNegativeBankDatasetConfig:
         # TODO: Assert specific field values, not just existence
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
 
+
 class TestNegativeBankDatasetState:
     """State invariant tests for NegativeBankDataset."""
 
@@ -141,7 +148,6 @@ class TestNegativeBankDatasetState:
         obj = NegativeBankDataset()
         # TODO: Assert exact initial field values
         assert obj.field == EXPECTED  # TODO: Replace with actual field checks
-
 
 
 class TestOODPromptDatasetConfig:
@@ -153,6 +159,7 @@ class TestOODPromptDatasetConfig:
         # TODO: Assert specific field values, not just existence
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
 
+
 class TestOODPromptDatasetState:
     """State invariant tests for OODPromptDataset."""
 
@@ -161,7 +168,6 @@ class TestOODPromptDatasetState:
         obj = OODPromptDataset()
         # TODO: Assert exact initial field values
         assert obj.field == EXPECTED  # TODO: Replace with actual field checks
-
 
 
 class TestNavigationalDatasetConfig:
@@ -179,6 +185,7 @@ class TestNavigationalDatasetConfig:
         obj = NavigationalDataset()
         assert obj == EXPECTED  # TODO: Replace with expected instance
 
+
 class TestNavigationalDatasetState:
     """State invariant tests for NavigationalDataset."""
 
@@ -187,6 +194,3 @@ class TestNavigationalDatasetState:
         obj = NavigationalDataset()
         # TODO: Assert exact initial field values
         assert obj.field == EXPECTED  # TODO: Replace with actual field checks
-
-
-

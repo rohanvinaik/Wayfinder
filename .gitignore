@@ -30,3 +30,4 @@ lean/**/*.olean
 lean/**/*.ilean
 lean/**/*.trace
 notebooks/.lintgate_run/
+notebooks/.lintgate_run/

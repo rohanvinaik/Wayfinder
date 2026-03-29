@@ -11,6 +11,7 @@ def test_detect_model_type_returns_expected_output() -> None:
     result = detect_model_type(...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
 
+
 def test_detect_model_type_boundary_values() -> None:
     """Test detect_model_type with edge cases that mutation testing targets."""
     # Boundary: model_name_or_path
@@ -19,11 +20,11 @@ def test_detect_model_type_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_encode_goals_returns_expected_output() -> None:
     """Test encode_goals with valid input."""
     result = encode_goals(..., ..., ..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_encode_goals_boundary_values() -> None:
     """Test encode_goals with edge cases that mutation testing targets."""
@@ -33,7 +34,6 @@ def test_encode_goals_boundary_values() -> None:
     # TODO: Test with boundary inputs (0, -1, empty string, None)
     result = encode_goals(..., ..., ..., ...)
     assert result == EXPECTED  # TODO: Replace with actual expected value
-
 
 
 class Test_ExplicitKeysWrapperState:
@@ -50,6 +50,3 @@ class Test_ExplicitKeysWrapperState:
         obj = _ExplicitKeysWrapper()
         obj.forward()  # TODO: Provide arguments
         # TODO: Assert state changed correctly
-
-
-

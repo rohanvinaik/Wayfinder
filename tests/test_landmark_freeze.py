@@ -171,9 +171,7 @@ class TestConflictBifurcation(unittest.TestCase):
         nbr_sigs = {1: {10, 20}}  # covers all uncovered
         idf = {10: 1.0, 20: 1.0}
 
-        resolved = resolve_ambiguous_landmarks(
-            frozen, residual, [hyp], data, nbr_sigs, idf
-        )
+        resolved = resolve_ambiguous_landmarks(frozen, residual, [hyp], data, nbr_sigs, idf)
         self.assertEqual(len(resolved), 1)
 
     def test_unproductive_conflict_steep_penalty(self):
@@ -221,7 +219,13 @@ class TestLocalityOnlyDetection(unittest.TestCase):
             neighborhood_bank_centroid=(),
         )
         residual = compute_residual(
-            frozen, [10], [1.0], data, {10: 1.0}, [hyp], {1: {10}},
+            frozen,
+            [10],
+            [1.0],
+            data,
+            {10: 1.0},
+            [hyp],
+            {1: {10}},
         )
         self.assertIn(1, residual.locality_only_candidates)
 
@@ -238,7 +242,13 @@ class TestLocalityOnlyDetection(unittest.TestCase):
             neighborhood_bank_centroid=(),
         )
         residual = compute_residual(
-            frozen, [10], [1.0], data, {10: 1.0}, [hyp], {1: {10}},
+            frozen,
+            [10],
+            [1.0],
+            data,
+            {10: 1.0},
+            [hyp],
+            {1: {10}},
         )
         self.assertNotIn(1, residual.locality_only_candidates)
 
@@ -282,7 +292,13 @@ class TestPhaseTransition(unittest.TestCase):
             neighborhood_bank_centroid=(),
         )
         residual = compute_residual(
-            frozen, [10], [1.0], data, {10: 1.0}, [], {},
+            frozen,
+            [10],
+            [1.0],
+            data,
+            {10: 1.0},
+            [],
+            {},
         )
         self.assertEqual(residual.phase_signal, "constant_recovery")
 
@@ -298,7 +314,13 @@ class TestPhaseTransition(unittest.TestCase):
             neighborhood_bank_centroid=(),
         )
         residual = compute_residual(
-            frozen, [10], [1.0], data, {10: 1.0}, [], {},
+            frozen,
+            [10],
+            [1.0],
+            data,
+            {10: 1.0},
+            [],
+            {},
         )
         self.assertEqual(residual.phase_signal, "structure_matching")
 
@@ -314,7 +336,13 @@ class TestPhaseTransition(unittest.TestCase):
             neighborhood_bank_centroid=(),
         )
         residual = compute_residual(
-            frozen, [10], [1.0], data, {10: 1.0}, [], {},
+            frozen,
+            [10],
+            [1.0],
+            data,
+            {10: 1.0},
+            [],
+            {},
         )
         # locality-only residual -> bridge_dominant (no primary lens uncovered)
         self.assertEqual(residual.phase_signal, "bridge_dominant")

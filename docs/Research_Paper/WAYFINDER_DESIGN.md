@@ -1,7 +1,7 @@
 # Wayfinder: Technical Design Reference
 
-**Version:** 2.1
-**Date:** March 19, 2026
+**Version:** 2.3
+**Date:** March 26, 2026
 **Corresponding documents:** `WAYFINDER_RESEARCH.md` (theory), `WAYFINDER_PLAN.md` (operational plan), `EXPERIMENT_RESULTS.md` (results ledger)
 
 ---
@@ -21,6 +21,110 @@ for step-0 `apply`, a small executable selector trained on Lean-generated feedba
 `LeanAccepted` from `15/91 (16.5%)` under cosine top-1 to `35/91 (38.5%)` on held-out goals. This
 sharpens the design claim. The right learned object is not "the best theorem name." It is the
 best **structured executable action boundary** inside a compiler-checked interface.
+
+**Post-EXP-SOM-012 correction.** The canonical architecture is now explicitly four-layered:
+
+1. **Main theorem-search stack**
+   - strong cheap first-order solver
+   - compiler/startability repair as a parallel specialist track
+2. **Original / first-order SoM**
+   - deterministically tuned control substrate over the main solver
+   - includes temporal-controller, arbiter, and multistep routing work such as `EXP-SOM-010` / `som_torch_v1`
+   - provides real orchestration features and supervision, but is not itself the later second-order controller
+3. **Dr. Ducky**
+   - deterministic 1.5th-order residual executor
+   - typed capsules, symbolic bank priors, proof skeletons, programmatic hole filling, Lean-backed replay
+4. **Second-order SoM**
+   - post-run orchestration/training layer over symbolic packets
+   - responsible for routing, budgeting, escalation, and specialist invocation
+
+This means the “full SoM” should not be read as already-deployed theorem-search reality. The operative system today is the main solver plus the original / first-order SoM control substrate, compiler/startability tooling, and Dr. Ducky. The second-order SoM is the next learned control layer to be trained from the current hard benchmark and associated residual artifacts.
+
+The intended closure path is therefore:
+
+1. **Data geometry / symbolic packetization**
+   - residual geometry, search-control geometry, negative geometry, theorem-site repair geometry, and proof-graph priors
+   - this is the internal state surface that makes hard residuals legible
+2. **Dr. Ducky pass 1**
+   - deterministic local symbolic contraction over that state
+   - `ProofShadowLedger` + `MathEngine` + `ProofProjector`
+   - responsible for exposing a smaller, more executable frontier for the core proof-producing runtime
+3. **First-order proof-producing closure stack**
+   - the same Phase-1 runtime that actually closes Lean theorems:
+     - automation
+     - interleaved bootstrap
+     - exact/apply/simp selector paths
+     - explicit cheap symbolic closers: `solve_by_elim`, `apply?`, `exact?`
+     - original / first-order SoM routing features
+   - this is where contracted residuals are supposed to become compiling proofs, including by handing the rarified local goal to pre-existing Lean symbolic search rather than inventing another learned closer
+4. **Second-order SoM**
+   - learns when to invoke Ducky, which engine family to budget, when to escalate, and how to avoid plateau regimes
+   - it does not replace Ducky's symbolic work; it orchestrates Ducky, the first-order closure stack, and the remaining hard-tail budget
+5. **Dr. Ducky pass 2**
+   - runs after the second-order controller / policy on the remaining frontier
+6. **Post-Ducky symbolic closer layer**
+   - the same cheap symbolic tools are run again after the second Ducky pass:
+     - `solve_by_elim`
+     - `apply?`
+     - `exact?`
+   - this is the explicit “use standard symbolic systems liberally once Wayfinder has decomposed the proof” layer
+7. **Rarified proof-gap packet**
+   - emitted only after both Ducky passes and both symbolic-close opportunities have failed
+   - the last tail is therefore smaller, more structured, and easier to study or solve
+
+This division of labor is the canonical design assumption behind all post-`EXP-SOM-012` experiments.
+
+The corresponding implementation bridge is now explicit in the repo:
+
+- [hardtail_bridge.py](/Users/rohanvinaik/Projects/Wayfinder/src/hardtail_bridge.py)
+- [second_order_controller.py](/Users/rohanvinaik/Projects/Wayfinder/src/second_order_controller.py)
+
+That bridge performs:
+
+1. theorem-faithful replay of a frozen hard residual
+2. Dr. Ducky pass 1
+3. first-order proof-closing search over the contracted frontier, including the explicit symbolic closer layer (`solve_by_elim` / `apply?` / `exact?`)
+4. second-order packet-policy/controller refinement
+5. Dr. Ducky pass 2 over the remaining frontier
+6. post-Ducky symbolic closer layer over the second-pass residual
+7. rarified proof-gap packet emission
+
+Within Dr. Ducky, the symbolic backend roles are also fixed at the architectural level:
+
+- `egglog_eqsat` for equality saturation, canonical extraction, and explanation-bearing rewrite closure
+- `rosette_proof_dsl` for typed proof-skeleton interpretation, hole constraints, and solver-aided symbolic execution over proof-local DSL programs
+- `kodkod_relational` for bounded relational search over membership, witness, `Finite`, and filter-style local subproblems
+
+These are not decorative references. They are the intended execution semantics of the Dr. Ducky engine portfolio.
+
+Current repo state: these backend families are now implemented as in-repo symbolic runtimes in [dr_ducky_executor.py](/Users/rohanvinaik/Projects/Wayfinder/src/dr_ducky_executor.py), with pre-freeze smoke evidence recorded at [runtime_smoke_summary.json](/Users/rohanvinaik/Projects/Wayfinder/runs/exp_som012_hard_eval_r2/bundle/dr_ducky/runtime_smoke_summary.json).
+
+### 1.1 Theoretical Ceiling and Higher Orders
+
+The intended ceiling of the Wayfinder architecture family should be stated precisely.
+
+- It is **not** a claim of literal omniscience over all mathematical truth.
+- It **is** a claim that, on a fixed formal corpus under a fixed axiomatic environment, the architecture family has a plausible asymptotic path to **practical completeness**.
+
+That claim rests on the fact that formal proof search lives inside a verifier-backed finite object space:
+
+- candidate proofs are finite objects
+- proof checking is decidable
+- theorems that are provable in the environment admit some finite certificate
+
+The role of Wayfinder is therefore not to bypass proof search, but to make it progressively more structured:
+
+1. first-order layers compile away the cheap structural majority
+2. second-order layers learn over the first residual manifold
+3. higher orders, when needed, operate over residuals of residuals
+
+The current research program stops at second-order because that is the next major empirical lift, not because the design is theoretically capped there. The correct extension rule is:
+
+- a higher-order layer is justified only if it produces a **strictly cleaner residual representation**
+- that representation should be smaller, more canonical, more typed, or more tractable than the prior-order residual
+- if a higher-order layer merely reruns the same controller over the same geometry, it is bad design rather than genuine depth
+
+In other words, the long-run Wayfinder thesis is recursive but not vacuous: keep adding order only when the added order performs real residual compression. On fixed formal corpora, that gives the architecture family a very high ceiling; the second-order SoM is simply the next concrete realization of that principle.
 
 ---
 
@@ -637,6 +741,16 @@ The v2 architecture decomposes the monolithic v1 pipeline into six typed tempora
 
 **Training data:** Extract template labels from existing `nav_training.jsonl` by clustering tactic sequences. Each proof's tactic sequence maps to its dominant template via the bank signature table above.
 
+**Model-selection boundary:** runtime RECOGNITION should remain small and typed. Narrative /
+story-capable models are relevant here only as **offline teachers** or taxonomy auditors over
+symbolicized theorem packets:
+- theorem statement / namespace
+- proof-history summary
+- theorem-level `SubtaskIR` / trigger-profile summaries
+- startability/context-repair status
+
+They are not meant to read raw Lean traces and replace the runtime classifier.
+
 ### 10.3 Slot 3: PLANNING (σ ≈ O(poly(n)))
 
 **Function:** Given a template and goal state, produce a concrete proof sketch — an ordered sequence of abstract subgoals with key lemma targets and estimated depth per subgoal.
@@ -647,9 +761,21 @@ The v2 architecture decomposes the monolithic v1 pipeline into six typed tempora
 
 2. **Sketch predictor (learned).** For complex templates (DECOMPOSE_AND_CONQUER, INDUCT_THEN_CLOSE), train a small model to predict the subgoal sequence. Input: goal embedding + template features. Output: ordered list of (abstract_subgoal_type, estimated_difficulty, key_anchor_targets).
 
-3. **Story-writing LLM (deferred, Phase 6.3).** For the hardest proofs, use a fine-tuned story-writing model that generates natural-language proof narratives, which are then parsed into structured sketches. This is the Relational-AI pattern: a narrative model produces the strategy, and specialist models execute it. Requires integration with a small LLM (e.g., Qwen 3.5, DeepSeek-Math 1.3B).
+3. **Story-writing / reasoning teacher (deferred, Phase 6.3).** For the hardest proofs, use a
+small narrative or reasoning model **offline** on symbolicized planning packets. Input should be:
+template candidates, theorem statement, namespace/context features, proof-history summary, and
+theorem-level move summaries. The teacher emits natural-language or semi-structured proof
+narratives, which are then parsed into structured sketches and distilled into the small runtime
+sketch predictor. This is the Relational-AI / Winston pattern: a narrative teacher produces the
+strategy, and specialist models execute it.
 
 **Output contract:** `PlanningOutput { sketch: list[SubgoalSpec], total_estimated_depth: int }` where `SubgoalSpec { subgoal_type: str, anchor_targets: list[str], estimated_steps: int, bank_hints: dict[str, int] }`
+
+**Model-selection boundary:** story-capable non-math models can be useful in PLANNING because
+this slot reasons over abstract proof narratives, not Lean elaboration. But they belong above the
+compiler boundary only:
+- use them for sketch supervision, template audit, and proof-story induction
+- do not use them as direct action executors or theorem-site repair models
 
 ### 10.4 Slot 4: EXECUTION (σ varies by specialist)
 
@@ -847,11 +973,32 @@ class OrchestrationDecision:
     replan: bool
 ```
 
+**Data products required for learned orchestration:** every orchestration experiment should emit
+typed temporal packets rather than only theorem-level outcomes:
+- `TemporalState` snapshot
+- current template / sketch provenance
+- proof-history summary
+- recent lane / family history
+- startability / repair status
+- current residual type / `SubtaskIR` hints
+- exact Lean-backed outcomes
+
+These packets feed two different consumers:
+- a compact runtime controller (rule-based, MLP, GRU, or other small recurrent model)
+- optional offline teacher models that propose lane order, replan points, and strategy summaries
+
+**Classical AI integration:** successful temporal traces should also be mined into a k-line-like
+`strategy_memory` keyed by template, namespace/context features, trigger profiles, and recent lane
+history. This memory provides cheap symbolic priors for the Arbiter before any learned controller
+is trusted.
+
 **Current implementation status**:
 - `src/temporal_controller.py` implements a tested rule-based `TemporalController` v0.
 - The benchmarked `search()` path in `src/proof_search.py` now supports both `shadow` and `active` temporal modes and records `temporal_trace`.
 - `src/arbiter.py` / `som_search()` still do not consume the controller.
 - `budget_slice` and `replan` are tracked in the controller contract, but hammer still runs as an unconditional pre-check and full budget enforcement is not yet operative.
+- teacher/runtime split is still pending: current traces exist, but narrative/teacher packets and
+  `strategy_memory` are not yet first-class runtime products
 
 The intended Arbiter loop is:
 
@@ -1014,7 +1161,8 @@ class ContextIR:
   - `scripts/context_ir_census.py`
   - `scripts/context_ir_benchmark_audit.py`
 
-**Design consequence:** future executor work is now explicitly a two-compiler stack:
+**Design consequence:** future executor work is now explicitly a source-context compiler plus an
+action compiler, with goal-start policy sitting between them:
 - **source-context compiler** (`ContextIR`) for theorem-site environment reconstruction
 - **action compiler** (`ActionIR`) for family-specific local tactic lowering
 
@@ -1023,7 +1171,66 @@ class ContextIR:
 - `ContextIR` remains the coverage/faithfulness track for replay and future families (`simp`, `apply`), not the reason to delay extending the runtime rewrite lane from `rw0` to `rw1`.
 - The rewrite family has since collapsed further: on current started step-0 slices, `rw2` and `rw3` are also served well enough by the same cheap sequential cosine executor. The next learned targets are therefore above rewrite-family local execution: residual-conditioned orchestration, controller-visible move typing, and executable action selection over cosine shortlists.
 
-### 10.6d Motivated Move Layer (`SubtaskIR` + Trigger Profiles)
+### 10.6d Goal Startability / Context Repair
+
+Theorem search has another deterministic boundary before any local lane can run: **can Lean
+produce a faithful initial goal at all?** Current large-scale trigger collection shows that
+`cannot start goal` failures cluster in high-context, universe-heavy, typeclass-heavy namespaces
+such as `CategoryTheory`, `MeasureTheory`, `Submodule`, and `Filter`. These are not primarily
+tokenization or theorem-name issues. They are theorem-site compilation issues.
+
+This means goal creation must be treated as its own specialist/data boundary rather than a warning
+that silently drops the theorem from downstream datasets.
+
+**Contract:**
+
+```python
+@dataclass
+class GoalStartIR:
+    theorem_id: str
+    theorem_type: str
+    namespace_prefix: str
+    context_features: dict[str, int]
+    goal_shape_features: dict[str, int]
+    feedback: LeanFeedback | None
+    direct_start_succeeded: bool
+    repair_attempted: bool
+    repair_succeeded: bool
+    repair_tier: str
+```
+
+**Policy boundary:**
+1. Try direct theorem start
+2. If direct start fails, classify the failure using structured `LeanFeedback`
+3. Route to:
+   - `file_context_repair`
+   - another heavier start path
+   - or `unsupported / defer`
+4. Emit explicit `goal_start_failure` rows instead of dropping the theorem from trigger/action datasets
+
+**Current implementation status (2026-03-19):**
+- `scripts/collect_trigger_states.py` now writes `goal_start_failure` rows with:
+  - theorem/site metadata
+  - `ContextIR` feature counts
+  - cheap goal-shape summaries
+  - structured goal-creation `LeanFeedback`
+  - repair attempt / repair outcome fields
+- direct-start failures can attempt `goal_via_file_context(...)`; successful repairs re-enter
+  ordinary search instead of being lost from the dataset
+
+**Design consequence:** the deterministic compiler boundary is now better described as a
+three-stage stack:
+- **source-context compiler** (`ContextIR`) for theorem-site environment reconstruction
+- **goal-startability / context-repair policy** for producing faithful initial goals
+- **action compiler** (`ActionIR`) for family-specific local tactic lowering
+
+This boundary matters for training hygiene:
+- trigger datasets must not treat non-startable theorems as trigger negatives
+- executable-selector datasets should distinguish theorem-site compiler failures from action-level
+  unification/elaboration failures
+- startability/context repair is a legitimate SoM specialist, not just infrastructure noise
+
+### 10.6e Motivated Move Layer (`SubtaskIR` + Trigger Profiles)
 
 The Human-Oriented ATP / motivated-proof line suggests a useful refinement for Wayfinder: local
 execution should not be represented only as a tactic string or even only as `ActionIR`. It should
@@ -1134,8 +1341,9 @@ class SubtaskIR:
 - `scripts/run_main_experiment.sh`
   - canonical end-to-end experiment driver for the enhanced controller stack
 
-**Design consequence:** Wayfinder now has a three-layer local stack:
+**Design consequence:** Wayfinder now has a four-layer local stack:
 - **source-context compiler** (`ContextIR`)
+- **goal-startability / context-repair layer**
 - **action compiler** (`ActionIR`)
 - **motivated move layer** (`SubtaskIR` + trigger profiles) for controller-visible move typing
 
@@ -1161,6 +1369,9 @@ should we attempt next?" `SubtaskIR` is the contract for that question.
   - currently: `cosine_rw`
 - **Scaffolder lanes**: structural/bootstrap policies that simplify the goal and expose the next residual
   - currently: interleaved bootstrap
+- **Startability specialist**: theorem-site compiler policy that decides whether a theorem can
+  start directly, needs context repair, or should be deferred
+  - currently: direct start + file-context repair instrumentation
 - **Helper / transformer lanes**: locally useful but not yet theorem-winning on their own
   - currently: `simp`
 - **Executable specialist lanes**: locally real selectors over scoped candidates; not automatically global lanes
@@ -1194,12 +1405,160 @@ This preserves the central factorization:
 
 **Immediate design-order consequence:** do not jump from the first `apply` selector win straight to
 full SoM specialist training. The next order is:
-1. expand provenance-aware executable datasets (`canonical_step0`, `canonical_midstep`,
+1. collect `goal_start_failure` rows and repaired-start outcomes as first-class data;
+2. expand provenance-aware executable datasets (`canonical_step0`, `canonical_midstep`,
    `post_bootstrap_residual`, `mid_search_residual`);
-2. train source-aware executable selectors;
-3. integrate those selectors into theorem search;
-4. then extend the same regime to `refine_named`;
-5. only then train the full SoM over multiple validated specialist contracts.
+3. build symbolicized theorem-level narrative / temporal packets for teacher models and
+   strategy-memory mining;
+4. train source-aware executable selectors;
+5. integrate those selectors into theorem search;
+6. then extend the same regime to `refine_named`;
+7. only then train the full SoM over multiple validated specialist contracts.
+
+### 10.6f Dr. Ducky (Deterministic 1.5th-Order Executor)
+
+Dr. Ducky sits between the first-order theorem-search plus first-order SoM control stack and the second-order SoM. It is not a theorem replanner, and it is not a language-model stage. It is a deterministic symbolic proof-local execution VM for the local mathematical work that humans do by hand after the main proof structure is already exposed.
+
+**Role in the architecture:**
+
+- consume local residual states from the main solver
+- build typed residual capsules
+- seed a symbolic `ProofShadowLedger`
+- derive bank priors and prescriptions
+- run proof-bearing deterministic engines
+- lower engine certificates through a `ProofProjector`
+- validate progress and closure in Lean
+
+**Canonical interface boundary:**
+
+```python
+@dataclass
+class GoalCapsule:
+    specification: GoalSpecification
+    specialist_targets: list[str]
+    suppression_hints: list[str]
+    bank_priors: list[BankPrior]
+    prescriptions: list[GoalPrescription]
+    proof_skeletons: list[ProofSkeleton]
+    ledger_seed: ProofShadowLedger
+    allowed_engines: list[str]
+    projector_policy: dict[str, Any]
+    execution_budgets: dict[str, int]
+    priority_score: float
+
+@dataclass
+class MathEngineRequest:
+    request_id: str
+    engine_name: str
+    active_bank: str
+    goal_text: str
+    goal_bucket: str
+    allowed_transformations: list[str]
+    budget: int
+    ledger: ProofShadowLedger
+
+@dataclass
+class EngineCertificate:
+    certificate_id: str
+    engine_name: str
+    bank: str
+    skeleton_id: str
+    certificate_kind: str
+    summary: str
+    bindings: dict[str, str]
+    evidence: list[str]
+    projected_tactics: list[str]
+    target_before: str
+    provenance: dict[str, Any]
+
+@dataclass
+class ProjectedProofProgram:
+    program_id: str
+    bank: str
+    specialist: str
+    skeleton_id: str
+    tactics: list[str]
+    rationale: str
+    score: float
+    certificate_id: str
+    certificate_shape: str
+    bindings: dict[str, str]
+```
+
+**Pure symbolic runtime invariant:**
+
+- Dr. Ducky runtime contains no LLM stage.
+- No free-form tactic text is generated.
+- The only scorer/runtime-facing outputs are projector-lowered Lean programs.
+
+**Current implemented object model:**
+
+- `GoalSpecification`
+- `LedgerFact`
+- `ProofShadowLedger`
+- `BankPrior`
+- `GoalPrescription`
+- `ProofHoleSpec`
+- `ProofSkeleton`
+- `MathEngineRequest`
+- `EngineCertificate`
+- `ProjectedProofProgram`
+- `ProjectorDecision`
+- `GoalCapsule`
+
+**Current validated behavior:**
+
+- theorem-faithful replay into Lean
+- cached Pantograph goal-state mining
+- local proof-fact synthesis (`h.1`, `h.2`, `h.symm`, `(hiff.mp hp)`, `(hiff.mpr hq)`)
+- target-only follow-up repair after earlier steps erase explicit context
+- proof-shadow ledger seeding
+- engine-family eligibility and bank-to-engine mapping
+- projector emission and no-op rejection
+- honest no-op rejection for accepted tactics that leave the full goal set unchanged
+
+At the refreshed hard-run snapshot, Dr. Ducky materializes `1975` local capsules from `2907` validated rows, routes recursive circuit-breaker cases at `47/52` (`90.38%`) on targeted validation, and shows real Lean-checked progress on theorem-faithful replay slices (`10/20` honest progress on the latest local slice) while still underperforming on final closure. This is exactly the intended 1.5th-order role: deterministic last-mile symbolic work first, second-order orchestration later.
+
+**MathEngine portfolio (vNext):**
+
+- `EqSatEngine`
+- `ArithEngine`
+- `WitnessEngine`
+- `RecursiveInvariantEngine`
+- `FiniteFilterEngine`
+- `ContextTransportEngine`
+
+Default bank-to-engine mapping:
+
+- `eq_sat`, `transport_normalizer` -> `EqSatEngine`
+- `arith_nf`, `solver_dispatch` -> `ArithEngine`
+- `witness_constructor`, `canonical_witness` -> `WitnessEngine`
+- `recursive_unfold_one`, `loop_breaker` -> `RecursiveInvariantEngine`
+- `membership_exposure`, `set_pointwise`, `eventual_filter_normalizer`, `structural_close` -> `FiniteFilterEngine`
+- `context_forward`, `local_fact_selector`, `binder_instantiation`, `iff_splitter`, `diagram_transport` -> `ContextTransportEngine`
+
+**Projector boundary:**
+
+- internal symbolic state is not a user-facing artifact
+- every engine result passes through a `ProofProjector`
+- accepted programs must lower, compile, and change the theorem-faithful goal state
+- certificates that cannot be lowered remain in telemetry, not in the accepted runtime path
+
+**Relation to the second-order SoM:**
+
+- Dr. Ducky is **executive substrate**, not orchestration.
+- The second-order SoM should decide:
+  - when to invoke Dr. Ducky,
+  - which capsule/engine family to prioritize,
+  - when to stop local symbolic work and escalate.
+- Dr. Ducky telemetry becomes direct SoM training signal:
+  - capsule features
+  - ledger geometry
+  - chosen banks and prescriptions
+  - engine family / certificate shape / projector status
+  - winning and losing proof skeletons
+  - progress / closure / no-op outcomes
+  - residual simplification and negative-geometry paths
 
 ### 10.7 Module Map Update (v2)
 
@@ -1212,6 +1571,8 @@ src/
 ├── template_classifier.py      Recognition classifier (Slot 2)
 ├── sketch_predictor.py         Proof sketch generator (Slot 3)
 ├── temporal_controller.py      Temporal controller (Arbiter core, 4-phase FSM)
+├── som_model.py                Numpy SoM routing model (research/training)
+├── som_torch.py                PyTorch SoM routing model (current supervised router)
 ├── specialist_navigator.py     Bank-cluster specialist wrapper (Slot 4)
 ├── residual_executor.py        Residual tactic family classifier (6-class)
 ├── lean_context_ir.py          Source-context parser/compiler for theorem-site wrappers
@@ -1219,6 +1580,8 @@ src/
 ├── tactic_ir.py                ActionIR typed AST (TermExpr, RewriteAtom, ActionIR)
 ├── tactic_canonicalizer.py     Parse Lean tactics into canonical ActionIR
 ├── subtask_ir.py               Derive GoalShapeIR / TriggerProfileIR / SubtaskIR
+├── dr_ducky.py                 Typed residual capsule model and proof skeleton synthesis
+├── dr_ducky_executor.py        Lean-backed deterministic residual executor
 ├── tactic_compiler.py          Template-based tactic compilation (v0)
 ├── tactic_lowering.py          Deterministic ActionIR -> Lean tactic lowering
 ├── censor.py                   Failure prediction network (Slot 5)

@@ -49,6 +49,7 @@ logging.basicConfig(
 # Model
 # ---------------------------------------------------------------------------
 
+
 class ExecSelector(nn.Module):
     """Pointwise binary scorer: P(executable | goal, candidate)."""
 
@@ -74,6 +75,7 @@ class ExecSelector(nn.Module):
 # ---------------------------------------------------------------------------
 # Data loading + encoding
 # ---------------------------------------------------------------------------
+
 
 def load_rows(path: str) -> list[dict]:
     rows = []
@@ -137,6 +139,7 @@ def build_features(
 # Training
 # ---------------------------------------------------------------------------
 
+
 def train_epoch(
     model: ExecSelector,
     X: torch.Tensor,
@@ -184,6 +187,7 @@ def evaluate(
 # ---------------------------------------------------------------------------
 # LeanAccepted@top-1 evaluation
 # ---------------------------------------------------------------------------
+
 
 def lean_accepted_top1(
     model: ExecSelector,
@@ -254,10 +258,11 @@ def lean_accepted_top1(
 # CLI
 # ---------------------------------------------------------------------------
 
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--train", default="data/apply_exec_train.jsonl")
-    parser.add_argument("--eval",  default="data/apply_exec_dataset.jsonl")
+    parser.add_argument("--eval", default="data/apply_exec_dataset.jsonl")
     parser.add_argument("--output", default="models/apply_exec_selector_v1.pt")
     parser.add_argument("--epochs", type=int, default=20)
     parser.add_argument("--lr", type=float, default=1e-3)
@@ -279,17 +284,19 @@ def main() -> None:
     # Load data
     logger.info("Loading train rows...")
     train_rows = load_rows(args.train)
-    eval_rows  = load_rows(args.eval)
+    eval_rows = load_rows(args.eval)
     logger.info("Train: %d rows, Eval: %d rows", len(train_rows), len(eval_rows))
 
     # Theorem-level split of train rows into train/val
-    train_split, val_split = theorem_split(train_rows, val_frac=args.val_frac,
-                                           seed=args.seed)
+    train_split, val_split = theorem_split(train_rows, val_frac=args.val_frac, seed=args.seed)
     n_pos_train = sum(r["executable"] for r in train_split)
     n_neg_train = len(train_split) - n_pos_train
     logger.info(
         "Train split: %d rows (%d pos / %d neg), Val split: %d rows",
-        len(train_split), n_pos_train, n_neg_train, len(val_split),
+        len(train_split),
+        n_pos_train,
+        n_neg_train,
+        len(val_split),
     )
 
     # Encode
@@ -304,21 +311,21 @@ def main() -> None:
     val_cands = encode_texts(encoder, [r["candidate"] for r in val_split])
     logger.info("Encoding eval goals + candidates...")
     # apply_exec_dataset uses "goal_str"; apply_exec_train uses "goal_state"
-    eval_goals = encode_texts(encoder, [r.get("goal_state", r.get("goal_str", "")) for r in eval_rows])
+    eval_goals = encode_texts(
+        encoder, [r.get("goal_state", r.get("goal_str", "")) for r in eval_rows]
+    )
     eval_cands = encode_texts(encoder, [r["candidate"] for r in eval_rows])
 
     # Build tensors
     X_train, y_train = build_features(train_split, train_goals, train_cands)
-    X_val,   y_val   = build_features(val_split,   val_goals,   val_cands)
+    X_val, y_val = build_features(val_split, val_goals, val_cands)
 
     # Model + loss
     model = ExecSelector(emb_dim=384, hidden=args.hidden).to(device)
     pos_weight = torch.tensor([n_neg_train / max(n_pos_train, 1)], device=device)
     criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer, T_max=args.epochs
-    )
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
 
     logger.info(
         "pos_weight=%.2f | model params=%d",
@@ -332,8 +339,13 @@ def main() -> None:
 
     for epoch in range(1, args.epochs + 1):
         loss = train_epoch(
-            model, X_train, y_train, optimizer, criterion,
-            batch_size=args.batch_size, device=device,
+            model,
+            X_train,
+            y_train,
+            optimizer,
+            criterion,
+            batch_size=args.batch_size,
+            device=device,
         )
         val_metrics = evaluate(model, X_val, y_val, device=device)
         scheduler.step()
@@ -341,7 +353,10 @@ def main() -> None:
         ap = val_metrics["pr_auc"]
         logger.info(
             "Epoch %2d | loss=%.4f | val PR-AUC=%.4f | val acc=%.4f",
-            epoch, loss, ap, val_metrics["accuracy"],
+            epoch,
+            loss,
+            ap,
+            val_metrics["accuracy"],
         )
 
         if ap > best_ap:
@@ -354,7 +369,11 @@ def main() -> None:
 
     # LeanAccepted@top-1 on holdout eval set
     la_metrics = lean_accepted_top1(
-        model, eval_rows, eval_goals, eval_cands, device=device,
+        model,
+        eval_rows,
+        eval_goals,
+        eval_cands,
+        device=device,
     )
 
     # Save checkpoint

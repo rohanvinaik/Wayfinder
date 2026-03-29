@@ -21,6 +21,7 @@ class TestCompositeLossConfig:
         obj = CompositeLoss()
         assert obj == EXPECTED  # TODO: Replace with expected instance
 
+
 class TestCompositeLossState:
     """State invariant tests for CompositeLoss."""
 
@@ -35,7 +36,6 @@ class TestCompositeLossState:
         obj = CompositeLoss()
         obj.forward()  # TODO: Provide arguments
         # TODO: Assert state changed correctly
-
 
 
 class TestNavigationalLossConfig:
@@ -53,6 +53,7 @@ class TestNavigationalLossConfig:
         obj = NavigationalLoss()
         assert obj == EXPECTED  # TODO: Replace with expected instance
 
+
 class TestNavigationalLossState:
     """State invariant tests for NavigationalLoss."""
 
@@ -67,6 +68,3 @@ class TestNavigationalLossState:
         obj = NavigationalLoss()
         obj.forward()  # TODO: Provide arguments
         # TODO: Assert state changed correctly
-
-
-

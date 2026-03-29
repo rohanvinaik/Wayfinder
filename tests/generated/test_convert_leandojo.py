@@ -11,6 +11,7 @@ def test_convert_theorem_returns_expected_output() -> None:
     result = convert_theorem(...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
 
+
 def test_convert_theorem_boundary_values() -> None:
     """Test convert_theorem with edge cases that mutation testing targets."""
     # Boundary: thm
@@ -19,11 +20,7 @@ def test_convert_theorem_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_main_returns_expected_output() -> None:
     """Test main with valid input."""
     result = main()
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
-
-
-

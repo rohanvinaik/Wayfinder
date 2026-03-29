@@ -11,6 +11,7 @@ def test_spread_returns_expected_output() -> None:
     result = spread(..., ..., ..., ..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
 
+
 def test_spread_boundary_values() -> None:
     """Test spread with edge cases that mutation testing targets."""
     # Boundary: conn
@@ -19,6 +20,3 @@ def test_spread_boundary_values() -> None:
     # TODO: Test with boundary inputs (0, -1, empty string, None)
     result = spread(..., ..., ..., ..., ...)
     assert result == EXPECTED  # TODO: Replace with actual expected value
-
-
-

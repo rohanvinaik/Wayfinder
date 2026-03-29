@@ -93,11 +93,7 @@ def scope_for_simp(
     top_premises = available_premises[:max_premises]
 
     all_symbols = list(hyps) + derived + top_premises
-    source_tags = (
-        ["hyp"] * len(hyps)
-        + ["derived"] * len(derived)
-        + ["premise"] * len(top_premises)
-    )
+    source_tags = ["hyp"] * len(hyps) + ["derived"] * len(derived) + ["premise"] * len(top_premises)
 
     return SimpScope(
         hypotheses=hyps,

@@ -7,4 +7,3 @@ from __future__ import annotations
 def test_tactic_maps_placeholder() -> None:
     """TODO: Add tests for tactic_maps."""
     pass
-

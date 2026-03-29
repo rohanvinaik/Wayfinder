@@ -5,6 +5,7 @@ from __future__ import annotations
 
 # Source module: src.encoder
 
+
 # from src.encoder import from_config
 def test_from_config_http() -> None:
     """Contract: from_config handles HTTP response."""
@@ -17,12 +18,14 @@ def test_from_config_http() -> None:
     with patch("requests.get", return_value=mock_resp):
         pass  # TODO: call from_config with valid args and assert result
 
+
 # from src.encoder import output_dim
 def test_output_dim_returns_int() -> None:
     """Contract: output_dim returns int."""
     # TODO: Provide valid arguments
     # result = output_dim()
     # assert isinstance(result, int)
+
 
 # from src.encoder import backend
 def test_backend_returns_str() -> None:
@@ -31,12 +34,14 @@ def test_backend_returns_str() -> None:
     # result = backend()
     # assert isinstance(result, str)
 
+
 # from src.encoder import describe
 def test_describe_returns_dict_str_any() -> None:
     """Contract: describe returns dict[str, Any]."""
     # TODO: Provide valid arguments
     # result = describe()
     # assert isinstance(result, dict)
+
 
 # from src.encoder import to
 def test_to_http() -> None:
@@ -49,4 +54,3 @@ def test_to_http() -> None:
     mock_resp.text = ""
     with patch("requests.get", return_value=mock_resp):
         pass  # TODO: call to with valid args and assert result
-

@@ -42,8 +42,10 @@ from src.proof_network import get_accessible_premises
 try:
     from src.lean_interface import ServerCrashError  # type: ignore[attr-defined]
 except ImportError:
+
     class ServerCrashError(Exception):  # type: ignore[no-redef]
         pass
+
 
 # Suffix variants to try when applying a lemma via refine
 _REFINE_VARIANTS = [
@@ -115,6 +117,7 @@ def cosine_rank_symbols(
         return [(0.0, s) for s in symbols]
     try:
         from sentence_transformers import SentenceTransformer
+
         model: SentenceTransformer = encoder  # type: ignore[assignment]
         goal_emb = model.encode([goal_text], normalize_embeddings=True)
         sym_embs = model.encode(symbols, normalize_embeddings=True)
@@ -168,7 +171,7 @@ def try_refine_variants(
 class RefineExampleResult:
     theorem_full_name: str
     file_path: str
-    subset: str          # "named" | "anon"
+    subset: str  # "named" | "anon"
     annotated_premise: str
     canonical_action_ir: str
 
@@ -314,20 +317,26 @@ def print_report(named: list[RefineExampleResult], anon: list[RefineExampleResul
 
         oracle_acc = sum(r.oracle_accepted for r in started)
         oracle_cls = sum(r.oracle_closed for r in started)
-        print(f"\n  {label}  (n={n}, started={ns}/{n}  {100*ns/n:.1f}%)")
-        print(f"    oracle  accepted|started: {oracle_acc}/{ns}  ({100*oracle_acc/max(ns,1):.1f}%)")
-        print(f"    oracle  closed|started:   {oracle_cls}/{ns}  ({100*oracle_cls/max(ns,1):.1f}%)")
+        print(f"\n  {label}  (n={n}, started={ns}/{n}  {100 * ns / n:.1f}%)")
+        print(
+            f"    oracle  accepted|started: {oracle_acc}/{ns}  ({100 * oracle_acc / max(ns, 1):.1f}%)"
+        )
+        print(
+            f"    oracle  closed|started:   {oracle_cls}/{ns}  ({100 * oracle_cls / max(ns, 1):.1f}%)"
+        )
 
         if label == "refine_named":
             cos1 = sum(r.cosine_top1_accepted for r in started)
             cos5 = sum(r.cosine_top5_accepted for r in started)
             in_scope = sum(r.gold_in_scope for r in started)
-            print(f"    cosine_1  accepted|started: {cos1}/{ns}  ({100*cos1/max(ns,1):.1f}%)")
-            print(f"    cosine_5  accepted|started: {cos5}/{ns}  ({100*cos5/max(ns,1):.1f}%)")
-            print(f"    gold_in_scope:              {in_scope}/{ns}  ({100*in_scope/max(ns,1):.1f}%)")
+            print(f"    cosine_1  accepted|started: {cos1}/{ns}  ({100 * cos1 / max(ns, 1):.1f}%)")
+            print(f"    cosine_5  accepted|started: {cos5}/{ns}  ({100 * cos5 / max(ns, 1):.1f}%)")
+            print(
+                f"    gold_in_scope:              {in_scope}/{ns}  ({100 * in_scope / max(ns, 1):.1f}%)"
+            )
             sizes = [r.n_accessible_premises for r in started if r.n_accessible_premises > 0]
             if sizes:
-                print(f"    mean accessible premises:  {sum(sizes)/len(sizes):.0f}")
+                print(f"    mean accessible premises:  {sum(sizes) / len(sizes):.0f}")
 
         fail_cats = Counter(r.failure_category for r in results if r.failure_category)
         if fail_cats:
@@ -343,7 +352,9 @@ def print_report(named: list[RefineExampleResult], anon: list[RefineExampleResul
     ns = len(all_started)
     oracle_acc = sum(r.oracle_accepted for r in all_started)
     print(f"\n  OVERALL  (started={ns})")
-    print(f"    oracle  accepted|started: {oracle_acc}/{ns}  ({100*oracle_acc/max(ns,1):.1f}%)")
+    print(
+        f"    oracle  accepted|started: {oracle_acc}/{ns}  ({100 * oracle_acc / max(ns, 1):.1f}%)"
+    )
 
     named_started = [r for r in named if r.goal_started]
     nns = len(named_started)
@@ -382,16 +393,19 @@ def main() -> None:
     encoder = None
     try:
         from sentence_transformers import SentenceTransformer
+
         encoder = SentenceTransformer("all-MiniLM-L6-v2")
         logger.info("Loaded MiniLM encoder")
     except ImportError:
         logger.warning("sentence-transformers not available — cosine conditions skipped")
 
-    kernel = LeanKernel(LeanConfig(
-        backend=args.backend,
-        project_root=args.lean_project,
-        imports=["Mathlib"],
-    ))
+    kernel = LeanKernel(
+        LeanConfig(
+            backend=args.backend,
+            project_root=args.lean_project,
+            imports=["Mathlib"],
+        )
+    )
     kernel._ensure_server()
     logger.info("Lean server started")
 
@@ -419,6 +433,7 @@ def main() -> None:
     conn.close()
 
     import pathlib
+
     pathlib.Path(args.output).parent.mkdir(parents=True, exist_ok=True)
     with open(args.output, "w") as f:
         for r in named_results + anon_results:

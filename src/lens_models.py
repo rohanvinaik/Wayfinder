@@ -43,9 +43,7 @@ class BridgeCoherenceLens(LensSpecialist):
     def vote(self, packet: GuidancePacket, candidate: ScoredEntity) -> LensVote:
         ea = packet.candidate_anchor_sets.get(candidate.entity_id, set())
         if not ea:
-            return LensVote(
-                candidate.entity_id, 0, 0.0, self.name, "no_anchors"
-            )
+            return LensVote(candidate.entity_id, 0, 0.0, self.name, "no_anchors")
 
         coherence = _compute_primary_coherence(
             ea,
@@ -63,7 +61,10 @@ class BridgeCoherenceLens(LensSpecialist):
             v, conf = 0, coherence
 
         return LensVote(
-            candidate.entity_id, v, conf, self.name,
+            candidate.entity_id,
+            v,
+            conf,
+            self.name,
             f"coherence={coherence:.3f}",
         )
 
@@ -81,9 +82,7 @@ class ResidualCoverageLens(LensSpecialist):
         uncovered_count = len(packet.residual.residual_anchor_priorities)
 
         if uncovered_count == 0:
-            return LensVote(
-                candidate.entity_id, 0, 0.0, self.name, "no_uncovered"
-            )
+            return LensVote(candidate.entity_id, 0, 0.0, self.name, "no_uncovered")
 
         coverage = residual_overlap / max(uncovered_count, 1)
 
@@ -97,7 +96,10 @@ class ResidualCoverageLens(LensSpecialist):
             v = 0
 
         return LensVote(
-            candidate.entity_id, v, min(coverage, 1.0), self.name,
+            candidate.entity_id,
+            v,
+            min(coverage, 1.0),
+            self.name,
             f"overlap={residual_overlap}/{uncovered_count}",
         )
 
@@ -113,7 +115,10 @@ class ConstantMatchLens(LensSpecialist):
         unsupported = set(packet.residual.unsupported_constants)
         if not unsupported:
             return LensVote(
-                candidate.entity_id, 0, 0.0, self.name,
+                candidate.entity_id,
+                0,
+                0.0,
+                self.name,
                 "no_unsupported_constants",
             )
 
@@ -126,7 +131,10 @@ class ConstantMatchLens(LensSpecialist):
             v, conf = 0, 0.0
 
         return LensVote(
-            candidate.entity_id, v, conf, self.name,
+            candidate.entity_id,
+            v,
+            conf,
+            self.name,
             f"const_overlap={const_overlap}",
         )
 
@@ -140,12 +148,8 @@ class LocalityGuardLens(LensSpecialist):
 
     def vote(self, packet: GuidancePacket, candidate: ScoredEntity) -> LensVote:
         if candidate.entity_id in packet.locality_only_warnings:
-            return LensVote(
-                candidate.entity_id, -1, 0.6, self.name, "locality_only"
-            )
-        return LensVote(
-            candidate.entity_id, 0, 0.0, self.name, "not_locality_only"
-        )
+            return LensVote(candidate.entity_id, -1, 0.6, self.name, "locality_only")
+        return LensVote(candidate.entity_id, 0, 0.0, self.name, "not_locality_only")
 
 
 class HubPenaltyLens(LensSpecialist):
@@ -159,12 +163,13 @@ class HubPenaltyLens(LensSpecialist):
         neg = packet.negative_evidence.get(candidate.entity_id, [])
         if neg:
             return LensVote(
-                candidate.entity_id, -1, 0.7, self.name,
+                candidate.entity_id,
+                -1,
+                0.7,
+                self.name,
                 f"hub:{neg[0]}",
             )
-        return LensVote(
-            candidate.entity_id, 0, 0.0, self.name, "normal"
-        )
+        return LensVote(candidate.entity_id, 0, 0.0, self.name, "normal")
 
 
 # Registry of all rule-based specialists

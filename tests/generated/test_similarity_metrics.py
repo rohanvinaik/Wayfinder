@@ -11,6 +11,7 @@ def test_compute_similarity_metrics_returns_expected_output() -> None:
     result = compute_similarity_metrics(..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
 
+
 def test_compute_similarity_metrics_boundary_values() -> None:
     """Test compute_similarity_metrics with edge cases that mutation testing targets."""
     # Boundary: embeddings
@@ -18,6 +19,3 @@ def test_compute_similarity_metrics_boundary_values() -> None:
     # TODO: Test with boundary inputs (0, -1, empty string, None)
     result = compute_similarity_metrics(..., ...)
     assert result == EXPECTED  # TODO: Replace with actual expected value
-
-
-

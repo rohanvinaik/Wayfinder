@@ -67,7 +67,9 @@ def build_inventory(
     ):
         if len(items) < min_support:
             continue
-        target_heads = Counter(item["goal_target_head"] for item in items if item["goal_target_head"])
+        target_heads = Counter(
+            item["goal_target_head"] for item in items if item["goal_target_head"]
+        )
         trigger_kinds = Counter()
         trigger_values = Counter()
         premises = Counter()

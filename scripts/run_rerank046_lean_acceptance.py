@@ -53,6 +53,7 @@ logger = logging.getLogger(__name__)
 try:
     from src.lean_interface import ServerCrashError  # type: ignore[attr-defined]
 except ImportError:
+
     class ServerCrashError(Exception):  # type: ignore[no-redef]
         pass
 
@@ -104,10 +105,23 @@ def feature_vector(
     if any(suf in name_lower for suf in suffixes):
         shape_compat = 1.0
 
-    _CONCL_SFXS = ["_iff", "_eq", "_le", "_lt", "_mem", "_surjective", "_injective",
-                   "_continuous", "_tendsto", "_measurable", "_mono", "_nonneg"]
-    conclusion_sfx = 1.0 if any(name_lower.endswith(s) or s + "_" in name_lower
-                                  for s in _CONCL_SFXS) else 0.0
+    _CONCL_SFXS = [
+        "_iff",
+        "_eq",
+        "_le",
+        "_lt",
+        "_mem",
+        "_surjective",
+        "_injective",
+        "_continuous",
+        "_tendsto",
+        "_measurable",
+        "_mono",
+        "_nonneg",
+    ]
+    conclusion_sfx = (
+        1.0 if any(name_lower.endswith(s) or s + "_" in name_lower for s in _CONCL_SFXS) else 0.0
+    )
 
     cand_ns = ".".join(candidate.split(".")[:2]) if "." in candidate else ""
     thm_ns = ".".join(theorem_namespace.split(".")[:2]) if "." in theorem_namespace else ""
@@ -121,13 +135,21 @@ def feature_vector(
 
     rank_norm = (5 - cosine_rank) / 5.0
 
-    return [head_compat, shape_compat, conclusion_sfx, namespace_match,
-            local_overlap, float(cosine_score), rank_norm]
+    return [
+        head_compat,
+        shape_compat,
+        conclusion_sfx,
+        namespace_match,
+        local_overlap,
+        float(cosine_score),
+        rank_norm,
+    ]
 
 
 # ---------------------------------------------------------------------------
 # Reranker model (same architecture as train_reranker045)
 # ---------------------------------------------------------------------------
+
 
 class CandidateReranker(nn.Module):
     def __init__(self, n_features: int = N_FEATURES):
@@ -158,6 +180,7 @@ def load_reranker(path: str) -> CandidateReranker | None:
 # ---------------------------------------------------------------------------
 # Selection functions
 # ---------------------------------------------------------------------------
+
 
 def _rule_head_shape_score(cand: str, goal_head: str, goal_shape: str, cosine: float) -> float:
     name_lower = cand.lower()
@@ -287,11 +310,12 @@ def try_refine_variants(
 # Per-example result
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class ExampleResult:
     theorem_full_name: str
     file_path: str
-    subset: str   # "apply" | "refine_named"
+    subset: str  # "apply" | "refine_named"
 
     goal_started: bool = False
     tier_used: str = ""
@@ -324,6 +348,7 @@ class ExampleResult:
 # Data loading
 # ---------------------------------------------------------------------------
 
+
 def load_eval_examples(eval_path: str) -> tuple[list[dict], list[dict]]:
     """Load step-0 apply and refine_named examples."""
     apply_exs: list[dict] = []
@@ -349,6 +374,7 @@ def load_eval_examples(eval_path: str) -> tuple[list[dict], list[dict]]:
 # ---------------------------------------------------------------------------
 # Per-example runner
 # ---------------------------------------------------------------------------
+
 
 def run_one(
     example: dict,
@@ -414,14 +440,17 @@ def run_one(
     ranked = sorted(zip(scores.tolist(), accessible), reverse=True)
 
     if gold:
-        res.gold_rank_cosine = next(
-            (i for i, (_, p) in enumerate(ranked) if p == gold), -1
-        )
+        res.gold_rank_cosine = next((i for i, (_, p) in enumerate(ranked) if p == gold), -1)
 
     # Select top-1 per method
     for method in ("cosine", "rule", "reranker"):
-        cand = select_top1(method, ranked, goal_str, res.theorem_full_name,
-                           reranker if method == "reranker" else None)
+        cand = select_top1(
+            method,
+            ranked,
+            goal_str,
+            res.theorem_full_name,
+            reranker if method == "reranker" else None,
+        )
         if cand is None:
             continue
 
@@ -456,6 +485,7 @@ def run_one(
 # Reporting
 # ---------------------------------------------------------------------------
 
+
 def print_report(
     apply_res: list[ExampleResult],
     refine_res: list[ExampleResult],
@@ -467,8 +497,10 @@ def print_report(
         in_scope = [r for r in started if r.gold_in_scope]
         ni = len(in_scope)
 
-        print(f"\n  {label}  (n={n}, started={ns}/{n} {100*ns/max(n,1):.1f}%,"
-              f" gold_in_scope={ni}/{ns} {100*ni/max(ns,1):.1f}%)")
+        print(
+            f"\n  {label}  (n={n}, started={ns}/{n} {100 * ns / max(n, 1):.1f}%,"
+            f" gold_in_scope={ni}/{ns} {100 * ni / max(ns, 1):.1f}%)"
+        )
 
         if ns == 0:
             return
@@ -477,18 +509,18 @@ def print_report(
             return sum(getattr(r, field) for r in lst)
 
         methods = [
-            ("cosine_top1",   "cosine_accepted"),
-            ("rule_top1",     "rule_accepted"),
+            ("cosine_top1", "cosine_accepted"),
+            ("rule_top1", "rule_accepted"),
             ("reranker_top1", "reranker_accepted"),
         ]
 
         print(f"\n    {'Method':<20} {'Acc|started':>12}  {'Acc|gold_in_scope':>18}")
-        print(f"    {'-'*55}")
+        print(f"    {'-' * 55}")
         for name, field in methods:
             acc_s = _acc(started, field)
             acc_i = _acc(in_scope, field)
-            s = f"{acc_s}/{ns}  ({100*acc_s/max(ns,1):.1f}%)"
-            i = f"{acc_i}/{ni}  ({100*acc_i/max(ni,1):.1f}%)" if ni > 0 else "—"
+            s = f"{acc_s}/{ns}  ({100 * acc_s / max(ns, 1):.1f}%)"
+            i = f"{acc_i}/{ni}  ({100 * acc_i / max(ni, 1):.1f}%)" if ni > 0 else "—"
             print(f"    {name:<20} {s:>12}  {i:>18}")
 
     print("\n" + "=" * 68)
@@ -500,11 +532,13 @@ def print_report(
     all_started = [r for r in apply_res + refine_res if r.goal_started]
     ns = len(all_started)
     print(f"\n  OVERALL  started={ns}")
-    for method, field in [("cosine_top1", "cosine_accepted"),
-                           ("rule_top1", "rule_accepted"),
-                           ("reranker_top1", "reranker_accepted")]:
+    for method, field in [
+        ("cosine_top1", "cosine_accepted"),
+        ("rule_top1", "rule_accepted"),
+        ("reranker_top1", "reranker_accepted"),
+    ]:
         acc = sum(getattr(r, field) for r in all_started)
-        print(f"    {method:<20} {acc}/{ns}  ({100*acc/max(ns,1):.1f}%)")
+        print(f"    {method:<20} {acc}/{ns}  ({100 * acc / max(ns, 1):.1f}%)")
 
     print("=" * 68)
 
@@ -512,6 +546,7 @@ def print_report(
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="EXP-RERANK-046: LeanAccepted component benchmark")
@@ -531,21 +566,24 @@ def main() -> None:
     logger.info("apply=%d, refine_named=%d", len(apply_exs), len(refine_exs))
 
     if args.limit > 0:
-        apply_exs = apply_exs[:args.limit]
-        refine_exs = refine_exs[:args.limit]
+        apply_exs = apply_exs[: args.limit]
+        refine_exs = refine_exs[: args.limit]
 
     from sentence_transformers import SentenceTransformer
+
     encoder = SentenceTransformer("all-MiniLM-L6-v2")
     logger.info("Encoder loaded")
 
     apply_reranker = load_reranker(args.apply_model)
     refine_reranker = load_reranker(args.refine_model)
 
-    kernel = LeanKernel(LeanConfig(
-        backend=args.backend,
-        project_root=args.lean_project,
-        imports=["Mathlib"],
-    ))
+    kernel = LeanKernel(
+        LeanConfig(
+            backend=args.backend,
+            project_root=args.lean_project,
+            imports=["Mathlib"],
+        )
+    )
     kernel._ensure_server()
     logger.info("Lean server started")
 
@@ -557,15 +595,33 @@ def main() -> None:
     apply_results: list[ExampleResult] = []
     for i, ex in enumerate(apply_exs):
         logger.info("[apply %d/%d] %s", i + 1, len(apply_exs), ex["theorem_full_name"])
-        r = run_one(ex, "apply", kernel, conn, id_to_name, name_to_id,
-                    encoder, apply_reranker, args.lean_project)
+        r = run_one(
+            ex,
+            "apply",
+            kernel,
+            conn,
+            id_to_name,
+            name_to_id,
+            encoder,
+            apply_reranker,
+            args.lean_project,
+        )
         apply_results.append(r)
 
     refine_results: list[ExampleResult] = []
     for i, ex in enumerate(refine_exs):
         logger.info("[refine_named %d/%d] %s", i + 1, len(refine_exs), ex["theorem_full_name"])
-        r = run_one(ex, "refine_named", kernel, conn, id_to_name, name_to_id,
-                    encoder, refine_reranker, args.lean_project)
+        r = run_one(
+            ex,
+            "refine_named",
+            kernel,
+            conn,
+            id_to_name,
+            name_to_id,
+            encoder,
+            refine_reranker,
+            args.lean_project,
+        )
         refine_results.append(r)
 
     kernel.close()

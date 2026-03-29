@@ -5,12 +5,14 @@ from __future__ import annotations
 
 # Source module: src.story_templates
 
+
 # from src.story_templates import classify_tactic_sequence
 def test_classify_tactic_sequence_returns_str() -> None:
     """Contract: classify_tactic_sequence returns str."""
     # TODO: Provide valid arguments
     # result = classify_tactic_sequence(...)
     # assert isinstance(result, str)
+
 
 # from src.story_templates import classify_tactic_sequence
 def test_classify_tactic_sequence_http() -> None:
@@ -24,12 +26,14 @@ def test_classify_tactic_sequence_http() -> None:
     with patch("requests.get", return_value=mock_resp):
         pass  # TODO: call classify_tactic_sequence with valid args and assert result
 
+
 # from src.story_templates import compute_bank_signature
 def test_compute_bank_signature_returns_dict_str_int() -> None:
     """Contract: compute_bank_signature returns dict[str, int]."""
     # TODO: Provide valid arguments
     # result = compute_bank_signature(...)
     # assert isinstance(result, dict)
+
 
 # from src.story_templates import get_template_index
 def test_get_template_index_returns_int() -> None:
@@ -38,6 +42,7 @@ def test_get_template_index_returns_int() -> None:
     # result = get_template_index(...)
     # assert isinstance(result, int)
 
+
 # from src.story_templates import get_template_name
 def test_get_template_name_returns_str() -> None:
     """Contract: get_template_name returns str."""
@@ -45,10 +50,10 @@ def test_get_template_name_returns_str() -> None:
     # result = get_template_name(...)
     # assert isinstance(result, str)
 
+
 # from src.story_templates import get_num_templates
 def test_get_num_templates_returns_int() -> None:
     """Contract: get_num_templates returns int."""
     # TODO: Provide valid arguments
     # result = get_num_templates()
     # assert isinstance(result, int)
-

@@ -11,6 +11,7 @@ def test_train_censor_returns_expected_output() -> None:
     result = train_censor(..., ..., ..., ..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
 
+
 def test_train_censor_boundary_values() -> None:
     """Test train_censor with edge cases that mutation testing targets."""
     # Boundary: config
@@ -21,12 +22,10 @@ def test_train_censor_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_main_returns_expected_output() -> None:
     """Test main with valid input."""
     result = main()
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
-
 
 
 class TestCensorDatasetConfig:
@@ -44,6 +43,7 @@ class TestCensorDatasetConfig:
         obj = CensorDataset()
         assert obj == EXPECTED  # TODO: Replace with expected instance
 
+
 class TestCensorDatasetState:
     """State invariant tests for CensorDataset."""
 
@@ -52,6 +52,3 @@ class TestCensorDatasetState:
         obj = CensorDataset()
         # TODO: Assert exact initial field values
         assert obj.field == EXPECTED  # TODO: Replace with actual field checks
-
-
-

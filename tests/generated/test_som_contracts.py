@@ -25,7 +25,6 @@ class TestPerceptionOutputConfig:
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
 
 
-
 class TestTemplateInfoConfig:
     """Configuration tests for TemplateInfo."""
 
@@ -34,7 +33,6 @@ class TestTemplateInfoConfig:
         obj = TemplateInfo()
         # TODO: Assert specific field values, not just existence
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
-
 
 
 class TestRecognitionOutputConfig:
@@ -47,7 +45,6 @@ class TestRecognitionOutputConfig:
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
 
 
-
 class TestSubgoalSpecConfig:
     """Configuration tests for SubgoalSpec."""
 
@@ -56,7 +53,6 @@ class TestSubgoalSpecConfig:
         obj = SubgoalSpec()
         # TODO: Assert specific field values, not just existence
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
-
 
 
 class TestPlanningOutputConfig:
@@ -69,7 +65,6 @@ class TestPlanningOutputConfig:
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
 
 
-
 class TestExecutionOutputConfig:
     """Configuration tests for ExecutionOutput."""
 
@@ -78,7 +73,6 @@ class TestExecutionOutputConfig:
         obj = ExecutionOutput()
         # TODO: Assert specific field values, not just existence
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
-
 
 
 class TestVerificationOutputConfig:
@@ -91,7 +85,6 @@ class TestVerificationOutputConfig:
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
 
 
-
 class TestCensorPredictionConfig:
     """Configuration tests for CensorPrediction."""
 
@@ -100,6 +93,3 @@ class TestCensorPredictionConfig:
         obj = CensorPrediction()
         # TODO: Assert specific field values, not just existence
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
-
-
-

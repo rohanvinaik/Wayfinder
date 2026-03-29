@@ -150,9 +150,15 @@ class TestDecisionContract(unittest.TestCase):
         decision = ctrl.decide(state)
         self.assertIsInstance(decision, OrchestrationDecision)
         self.assertIsInstance(decision.next_goal_id, str)
-        self.assertIn(decision.phase, [
-            "structural_setup", "local_close", "automation_close", "repair_or_replan",
-        ])
+        self.assertIn(
+            decision.phase,
+            [
+                "structural_setup",
+                "local_close",
+                "automation_close",
+                "repair_or_replan",
+            ],
+        )
         self.assertIsInstance(decision.lane_order, list)
         self.assertIsInstance(decision.family_prior, list)
         self.assertIsInstance(decision.escalation_level, int)

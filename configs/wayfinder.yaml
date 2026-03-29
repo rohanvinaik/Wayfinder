@@ -6,7 +6,7 @@ data:
   nav_train: data/nav_training.jsonl
   nav_eval: data/nav_eval.jsonl
   template_train: data/nav_train_templates.jsonl
-  proof_network_db: data/proof_network.db
+  proof_network_db: data/proof_network_v3.db
   anchor_labels: data/anchor_labels.json
   move_inventory: data/move_inventory.json
 

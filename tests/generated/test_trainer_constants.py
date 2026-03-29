@@ -11,12 +11,10 @@ def test_infer_domain_returns_expected_output() -> None:
     result = infer_domain(...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
 
+
 def test_infer_domain_boundary_values() -> None:
     """Test infer_domain with edge cases that mutation testing targets."""
     # Boundary: example
     # TODO: Test with boundary inputs (0, -1, empty string, None)
     result = infer_domain(...)
     assert result == EXPECTED  # TODO: Replace with actual expected value
-
-
-

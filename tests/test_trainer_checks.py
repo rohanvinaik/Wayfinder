@@ -186,7 +186,6 @@ class TestLogTernaryDistribution(unittest.TestCase):
             total = pcts["neg_pct"] + pcts["zero_pct"] + pcts["pos_pct"]
             self.assertAlmostEqual(total, 100.0, msg=f"{layer_name} pcts sum to {total}")
 
-
     def test_boundary_at_threshold(self):
         """BOUNDARY: weights exactly at ±0.01 boundary."""
         decoder = nn.Module()
@@ -195,9 +194,9 @@ class TestLogTernaryDistribution(unittest.TestCase):
         tl.weight = nn.Parameter(torch.tensor([[-0.02, -0.01, 0.01, 0.02]]))
         decoder.add_module("layer", tl)
         dist = log_ternary_distribution(decoder)
-        self.assertAlmostEqual(dist["layer"]["neg_pct"], 25.0)   # -0.02
+        self.assertAlmostEqual(dist["layer"]["neg_pct"], 25.0)  # -0.02
         self.assertAlmostEqual(dist["layer"]["zero_pct"], 50.0)  # -0.01, 0.01
-        self.assertAlmostEqual(dist["layer"]["pos_pct"], 25.0)   # 0.02
+        self.assertAlmostEqual(dist["layer"]["pos_pct"], 25.0)  # 0.02
 
     def test_boundary_just_inside_zero_band(self):
         """BOUNDARY: values at ±0.005 are within zero band."""

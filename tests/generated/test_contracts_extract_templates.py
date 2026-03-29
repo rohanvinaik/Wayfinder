@@ -5,12 +5,14 @@ from __future__ import annotations
 
 # Source module: scripts.extract_templates
 
+
 # from scripts.extract_templates import extract_templates
 def test_extract_templates_returns_dict() -> None:
     """Contract: extract_templates returns dict."""
     # TODO: Provide valid arguments
     # result = extract_templates(..., ...)
     # assert isinstance(result, dict)
+
 
 # from scripts.extract_templates import extract_templates
 def test_extract_templates_http() -> None:
@@ -33,7 +35,7 @@ def test_extract_templates_file_io(tmp_path) -> None:
     # TODO: call extract_templates(str(test_file)) and assert result
     pass
 
+
 # TODO: Mock-based contract for main
 # Detected I/O: json.dumps
 # Suggested: mock json.dumps and assert return handling
-

@@ -5,12 +5,14 @@ from __future__ import annotations
 
 # Source module: src.som_contracts
 
+
 # from src.som_contracts import to_dict
 def test_to_dict_returns_dict_str_any() -> None:
     """Contract: to_dict returns dict[str, Any]."""
     # TODO: Provide valid arguments
     # result = to_dict()
     # assert isinstance(result, dict)
+
 
 # from src.som_contracts import from_dict
 def test_from_dict_http() -> None:
@@ -24,12 +26,14 @@ def test_from_dict_http() -> None:
     with patch("requests.get", return_value=mock_resp):
         pass  # TODO: call from_dict with valid args and assert result
 
+
 # from src.som_contracts import to_dict
 def test_to_dict_returns_dict_str_any() -> None:
     """Contract: to_dict returns dict[str, Any]."""
     # TODO: Provide valid arguments
     # result = to_dict()
     # assert isinstance(result, dict)
+
 
 # from src.som_contracts import from_dict
 def test_from_dict_http() -> None:
@@ -42,4 +46,3 @@ def test_from_dict_http() -> None:
     mock_resp.text = ""
     with patch("requests.get", return_value=mock_resp):
         pass  # TODO: call from_dict with valid args and assert result
-

@@ -11,6 +11,7 @@ def test_lower_proof_to_lean_returns_expected_output() -> None:
     result = lower_proof_to_lean(...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
 
+
 def test_lower_proof_to_lean_boundary_values() -> None:
     """Test lower_proof_to_lean with edge cases that mutation testing targets."""
     # Boundary: example
@@ -19,11 +20,11 @@ def test_lower_proof_to_lean_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_lower_to_theorem_returns_expected_output() -> None:
     """Test lower_to_theorem with valid input."""
     result = lower_to_theorem(...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_lower_to_theorem_boundary_values() -> None:
     """Test lower_to_theorem with edge cases that mutation testing targets."""
@@ -33,11 +34,11 @@ def test_lower_to_theorem_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_roundtrip_validate_returns_expected_output() -> None:
     """Test roundtrip_validate with valid input."""
     result = roundtrip_validate(...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_roundtrip_validate_boundary_values() -> None:
     """Test roundtrip_validate with edge cases that mutation testing targets."""
@@ -45,6 +46,3 @@ def test_roundtrip_validate_boundary_values() -> None:
     # TODO: Test with boundary inputs (0, -1, empty string, None)
     result = roundtrip_validate(...)
     assert result == EXPECTED  # TODO: Replace with actual expected value
-
-
-

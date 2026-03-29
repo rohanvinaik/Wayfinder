@@ -28,8 +28,12 @@ class ResidualExecutor(nn.Module):
     def __init__(self, input_dim=384, hidden_dim=256, num_families=NUM_FAMILIES):
         super().__init__()
         self.trunk = nn.Sequential(
-            nn.Linear(input_dim, hidden_dim), nn.ReLU(), nn.Dropout(0.1),
-            nn.Linear(hidden_dim, hidden_dim), nn.ReLU(), nn.Dropout(0.1),
+            nn.Linear(input_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(0.1),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(0.1),
         )
         self.family_head = nn.Linear(hidden_dim, num_families)
         self.premise_head = nn.Linear(hidden_dim, 1)
@@ -64,14 +68,13 @@ def train(run_id, data_path, epochs, batch_size, lr, eval_frac=0.02):
     train_ds = TensorDataset(emb[train_idx], labels[train_idx], premise[train_idx])
     eval_emb = emb[eval_idx]
     eval_labels = labels[eval_idx]
-    eval_premise = premise[eval_idx]
     print(f"  Train: {len(train_ds)}, Eval: {n_eval}")
 
     # Class weights (inverse frequency)
     class_counts = torch.zeros(NUM_FAMILIES)
     for i in range(NUM_FAMILIES):
         class_counts[i] = (labels[train_idx] == i).sum().float()
-    weights = (1.0 / class_counts.clamp(min=1))
+    weights = 1.0 / class_counts.clamp(min=1)
     weights = weights / weights.sum() * NUM_FAMILIES
     print(f"  Class weights: {dict(zip(TACTIC_FAMILIES, [f'{w:.2f}' for w in weights.tolist()]))}")
 
@@ -134,22 +137,42 @@ def train(run_id, data_path, epochs, batch_size, lr, eval_frac=0.02):
             other_idx = TACTIC_FAMILIES.index("other")
             non_other_mask = eval_labels != other_idx
             if non_other_mask.sum() > 0:
-                top5_exc = float((preds[non_other_mask] == eval_labels[non_other_mask]).float().mean())
+                top5_exc = float(
+                    (preds[non_other_mask] == eval_labels[non_other_mask]).float().mean()
+                )
             else:
                 top5_exc = 0.0
 
         avg_loss = total_loss / max(nb, 1)
         print(
-            f"  Epoch {epoch+1}/{epochs}: loss={avg_loss:.4f} "
+            f"  Epoch {epoch + 1}/{epochs}: loss={avg_loss:.4f} "
             f"top1={top1:.3f} top3={top3_acc:.3f} macF1={macro_f1:.3f} "
             f"top5ex={top5_exc:.3f} "
             f"[{', '.join(f'{n}:{v:.2f}' for n, v in per_class.items())}]"
         )
-        log.append({"epoch": epoch+1, "loss": avg_loss, "top1": top1, "top3": top3_acc, "macro_f1": macro_f1, "top5_exc": top5_exc, "per_class": per_class})
+        log.append(
+            {
+                "epoch": epoch + 1,
+                "loss": avg_loss,
+                "top1": top1,
+                "top3": top3_acc,
+                "macro_f1": macro_f1,
+                "top5_exc": top5_exc,
+                "per_class": per_class,
+            }
+        )
 
         if top1 > best_top1:
             best_top1 = top1
-            torch.save({"epoch": epoch+1, "model": model.state_dict(), "top1": top1, "macro_f1": macro_f1}, f"models/{run_id}_best.pt")
+            torch.save(
+                {
+                    "epoch": epoch + 1,
+                    "model": model.state_dict(),
+                    "top1": top1,
+                    "macro_f1": macro_f1,
+                },
+                f"models/{run_id}_best.pt",
+            )
 
     elapsed = time.time() - t0
 
@@ -161,7 +184,7 @@ def train(run_id, data_path, epochs, batch_size, lr, eval_frac=0.02):
 
     print(f"\n=== Final ({elapsed:.0f}s) ===")
     print(f"  Best top-1: {best_top1:.3f}")
-    print(f"  Confusion (true → pred top-3):")
+    print("  Confusion (true → pred top-3):")
     for ti, tn in enumerate(TACTIC_FAMILIES):
         mask = eval_labels == ti
         if mask.sum() == 0:

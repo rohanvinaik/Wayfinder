@@ -56,7 +56,6 @@ logger = logging.getLogger(__name__)
 from src.apply_scoper import _SHAPE_SUFFIXES, classify_goal_shape, extract_goal_head
 from src.proof_network import get_accessible_premises
 
-
 # ---------------------------------------------------------------------------
 # Feature extraction (shared with EXP-RANK-044)
 # ---------------------------------------------------------------------------
@@ -105,10 +104,23 @@ def feature_vector(
     if any(suf in name_lower for suf in suffixes):
         shape_compat = 1.0
 
-    _CONCL_SFXS = ["_iff", "_eq", "_le", "_lt", "_mem", "_surjective", "_injective",
-                   "_continuous", "_tendsto", "_measurable", "_mono", "_nonneg"]
-    conclusion_sfx = 1.0 if any(name_lower.endswith(s) or s + "_" in name_lower
-                                 for s in _CONCL_SFXS) else 0.0
+    _CONCL_SFXS = [
+        "_iff",
+        "_eq",
+        "_le",
+        "_lt",
+        "_mem",
+        "_surjective",
+        "_injective",
+        "_continuous",
+        "_tendsto",
+        "_measurable",
+        "_mono",
+        "_nonneg",
+    ]
+    conclusion_sfx = (
+        1.0 if any(name_lower.endswith(s) or s + "_" in name_lower for s in _CONCL_SFXS) else 0.0
+    )
 
     cand_ns = ".".join(candidate.split(".")[:2]) if "." in candidate else ""
     thm_ns = ".".join(theorem_namespace.split(".")[:2]) if "." in theorem_namespace else ""
@@ -122,8 +134,15 @@ def feature_vector(
 
     rank_norm = (5 - cosine_rank) / 5.0  # higher = better cosine rank
 
-    return [head_compat, shape_compat, conclusion_sfx, namespace_match,
-            local_overlap, float(cosine_score), rank_norm]
+    return [
+        head_compat,
+        shape_compat,
+        conclusion_sfx,
+        namespace_match,
+        local_overlap,
+        float(cosine_score),
+        rank_norm,
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -134,10 +153,11 @@ def feature_vector(
 @dataclass
 class RerankExample:
     """One goal with top-5 candidates. gold_idx is the position of gold in top-5."""
+
     theorem_id: str
     subset: str
-    features: np.ndarray   # shape (5, N_FEATURES)
-    gold_idx: int          # 0-4, index of gold in top-5
+    features: np.ndarray  # shape (5, N_FEATURES)
+    gold_idx: int  # 0-4, index of gold in top-5
 
 
 def load_examples(eval_path: str, families: list[str]) -> list[dict]:
@@ -220,12 +240,14 @@ def build_dataset(
         while len(feats) < top_k:
             feats.append([0.0] * N_FEATURES)
 
-        dataset.append(RerankExample(
-            theorem_id=theorem_id,
-            subset=subset,
-            features=np.array(feats, dtype=np.float32),
-            gold_idx=gold_idx,
-        ))
+        dataset.append(
+            RerankExample(
+                theorem_id=theorem_id,
+                subset=subset,
+                features=np.array(feats, dtype=np.float32),
+                gold_idx=gold_idx,
+            )
+        )
 
     logger.info("Dataset: %d examples, %d skipped", len(dataset), skipped)
     return dataset
@@ -360,8 +382,9 @@ def cross_validate(
         model = train_fold(train_data, n_epochs=n_epochs, lr=lr, device=device)
         top1, mrr = evaluate(model, val_data, device=device)
         fold_results.append({"top1": top1, "mrr": mrr, "n_val": len(val_data)})
-        logger.info("  fold %d: top1=%.3f  MRR=%.3f  (n_val=%d)",
-                    fold_idx + 1, top1, mrr, len(val_data))
+        logger.info(
+            "  fold %d: top1=%.3f  MRR=%.3f  (n_val=%d)", fold_idx + 1, top1, mrr, len(val_data)
+        )
 
     top1_scores = [r["top1"] for r in fold_results]
     mrr_scores = [r["mrr"] for r in fold_results]
@@ -398,41 +421,48 @@ def _report_subset(
     print(f"\n  [{label}]  train={len(train_data)}, eval={n}")
     print(f"  {'Method':<24} {'top1/eval':>10} {'MRR@5':>8}")
     print("  " + "-" * 45)
-    print(f"  {'cosine_top1':<24} {cos_top1*n:>5.0f}/{n:<4}  {cos_mrr:>7.3f}")
-    print(f"  {'rule_head_shape':<24} {hs_top1*n:>5.0f}/{n:<4}  {hs_mrr:>7.3f}")
+    print(f"  {'cosine_top1':<24} {cos_top1 * n:>5.0f}/{n:<4}  {cos_mrr:>7.3f}")
+    print(f"  {'rule_head_shape':<24} {hs_top1 * n:>5.0f}/{n:<4}  {hs_mrr:>7.3f}")
 
     if train_data:
         model = train_fold(train_data, n_epochs=n_epochs, lr=lr, device=device)
         top1, mrr = evaluate(model, eval_data, device=device)
-        print(f"  {'reranker (held-out)':<24} {top1*n:>5.1f}/{n:<4}  {mrr:>7.3f}")
+        print(f"  {'reranker (held-out)':<24} {top1 * n:>5.1f}/{n:<4}  {mrr:>7.3f}")
         return model
     else:
         # Fall back to CV on eval_data only
         cv = cross_validate(eval_data, n_folds=n_folds, n_epochs=n_epochs, lr=lr, device=device)
         top1_n = cv["top1_mean"] * n
-        print(f"  {'reranker (CV mean)':<24} {top1_n:>5.1f}/{n:<4}  {cv['mrr_mean']:>7.3f}  "
-              f"±(top1={cv['top1_std']:.3f})")
+        print(
+            f"  {'reranker (CV mean)':<24} {top1_n:>5.1f}/{n:<4}  {cv['mrr_mean']:>7.3f}  "
+            f"±(top1={cv['top1_std']:.3f})"
+        )
         return None
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="EXP-RERANK-045: learned reranker training")
     parser.add_argument("--db", default="data/proof_network_v3.db")
-    parser.add_argument("--train", default="data/canonical/canonical_residual_train.jsonl",
-                        help="Training set (empty string → CV on eval only)")
+    parser.add_argument(
+        "--train",
+        default="data/canonical/canonical_residual_train.jsonl",
+        help="Training set (empty string → CV on eval only)",
+    )
     parser.add_argument("--eval", default="data/canonical/canonical_residual_eval.jsonl")
     parser.add_argument("--output", default="models/reranker045.pt")
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--epochs", type=int, default=50)
     parser.add_argument("--lr", type=float, default=3e-3)
     parser.add_argument("--folds", type=int, default=5)
-    parser.add_argument("--limit-train", type=int, default=0,
-                        help="Cap training examples per family (0=unlimited)")
+    parser.add_argument(
+        "--limit-train", type=int, default=0, help="Cap training examples per family (0=unlimited)"
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     from sentence_transformers import SentenceTransformer
+
     encoder = SentenceTransformer("all-MiniLM-L6-v2")
     logger.info("Loaded MiniLM encoder")
 
@@ -453,6 +483,7 @@ def main() -> None:
         raw_train = load_examples(args.train, ["apply", "refine"])
         if args.limit_train > 0:
             import random
+
             random.seed(42)
             raw_train = random.sample(raw_train, min(args.limit_train, len(raw_train)))
         train_dataset = build_dataset(raw_train, conn, id_to_name, name_to_id, encoder)
@@ -460,36 +491,48 @@ def main() -> None:
     conn.close()
 
     # Split by family
-    train_apply  = [ex for ex in train_dataset if ex.subset == "apply"]
+    train_apply = [ex for ex in train_dataset if ex.subset == "apply"]
     train_refine = [ex for ex in train_dataset if ex.subset == "refine_named"]
-    eval_apply   = [ex for ex in eval_dataset  if ex.subset == "apply"]
-    eval_refine  = [ex for ex in eval_dataset  if ex.subset == "refine_named"]
-    logger.info("Train: apply=%d, refine_named=%d | Eval: apply=%d, refine_named=%d",
-                len(train_apply), len(train_refine), len(eval_apply), len(eval_refine))
+    eval_apply = [ex for ex in eval_dataset if ex.subset == "apply"]
+    eval_refine = [ex for ex in eval_dataset if ex.subset == "refine_named"]
+    logger.info(
+        "Train: apply=%d, refine_named=%d | Eval: apply=%d, refine_named=%d",
+        len(train_apply),
+        len(train_refine),
+        len(eval_apply),
+        len(eval_refine),
+    )
 
     print("\n" + "=" * 68)
     print("EXP-RERANK-045b: Scaled reranker (apply + refine_named)")
     print("=" * 68)
 
-    model_apply  = _report_subset("apply",        train_apply,  eval_apply,
-                                  args.epochs, args.lr, args.device, args.folds)
-    model_refine = _report_subset("refine_named", train_refine, eval_refine,
-                                  args.epochs, args.lr, args.device, args.folds)
+    model_apply = _report_subset(
+        "apply", train_apply, eval_apply, args.epochs, args.lr, args.device, args.folds
+    )
+    model_refine = _report_subset(
+        "refine_named", train_refine, eval_refine, args.epochs, args.lr, args.device, args.folds
+    )
 
     # Save per-family models
     Path(args.output).parent.mkdir(parents=True, exist_ok=True)
-    for suffix, model, n_train in [("apply", model_apply, len(train_apply)),
-                                    ("refine", model_refine, len(train_refine))]:
+    for suffix, model, n_train in [
+        ("apply", model_apply, len(train_apply)),
+        ("refine", model_refine, len(train_refine)),
+    ]:
         if model is None:
             continue
         out = Path(args.output).with_stem(Path(args.output).stem + f"_{suffix}")
-        torch.save({
-            "model_state_dict": model.state_dict(),
-            "n_features": N_FEATURES,
-            "hidden": 32,
-            "n_train": n_train,
-            "family": suffix,
-        }, out)
+        torch.save(
+            {
+                "model_state_dict": model.state_dict(),
+                "n_features": N_FEATURES,
+                "hidden": 32,
+                "n_train": n_train,
+                "family": suffix,
+            },
+            out,
+        )
         logger.info("Saved %s reranker to %s", suffix, out)
 
     print("=" * 68)

@@ -53,12 +53,18 @@ def _make_packet(**kwargs):
         "candidate_anchor_sets": {1: {1, 2, 10}, 2: {3}},
         "candidate_summaries": {
             1: {
-                "anchor_count": 3, "constant_count": 2, "residual_overlap": 1,
-                "unsupported_const_overlap": 1, "frozen_overlap": 0,
+                "anchor_count": 3,
+                "constant_count": 2,
+                "residual_overlap": 1,
+                "unsupported_const_overlap": 1,
+                "frozen_overlap": 0,
             },
             2: {
-                "anchor_count": 1, "constant_count": 0, "residual_overlap": 0,
-                "unsupported_const_overlap": 0, "frozen_overlap": 0,
+                "anchor_count": 1,
+                "constant_count": 0,
+                "residual_overlap": 0,
+                "unsupported_const_overlap": 0,
+                "frozen_overlap": 0,
             },
         },
     }
@@ -76,7 +82,6 @@ def _lens_vote(cid, vote=1, conf=0.8, name="test"):
 
 
 class TestClassifyCommitteeState(unittest.TestCase):
-
     def test_stable_two_support_no_opposition(self):
         votes = [_lens_vote(1, 1, 0.8, "a"), _lens_vote(1, 1, 0.7, "b")]
         self.assertEqual(classify_committee_state(votes), "stable")
@@ -107,7 +112,6 @@ class TestClassifyCommitteeState(unittest.TestCase):
 
 
 class TestFusedScore(unittest.TestCase):
-
     def test_support_minus_half_oppose(self):
         votes = [_lens_vote(1, 1, 0.8), _lens_vote(1, -1, 0.4)]
         self.assertAlmostEqual(compute_fused_score(votes), 0.8 - 0.2)
@@ -118,7 +122,6 @@ class TestFusedScore(unittest.TestCase):
 
 
 class TestResolutionDecision(unittest.TestCase):
-
     def test_act_before_trust_lens(self):
         packet = _make_packet()
         states = [
@@ -147,7 +150,6 @@ class TestResolutionDecision(unittest.TestCase):
 
 
 class TestSpecialistInterface(unittest.TestCase):
-
     def test_all_specialists_are_lens_specialist(self):
         for s in ALL_SPECIALISTS:
             self.assertIsInstance(s, LensSpecialist)
@@ -166,7 +168,6 @@ class TestSpecialistInterface(unittest.TestCase):
 
 
 class TestLocalityGuardLens(unittest.TestCase):
-
     def test_opposes_locality_only(self):
         packet = _make_packet(locality_only_warnings=[1])
         vote = LocalityGuardLens().vote(packet, _scored(1))
@@ -179,18 +180,23 @@ class TestLocalityGuardLens(unittest.TestCase):
 
 
 class TestConstantMatchLens(unittest.TestCase):
-
     def test_supports_when_constants_present(self):
         packet = _make_packet(
             residual=LandmarkResidualReport(unsupported_constants=[10]),
             candidate_summaries={
                 1: {
-                    "anchor_count": 5, "constant_count": 3, "residual_overlap": 0,
-                    "unsupported_const_overlap": 2, "frozen_overlap": 0,
+                    "anchor_count": 5,
+                    "constant_count": 3,
+                    "residual_overlap": 0,
+                    "unsupported_const_overlap": 2,
+                    "frozen_overlap": 0,
                 },
                 2: {
-                    "anchor_count": 1, "constant_count": 0, "residual_overlap": 0,
-                    "unsupported_const_overlap": 0, "frozen_overlap": 0,
+                    "anchor_count": 1,
+                    "constant_count": 0,
+                    "residual_overlap": 0,
+                    "unsupported_const_overlap": 0,
+                    "frozen_overlap": 0,
                 },
             },
         )
@@ -209,7 +215,6 @@ class TestConstantMatchLens(unittest.TestCase):
 
 
 class TestRunLensCommittee(unittest.TestCase):
-
     def test_returns_states_for_all_candidates(self):
         packet = _make_packet()
         states = run_lens_committee(packet)

@@ -5,10 +5,10 @@ from __future__ import annotations
 
 # Source module: scripts.similarity_metrics
 
+
 # from scripts.similarity_metrics import compute_similarity_metrics
 def test_compute_similarity_metrics_returns_dict() -> None:
     """Contract: compute_similarity_metrics returns dict."""
     # TODO: Provide valid arguments
     # result = compute_similarity_metrics(..., ...)
     # assert isinstance(result, dict)
-

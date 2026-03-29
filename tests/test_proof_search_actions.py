@@ -711,7 +711,10 @@ class TestSearchStep(unittest.TestCase):
         _search_step(MagicMock(), state, env, context, cfg)
 
         self.assertEqual(state.open_goals, ["g0"])
-        self.assertEqual(state.attempts, 1)
+        # attempts = 1 (lane fail) + 3 (norm_setup: norm_cast, ring_nf, push_neg)
+        #          + len(_EXPENSIVE_CLOSERS) (last-resort on single goal)
+        from src.proof_search import _EXPENSIVE_CLOSERS
+        self.assertEqual(state.attempts, 1 + 3 + len(_EXPENSIVE_CLOSERS))
 
     @patch("src.proof_search._try_candidates")
     @patch("src.proof_search._try_structural_fallback")
@@ -737,6 +740,32 @@ class TestSearchStep(unittest.TestCase):
 
         mock_hammer.assert_not_called()
         mock_candidates.assert_called_once()
+
+    @patch("src.proof_search._try_candidates")
+    @patch("src.proof_search._try_structural_fallback")
+    @patch("src.proof_search._try_hammer")
+    @patch("src.proof_search._cached_infer")
+    @patch("src.proof_search._select_goal")
+    def test_single_goal_norm_then_close_disabled_skips_norm_attempts(
+        self, mock_select, mock_infer, mock_hammer, mock_structural, mock_candidates
+    ):
+        """When disabled, the norm_then_close fallback should not consume attempts."""
+        nav = _make_nav_output(automation=0)
+        mock_select.return_value = ("g0", 0)
+        mock_infer.return_value = nav
+        mock_structural.return_value = False
+        mock_candidates.return_value = False
+
+        state = _SearchState(open_goals=["g0"])
+        env = _SearchEnv(conn=MagicMock(), lean=MagicMock(), anchor_id_map=None, max_candidates=8)
+        cfg = SearchConfig(hammer_delegation=False, norm_then_close_enabled=False)
+        context = SearchContext()
+
+        _search_step(MagicMock(), state, env, context, cfg)
+
+        from src.proof_search import _EXPENSIVE_CLOSERS
+
+        self.assertEqual(state.attempts, 1 + len(_EXPENSIVE_CLOSERS))
 
 
 class TestApplyGate(unittest.TestCase):
@@ -765,9 +794,7 @@ class TestApplyGate(unittest.TestCase):
         self.assertFalse(_apply_gate(self._APPLY_GOAL, state))
 
     def test_fails_when_multiple_open_goals(self) -> None:
-        state = self._state_with_ib_tried(
-            self._MULTI_GOAL_1, extra_goals=[self._MULTI_GOAL_2]
-        )
+        state = self._state_with_ib_tried(self._MULTI_GOAL_1, extra_goals=[self._MULTI_GOAL_2])
         self.assertFalse(_apply_gate(self._MULTI_GOAL_1, state))
 
     def test_fails_on_arithmetic_goal(self) -> None:

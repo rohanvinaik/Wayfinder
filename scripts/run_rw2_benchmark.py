@@ -27,7 +27,7 @@ import sqlite3
 import subprocess
 import sys
 import time
-from collections import Counter, defaultdict
+from collections import Counter
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Iterable
@@ -142,7 +142,13 @@ def load_rw2_examples(path: str, step0_only: bool = True, limit: int = 0) -> lis
             if step0_only and ex.get("step_index", 0) != 0:
                 continue
             examples.append(ex)
-    examples.sort(key=lambda x: (x.get("file_path", ""), x.get("theorem_full_name", ""), x.get("step_index", 0)))
+    examples.sort(
+        key=lambda x: (
+            x.get("file_path", ""),
+            x.get("theorem_full_name", ""),
+            x.get("step_index", 0),
+        )
+    )
     if limit > 0:
         examples = examples[:limit]
     return examples
@@ -173,7 +179,9 @@ def get_premise_names(
     return [id_to_name[pid] for pid in premise_ids if pid in id_to_name]
 
 
-def cosine_rank_symbols(goal_text: str, symbols: list[str], encoder: object | None = None) -> list[tuple[float, str]]:
+def cosine_rank_symbols(
+    goal_text: str, symbols: list[str], encoder: object | None = None
+) -> list[tuple[float, str]]:
     if not symbols or encoder is None:
         return [(0.0, s) for s in symbols]
     try:
@@ -246,10 +254,28 @@ def extract_local_terms(goal_state: str, max_locals: int = 8) -> list[LocalTerm]
             continue
         candidates.append((score, position, LocalTerm(text=name, position=position, score=score)))
         if any(tok in type_text for tok in (" = ", " ↔ ", " ≠ ")):
-            candidates.append((score - 0.2, position, LocalTerm(text=f"{name}.symm", position=position, score=score - 0.2)))
+            candidates.append(
+                (
+                    score - 0.2,
+                    position,
+                    LocalTerm(text=f"{name}.symm", position=position, score=score - 0.2),
+                )
+            )
         if any(tok in type_text for tok in (" ∧ ", " × ", " Exists", "∃")):
-            candidates.append((score - 0.5, position, LocalTerm(text=f"{name}.1", position=position, score=score - 0.5)))
-            candidates.append((score - 0.5, position, LocalTerm(text=f"{name}.2", position=position, score=score - 0.5)))
+            candidates.append(
+                (
+                    score - 0.5,
+                    position,
+                    LocalTerm(text=f"{name}.1", position=position, score=score - 0.5),
+                )
+            )
+            candidates.append(
+                (
+                    score - 0.5,
+                    position,
+                    LocalTerm(text=f"{name}.2", position=position, score=score - 0.5),
+                )
+            )
 
     # Select highest-scoring terms, then restore source order for combination generation.
     chosen = sorted(candidates, key=lambda x: (-x[0], x[1], x[2].text))[:max_locals]
@@ -349,7 +375,11 @@ def resolve_gold_premise_name(example: dict, scope_premises: list[str]) -> str:
     if len(suffix) == 1:
         return suffix[0]
     if annotated:
-        suffix = [p for p in scope_premises if p.endswith(f".{short_head}") and p.endswith(annotated.split(".")[-1])]
+        suffix = [
+            p
+            for p in scope_premises
+            if p.endswith(f".{short_head}") and p.endswith(annotated.split(".")[-1])
+        ]
         if suffix:
             return suffix[0]
     return annotated
@@ -381,7 +411,9 @@ def build_rw_tactic(premise: str, args: Iterable[str], direction: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def try_tactic_safe(kernel: LeanKernel, goal_state: str, tactic: str, goal_id: int = 0) -> tuple[bool, str, bool, bool]:
+def try_tactic_safe(
+    kernel: LeanKernel, goal_state: str, tactic: str, goal_id: int = 0
+) -> tuple[bool, str, bool, bool]:
     try:
         result = kernel.try_tactic(goal_state, tactic, goal_id=goal_id)
         has_remaining = bool(result.new_goals) and result.success
@@ -485,7 +517,9 @@ def run_one_example(
         res.gold_in_scope = res.gold_premise_name in scope.premises
 
     local_terms = extract_local_terms(goal_str, max_locals=max_locals)
-    arg_sequences = build_arg_sequences(local_terms, max_args=max_args, max_sequences=max_arg_sequences)
+    arg_sequences = build_arg_sequences(
+        local_terms, max_args=max_args, max_sequences=max_arg_sequences
+    )
     res.n_local_terms = len(local_terms)
     res.n_arg_sequences = len(arg_sequences)
 
@@ -493,7 +527,9 @@ def run_one_example(
     oracle_tactic = qualify_oracle_tactic(res.canonical_action_ir, res.gold_premise_name)
     res.oracle_tactic = oracle_tactic
     if oracle_tactic:
-        ok, err, remaining, crashed = try_tactic_safe(kernel, goal_str, oracle_tactic, goal_id=goal_id)
+        ok, err, remaining, crashed = try_tactic_safe(
+            kernel, goal_str, oracle_tactic, goal_id=goal_id
+        )
         if crashed:
             res.crash_retries += 1
             res.oracle_error = err
@@ -514,7 +550,7 @@ def run_one_example(
     if res.gold_premise_name:
         for i, (_, prem) in enumerate(ranked):
             if prem == res.gold_premise_name:
-                gold_rank = i
+                gold_rank = i  # noqa: F841
                 break
 
     top_k = min(cosine_topk, len(ranked))
@@ -607,7 +643,7 @@ def print_report(results: list[ExampleResult], total: int) -> None:
     for tier, cnt in sorted(tier_counts.items()):
         print(f"  {tier}: {cnt}")
 
-    print(f"\nGoalStart@rw2: {started_n}/{total} ({100*started_n/max(total,1):.1f}%)")
+    print(f"\nGoalStart@rw2: {started_n}/{total} ({100 * started_n / max(total, 1):.1f}%)")
     if fail_cats:
         print("  Failure breakdown:")
         for cat, cnt in fail_cats.most_common():
@@ -617,18 +653,28 @@ def print_report(results: list[ExampleResult], total: int) -> None:
         return
 
     print(f"\nLeanValid@rw2|started (N={started_n}):")
-    print(f"  Oracle qualified: {oracle_ok}/{started_n} ({100*oracle_ok/max(started_n,1):.1f}%)")
-    print(f"  Cosine top-1:     {c1_ok}/{started_n} ({100*c1_ok/max(started_n,1):.1f}%)")
-    print(f"  Cosine top-5:     {c5_ok}/{started_n} ({100*c5_ok/max(started_n,1):.1f}%)")
+    print(
+        f"  Oracle qualified: {oracle_ok}/{started_n} ({100 * oracle_ok / max(started_n, 1):.1f}%)"
+    )
+    print(f"  Cosine top-1:     {c1_ok}/{started_n} ({100 * c1_ok / max(started_n, 1):.1f}%)")
+    print(f"  Cosine top-5:     {c5_ok}/{started_n} ({100 * c5_ok / max(started_n, 1):.1f}%)")
 
     if gold_scope:
         print(f"\nLeanValid@rw2|started,gold_in_scope (M={len(gold_scope)}):")
-        print(f"  Oracle qualified: {sum(r.oracle_success for r in gold_scope)}/{len(gold_scope)} ({100*sum(r.oracle_success for r in gold_scope)/max(len(gold_scope),1):.1f}%)")
-        print(f"  Cosine top-1:     {sum(r.cosine_top1_success for r in gold_scope)}/{len(gold_scope)} ({100*sum(r.cosine_top1_success for r in gold_scope)/max(len(gold_scope),1):.1f}%)")
-        print(f"  Cosine top-5:     {sum(r.cosine_top5_success for r in gold_scope)}/{len(gold_scope)} ({100*sum(r.cosine_top5_success for r in gold_scope)/max(len(gold_scope),1):.1f}%)")
+        print(
+            f"  Oracle qualified: {sum(r.oracle_success for r in gold_scope)}/{len(gold_scope)} ({100 * sum(r.oracle_success for r in gold_scope) / max(len(gold_scope), 1):.1f}%)"
+        )
+        print(
+            f"  Cosine top-1:     {sum(r.cosine_top1_success for r in gold_scope)}/{len(gold_scope)} ({100 * sum(r.cosine_top1_success for r in gold_scope) / max(len(gold_scope), 1):.1f}%)"
+        )
+        print(
+            f"  Cosine top-5:     {sum(r.cosine_top5_success for r in gold_scope)}/{len(gold_scope)} ({100 * sum(r.cosine_top5_success for r in gold_scope) / max(len(gold_scope), 1):.1f}%)"
+        )
 
     print("\nScope stats:")
-    print(f"  Gold in scope: {len(gold_scope)}/{started_n} ({100*len(gold_scope)/max(started_n,1):.1f}%)")
+    print(
+        f"  Gold in scope: {len(gold_scope)}/{started_n} ({100 * len(gold_scope) / max(started_n, 1):.1f}%)"
+    )
     if scope_sizes:
         print(f"  Mean scope size: {np.mean(scope_sizes):.1f}")
     if local_sizes:
@@ -637,8 +683,8 @@ def print_report(results: list[ExampleResult], total: int) -> None:
         print(f"  Mean arg-sequence beam: {np.mean(seq_sizes):.1f}")
 
     print("\nHeuristic call budget:")
-    print(f"  Cosine top-1 calls/example: {total_calls_1/max(started_n,1):.1f}")
-    print(f"  Cosine top-5 calls/example: {total_calls_5/max(started_n,1):.1f}")
+    print(f"  Cosine top-1 calls/example: {total_calls_1 / max(started_n, 1):.1f}")
+    print(f"  Cosine top-5 calls/example: {total_calls_5 / max(started_n, 1):.1f}")
 
     if heuristic_fail:
         print("\nCosine failure taxonomy:")
@@ -656,7 +702,9 @@ def print_report(results: list[ExampleResult], total: int) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _base_worker_cmd(args: argparse.Namespace, shard_index: int, num_shards: int, shard_output: str) -> list[str]:
+def _base_worker_cmd(
+    args: argparse.Namespace, shard_index: int, num_shards: int, shard_output: str
+) -> list[str]:
     cmd = [
         sys.executable,
         "-m",
@@ -727,13 +775,22 @@ def run_parallel(args: argparse.Namespace) -> None:
             for line in f:
                 if line.strip():
                     merged.append(json.loads(line))
-    merged.sort(key=lambda d: (d.get("file_path", ""), d.get("theorem_full_name", ""), d.get("step_index", 0)))
+    merged.sort(
+        key=lambda d: (
+            d.get("file_path", ""),
+            d.get("theorem_full_name", ""),
+            d.get("step_index", 0),
+        )
+    )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w") as out_f:
         for row in merged:
             out_f.write(json.dumps(row) + "\n")
 
-    results = [ExampleResult(**{k: v for k, v in row.items() if k in ExampleResult.__dataclass_fields__}) for row in merged]
+    results = [
+        ExampleResult(**{k: v for k, v in row.items() if k in ExampleResult.__dataclass_fields__})
+        for row in merged
+    ]
     if not args.worker or args.num_shards == 1:
         print_report(results, len(results))
 
@@ -743,7 +800,12 @@ def run_worker(args: argparse.Namespace) -> None:
     examples = load_rw2_examples(args.data, step0_only=not args.include_step_gt0, limit=args.limit)
     if args.num_shards > 1:
         examples = [ex for i, ex in enumerate(examples) if i % args.num_shards == args.shard_index]
-    logger.info("Worker shard %d/%d loaded %d rw2 examples", args.shard_index + 1, args.num_shards, len(examples))
+    logger.info(
+        "Worker shard %d/%d loaded %d rw2 examples",
+        args.shard_index + 1,
+        args.num_shards,
+        len(examples),
+    )
 
     conn = sqlite3.connect(args.db)
     id_to_name, name_to_id = load_entity_maps(conn)
@@ -751,17 +813,20 @@ def run_worker(args: argparse.Namespace) -> None:
     encoder = None
     try:
         from sentence_transformers import SentenceTransformer
+
         encoder = SentenceTransformer("all-MiniLM-L6-v2")
         logger.info("Loaded MiniLM encoder")
     except ImportError:
         logger.warning("sentence-transformers not installed; cosine ranking disabled")
 
-    kernel = LeanKernel(LeanConfig(
-        backend="pantograph",
-        timeout=120,
-        project_root=args.lean_project,
-        imports=["Mathlib"],
-    ))
+    kernel = LeanKernel(
+        LeanConfig(
+            backend="pantograph",
+            timeout=120,
+            project_root=args.lean_project,
+            imports=["Mathlib"],
+        )
+    )
     logger.info("Initializing Pantograph with Mathlib")
 
     results: list[ExampleResult] = []
@@ -798,7 +863,12 @@ def run_worker(args: argparse.Namespace) -> None:
                     direction_mode=args.direction_mode,
                 )
             except Exception as e:
-                logger.error("Unhandled error on %s step %d: %s", ex.get("theorem_full_name"), ex.get("step_index"), e)
+                logger.error(
+                    "Unhandled error on %s step %d: %s",
+                    ex.get("theorem_full_name"),
+                    ex.get("step_index"),
+                    e,
+                )
                 res = ExampleResult(
                     theorem_full_name=ex.get("theorem_full_name", ""),
                     file_path=ex.get("file_path", ""),
@@ -823,18 +893,43 @@ def run_worker(args: argparse.Namespace) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="rw2 benchmark runner")
     parser.add_argument("--db", default="data/proof_network.db", help="Proof network DB path")
-    parser.add_argument("--data", default="data/canonical/canonical_rw_eval.jsonl", help="Canonical rw eval JSONL")
+    parser.add_argument(
+        "--data", default="data/canonical/canonical_rw_eval.jsonl", help="Canonical rw eval JSONL"
+    )
     parser.add_argument("--lean-project", default="data/lean_project/", help="Lean project root")
     parser.add_argument("--output", default="runs/rw2_results.jsonl", help="Output JSONL path")
-    parser.add_argument("--limit", type=int, default=0, help="Max rw2 examples after filtering (0 = all)")
-    parser.add_argument("--include-step-gt0", action="store_true", help="Include step>0 examples (default step-0 only)")
-    parser.add_argument("--restart-every", type=int, default=50, help="Restart server every N examples")
-    parser.add_argument("--max-scope-premises", type=int, default=30, help="Max premises in rw scope")
-    parser.add_argument("--cosine-topk", type=int, default=5, help="Premise beam for cosine baseline")
-    parser.add_argument("--max-locals", type=int, default=8, help="Max local terms kept for arg beam")
-    parser.add_argument("--max-args", type=int, default=4, help="Max positional args in heuristic beam")
-    parser.add_argument("--max-arg-sequences", type=int, default=24, help="Max arg sequences per premise")
-    parser.add_argument("--direction-mode", choices=["both", "infer", "tier-default"], default="both", help="Direction policy for heuristic tactics")
+    parser.add_argument(
+        "--limit", type=int, default=0, help="Max rw2 examples after filtering (0 = all)"
+    )
+    parser.add_argument(
+        "--include-step-gt0",
+        action="store_true",
+        help="Include step>0 examples (default step-0 only)",
+    )
+    parser.add_argument(
+        "--restart-every", type=int, default=50, help="Restart server every N examples"
+    )
+    parser.add_argument(
+        "--max-scope-premises", type=int, default=30, help="Max premises in rw scope"
+    )
+    parser.add_argument(
+        "--cosine-topk", type=int, default=5, help="Premise beam for cosine baseline"
+    )
+    parser.add_argument(
+        "--max-locals", type=int, default=8, help="Max local terms kept for arg beam"
+    )
+    parser.add_argument(
+        "--max-args", type=int, default=4, help="Max positional args in heuristic beam"
+    )
+    parser.add_argument(
+        "--max-arg-sequences", type=int, default=24, help="Max arg sequences per premise"
+    )
+    parser.add_argument(
+        "--direction-mode",
+        choices=["both", "infer", "tier-default"],
+        default="both",
+        help="Direction policy for heuristic tactics",
+    )
     parser.add_argument("--parallel", type=int, default=1, help="Shard into N worker subprocesses")
     parser.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--num-shards", type=int, default=1, help=argparse.SUPPRESS)

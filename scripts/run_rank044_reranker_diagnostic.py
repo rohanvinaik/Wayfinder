@@ -48,7 +48,6 @@ logger = logging.getLogger(__name__)
 from src.apply_scoper import _SHAPE_SUFFIXES, classify_goal_shape, extract_goal_head
 from src.proof_network import get_accessible_premises
 
-
 # ---------------------------------------------------------------------------
 # Data loading
 # ---------------------------------------------------------------------------
@@ -163,10 +162,23 @@ def compute_features(
         shape_compat = 1
 
     # conclusion_sfx: ends in a recognizable conclusion suffix
-    _CONCL_SFXS = ["_iff", "_eq", "_le", "_lt", "_mem", "_surjective", "_injective",
-                   "_continuous", "_tendsto", "_measurable", "_mono", "_nonneg"]
-    conclusion_sfx = 1 if any(name_lower.endswith(s) or s + "_" in name_lower
-                               for s in _CONCL_SFXS) else 0
+    _CONCL_SFXS = [
+        "_iff",
+        "_eq",
+        "_le",
+        "_lt",
+        "_mem",
+        "_surjective",
+        "_injective",
+        "_continuous",
+        "_tendsto",
+        "_measurable",
+        "_mono",
+        "_nonneg",
+    ]
+    conclusion_sfx = (
+        1 if any(name_lower.endswith(s) or s + "_" in name_lower for s in _CONCL_SFXS) else 0
+    )
 
     # namespace_match: shared top-level namespace
     cand_ns = ".".join(candidate.split(".")[:2]) if "." in candidate else ""
@@ -226,9 +238,14 @@ def rerank(
         if rule == "rule_local":
             return feats["local_overlap"] * 5 + feats["cosine_score"]
         if rule == "rule_combined":
-            return (feats["head_compat"] * 3 + feats["shape_compat"] * 2
-                    + feats["local_overlap"] + feats["conclusion_sfx"]
-                    + feats["namespace_match"] * 0.5 + feats["cosine_score"])
+            return (
+                feats["head_compat"] * 3
+                + feats["shape_compat"] * 2
+                + feats["local_overlap"]
+                + feats["conclusion_sfx"]
+                + feats["namespace_match"] * 0.5
+                + feats["cosine_score"]
+            )
         return feats["cosine_score"]
 
     ranked = sorted(candidates_with_features, key=lambda x: _score(x[1], rule), reverse=True)
@@ -247,7 +264,7 @@ class ExResult:
     gold: str
     n_accessible: int
     gold_in_top5: bool
-    gold_cosine_rank: int      # rank among all accessible (0-based, -1 if not ranked)
+    gold_cosine_rank: int  # rank among all accessible (0-based, -1 if not ranked)
     # Per-rule: rank of gold in reranked top-5 (0-based, -1 if not in top-5)
     ranks: dict
 
@@ -326,7 +343,7 @@ def print_report(results: list[ExResult], subset_filter: str | None = None) -> N
     top5_eligible = [r for r in results if r.gold_in_top5]
     ne = len(top5_eligible)
 
-    print(f"  n={n}, gold_in_top5={ne}/{n} ({100*ne/n:.1f}%)")
+    print(f"  n={n}, gold_in_top5={ne}/{n} ({100 * ne / n:.1f}%)")
     print(f"  {'Rule':<22} {'top1/started':>14} {'top1/eligible':>14} {'MRR@5/elig':>12}")
     print("  " + "-" * 64)
 
@@ -357,7 +374,7 @@ def print_full_report(results: list[ExResult]) -> None:
         print(f"\n  [{subset}]")
         print_report(results, subset)
 
-    print(f"\n  [all subsets combined]")
+    print("\n  [all subsets combined]")
     print_report(results, None)
 
     # Feature importance: for top5-eligible, how often does each feature = 1 when gold is top5?
@@ -373,11 +390,14 @@ def print_full_report(results: list[ExResult]) -> None:
         cos_top1 = sum(1 for r in sub if r.ranks.get("cosine_top1", -1) == 0)
         best_top1 = max(
             sum(1 for r in sub if r.ranks.get(rule, -1) == 0)
-            for rule in RULES if rule not in ("cosine_top1", "oracle_top5")
+            for rule in RULES
+            if rule not in ("cosine_top1", "oracle_top5")
         )
         oracle = sum(1 for r in sub if r.ranks.get("oracle_top5", -1) == 0)
-        print(f"\n  {label}: cosine_top1={cos_top1}/{len(sub)}  "
-              f"best_rule={best_top1}/{len(sub)}  oracle_ceiling={oracle}/{len(sub)}")
+        print(
+            f"\n  {label}: cosine_top1={cos_top1}/{len(sub)}  "
+            f"best_rule={best_top1}/{len(sub)}  oracle_ceiling={oracle}/{len(sub)}"
+        )
 
     print("=" * 72)
 
@@ -406,6 +426,7 @@ def main() -> None:
     encoder = None
     try:
         from sentence_transformers import SentenceTransformer
+
         encoder = SentenceTransformer("all-MiniLM-L6-v2")
         logger.info("Loaded MiniLM encoder")
     except ImportError:
@@ -420,8 +441,14 @@ def main() -> None:
     skipped = 0
     for i, ex in enumerate(examples):
         if i % 50 == 0:
-            logger.info("[%d/%d] subset=%s gold_in_top5=%d/%d",
-                        i, len(examples), ex.get("family"), sum(r.gold_in_top5 for r in results), len(results))
+            logger.info(
+                "[%d/%d] subset=%s gold_in_top5=%d/%d",
+                i,
+                len(examples),
+                ex.get("family"),
+                sum(r.gold_in_top5 for r in results),
+                len(results),
+            )
         subset = label_subset(ex)
         r = eval_one(ex, subset, conn, id_to_name, name_to_id, encoder)
         if r is None:
@@ -430,9 +457,12 @@ def main() -> None:
             results.append(r)
 
     conn.close()
-    logger.info("Done: %d results, %d skipped (no gold or gold not in scope)", len(results), skipped)
+    logger.info(
+        "Done: %d results, %d skipped (no gold or gold not in scope)", len(results), skipped
+    )
 
     import pathlib
+
     pathlib.Path(args.output).parent.mkdir(parents=True, exist_ok=True)
     with open(args.output, "w") as f:
         for r in results:

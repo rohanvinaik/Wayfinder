@@ -109,17 +109,13 @@ def freeze_committed_state(
             ambiguous.append(hyp)
 
     # Second pass: promote qualifying isolated from ambiguous
-    sorted_ambiguous = sorted(
-        ambiguous, key=lambda h: h.support_rrf, reverse=True
-    )
+    sorted_ambiguous = sorted(ambiguous, key=lambda h: h.support_rrf, reverse=True)
     promoted: list[LandmarkHypothesis] = []
     remaining: list[LandmarkHypothesis] = []
 
     for i, hyp in enumerate(sorted_ambiguous):
         if hyp.convergence_class == "isolated":
-            max_conf = max(
-                (v.confidence for v in hyp.votes if v.vote == 1), default=0.0
-            )
+            max_conf = max((v.confidence for v in hyp.votes if v.vote == 1), default=0.0)
             next_best = (
                 sorted_ambiguous[i + 1].support_rrf
                 if i + 1 < len(sorted_ambiguous)
@@ -148,18 +144,14 @@ def _build_frozen_state(
 ) -> FrozenLandmarkState:
     """Build a FrozenLandmarkState from a list of committed hypotheses."""
     committed_ids = frozenset(h.entity_id for h in committed)
-    committed_scores = tuple(
-        (h.entity_id, h.support_rrf - 0.5 * h.oppose_rrf) for h in committed
-    )
+    committed_scores = tuple((h.entity_id, h.support_rrf - 0.5 * h.oppose_rrf) for h in committed)
 
     dominant_anchor_set: set[int] = set()
     for h in committed:
         dominant_anchor_set |= nbr_sigs.get(h.entity_id, set())
 
     dominant_constants = frozenset(
-        aid
-        for aid in dominant_anchor_set
-        if data.anchor_categories.get(aid) == "constant"
+        aid for aid in dominant_anchor_set if data.anchor_categories.get(aid) == "constant"
     )
 
     namespaces: set[str] = set()
@@ -174,11 +166,7 @@ def _build_frozen_state(
         for v in h.votes:
             if v.vote == 1:
                 family_counts[v.family] = family_counts.get(v.family, 0) + 1
-    active_lens = (
-        max(family_counts, key=lambda k: family_counts[k])
-        if family_counts
-        else "bridge"
-    )
+    active_lens = max(family_counts, key=lambda k: family_counts[k]) if family_counts else "bridge"
 
     bank_sums: dict[str, float] = {}
     bank_n: dict[str, int] = {}
@@ -187,9 +175,7 @@ def _build_frozen_state(
         for bank, val in pos.items():
             bank_sums[bank] = bank_sums.get(bank, 0.0) + val
             bank_n[bank] = bank_n.get(bank, 0) + 1
-    centroid = tuple(
-        (bank, bank_sums[bank] / bank_n[bank]) for bank in sorted(bank_sums)
-    )
+    centroid = tuple((bank, bank_sums[bank] / bank_n[bank]) for bank in sorted(bank_sums))
 
     return FrozenLandmarkState(
         committed_ids=committed_ids,
@@ -210,18 +196,14 @@ def extend_frozen_state(
 ) -> FrozenLandmarkState:
     """Extend a frozen state with newly validated hypotheses (iterative freeze)."""
     new_ids = frozenset(h.entity_id for h in new_hyps)
-    new_scores = tuple(
-        (h.entity_id, h.support_rrf - 0.5 * h.oppose_rrf) for h in new_hyps
-    )
+    new_scores = tuple((h.entity_id, h.support_rrf - 0.5 * h.oppose_rrf) for h in new_hyps)
 
     new_anchors = set(frozen.dominant_anchors)
     for h in new_hyps:
         new_anchors |= nbr_sigs.get(h.entity_id, set())
 
     new_constants = frozenset(
-        aid
-        for aid in new_anchors
-        if data.anchor_categories.get(aid) == "constant"
+        aid for aid in new_anchors if data.anchor_categories.get(aid) == "constant"
     )
 
     new_ns = set(frozen.dominant_namespace_clusters)
@@ -275,8 +257,7 @@ def compute_residual(
     unsupported = [
         aid
         for aid in query_anchors
-        if data.anchor_categories.get(aid) == "constant"
-        and aid not in frozen.dominant_anchors
+        if data.anchor_categories.get(aid) == "constant" and aid not in frozen.dominant_anchors
     ]
 
     locality_only: list[int] = []
@@ -286,9 +267,7 @@ def compute_residual(
             locality_only.append(hyp.entity_id)
 
     conflicts: list[tuple[int, int]] = []
-    conflicted_ids = [
-        h.entity_id for h in ambiguous if h.convergence_class == "conflicted"
-    ]
+    conflicted_ids = [h.entity_id for h in ambiguous if h.convergence_class == "conflicted"]
     for i in range(len(conflicted_ids)):
         for j in range(i + 1, min(len(conflicted_ids), i + 20)):
             sig_i = nbr_sigs.get(conflicted_ids[i], set())
@@ -308,9 +287,7 @@ def compute_residual(
     covered = sum(1 for aid in query_anchors if aid in frozen.dominant_anchors)
     coverage = covered / max(len(query_anchors), 1)
 
-    uncovered_aids = [
-        aid for aid in query_anchors if aid not in frozen.dominant_anchors
-    ]
+    uncovered_aids = [aid for aid in query_anchors if aid not in frozen.dominant_anchors]
     uncovered_aids.sort(key=lambda a: idf_cache.get(a, 1.0), reverse=True)
 
     if uncovered_mass:
@@ -371,15 +348,12 @@ def resolve_ambiguous_landmarks(
 
     uncovered_anchors = set(residual.residual_anchor_priorities)
     query_constants_set = set(residual.unsupported_constants)
-    conflict_eids = {
-        eid for pair in residual.conflict_clusters for eid in pair
-    }
+    conflict_eids = {eid for pair in residual.conflict_clusters for eid in pair}
     locality_only_set = set(residual.locality_only_candidates)
 
     # Pre-compute denominator for category-weighted residual coverage
     denom = sum(
-        idf_cache.get(a, 1.0)
-        * CATEGORY_GAIN.get(data.anchor_categories.get(a, "general"), 0.5)
+        idf_cache.get(a, 1.0) * CATEGORY_GAIN.get(data.anchor_categories.get(a, "general"), 0.5)
         for a in uncovered_anchors
     )
 
@@ -392,9 +366,7 @@ def resolve_ambiguous_landmarks(
             covered_in_nbr = nbr & uncovered_anchors
             numer = sum(
                 idf_cache.get(a, 1.0)
-                * CATEGORY_GAIN.get(
-                    data.anchor_categories.get(a, "general"), 0.5
-                )
+                * CATEGORY_GAIN.get(data.anchor_categories.get(a, "general"), 0.5)
                 for a in covered_in_nbr
             )
             residual_cov = numer / max(denom, 1e-9)
@@ -402,11 +374,7 @@ def resolve_ambiguous_landmarks(
             residual_cov = 0.0
 
         # 2. Constant match
-        nbr_constants = {
-            aid
-            for aid in nbr
-            if data.anchor_categories.get(aid) == "constant"
-        }
+        nbr_constants = {aid for aid in nbr if data.anchor_categories.get(aid) == "constant"}
         if query_constants_set and nbr_constants:
             const_match = len(nbr_constants & query_constants_set) / max(
                 len(query_constants_set), 1
@@ -427,9 +395,7 @@ def resolve_ambiguous_landmarks(
             if novel_in_nbr:
                 novel_value = sum(
                     idf_cache.get(a, 1.0)
-                    * CATEGORY_GAIN.get(
-                        data.anchor_categories.get(a, "general"), 0.5
-                    )
+                    * CATEGORY_GAIN.get(data.anchor_categories.get(a, "general"), 0.5)
                     for a in novel_in_nbr
                 )
                 novel_frac = novel_value / max(denom, 1e-9)
@@ -444,9 +410,7 @@ def resolve_ambiguous_landmarks(
         locality_pen = 0.5 if hyp.entity_id in locality_only_set else 1.0
 
         score = (
-            (0.6 * residual_cov + 0.25 * const_match + 0.15 * compat)
-            * conflict_pen
-            * locality_pen
+            (0.6 * residual_cov + 0.25 * const_match + 0.15 * compat) * conflict_pen * locality_pen
         )
 
         if score > 0:

@@ -9,9 +9,9 @@ import torch
 from src.move_supervision import (
     MoveSupervisionSpec,
     build_move_supervision_spec,
+    build_move_targets,
     build_template_move_supervision_spec,
     build_template_move_targets,
-    build_move_targets,
     compute_move_metrics,
 )
 from src.nav_contracts import NavigationalExample

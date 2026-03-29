@@ -5,12 +5,14 @@ from __future__ import annotations
 
 # Source module: scripts.run_benchmark
 
+
 # from scripts.run_benchmark import load_config
 def test_load_config_returns_dict() -> None:
     """Contract: load_config returns dict."""
     # TODO: Provide valid arguments
     # result = load_config(...)
     # assert isinstance(result, dict)
+
 
 # from scripts.run_benchmark import load_config
 def test_load_config_file_io(tmp_path) -> None:
@@ -20,6 +22,7 @@ def test_load_config_file_io(tmp_path) -> None:
     # TODO: call load_config(str(test_file)) and assert result
     pass
 
+
 # from scripts.run_benchmark import load_modules
 def test_load_modules_returns_dict() -> None:
     """Contract: load_modules returns dict."""
@@ -27,12 +30,14 @@ def test_load_modules_returns_dict() -> None:
     # result = load_modules(..., ..., ...)
     # assert isinstance(result, dict)
 
+
 # from scripts.run_benchmark import load_benchmark_theorems
 def test_load_benchmark_theorems_returns_list_dict() -> None:
     """Contract: load_benchmark_theorems returns list[dict]."""
     # TODO: Provide valid arguments
     # result = load_benchmark_theorems(..., ...)
     # assert isinstance(result, list)
+
 
 # from scripts.run_benchmark import load_benchmark_theorems
 def test_load_benchmark_theorems_http() -> None:
@@ -46,12 +51,14 @@ def test_load_benchmark_theorems_http() -> None:
     with patch("requests.get", return_value=mock_resp):
         pass  # TODO: call load_benchmark_theorems with valid args and assert result
 
+
 # from scripts.run_benchmark import run_benchmark
 def test_run_benchmark_returns_dict() -> None:
     """Contract: run_benchmark returns dict."""
     # TODO: Provide valid arguments
     # result = run_benchmark(..., ..., ..., ..., ...)
     # assert isinstance(result, dict)
+
 
 # from scripts.run_benchmark import run_benchmark
 def test_run_benchmark_http() -> None:
@@ -64,6 +71,7 @@ def test_run_benchmark_http() -> None:
     mock_resp.text = ""
     with patch("requests.get", return_value=mock_resp):
         pass  # TODO: call run_benchmark with valid args and assert result
+
 
 # from scripts.run_benchmark import main
 def test_main_http() -> None:
@@ -85,4 +93,3 @@ def test_main_file_io(tmp_path) -> None:
     test_file.write_text("test content")
     # TODO: call main(str(test_file)) and assert result
     pass
-

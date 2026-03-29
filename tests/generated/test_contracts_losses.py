@@ -5,6 +5,7 @@ from __future__ import annotations
 
 # Source module: src.losses
 
+
 # from src.losses import forward
 def test_forward_returns_dict_str_any() -> None:
     """Contract: forward returns dict[str, Any]."""
@@ -12,10 +13,10 @@ def test_forward_returns_dict_str_any() -> None:
     # result = forward(..., ..., ..., ..., ..., ..., ...)
     # assert isinstance(result, dict)
 
+
 # from src.losses import forward
 def test_forward_returns_dict_str_any() -> None:
     """Contract: forward returns dict[str, Any]."""
     # TODO: Provide valid arguments
     # result = forward(..., ..., ..., ..., ..., ..., ..., ...)
     # assert isinstance(result, dict)
-

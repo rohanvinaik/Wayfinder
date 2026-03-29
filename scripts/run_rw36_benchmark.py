@@ -25,6 +25,7 @@ Primary metrics:
 
 Parallel: --parallel 4 for 4 shards.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -160,7 +161,13 @@ def load_rw3_args_examples(path: str, step0_only: bool = True, limit: int = 0) -
             if step0_only and ex.get("step_index", 0) != 0:
                 continue
             examples.append(ex)
-    examples.sort(key=lambda x: (x.get("file_path", ""), x.get("theorem_full_name", ""), x.get("step_index", 0)))
+    examples.sort(
+        key=lambda x: (
+            x.get("file_path", ""),
+            x.get("theorem_full_name", ""),
+            x.get("step_index", 0),
+        )
+    )
     if limit > 0:
         examples = examples[:limit]
     return examples
@@ -291,9 +298,13 @@ def _run_oracle_seq(
 
         ok, new_goal, err, crashed = try_tactic_safe(kernel, goal, tac, goal_id=goal_id)
         sr = StepRecord(
-            step_idx=i, tactic=tac, success=ok, error=err,
+            step_idx=i,
+            tactic=tac,
+            success=ok,
+            error=err,
             error_category=_categorize_error(err) if not ok else "",
-            lean_calls=1, atom_had_args=not atom_is_bare(atom),
+            lean_calls=1,
+            atom_had_args=not atom_is_bare(atom),
         )
         res.steps.append(sr)
         res.total_lean_calls += 1
@@ -345,9 +356,15 @@ def _run_cosine_seq_bare(
                 ok, ng, err, crashed = try_tactic_safe(kernel, goal, tac, goal_id=goal_id)
                 lean_calls += 1
                 if crashed:
-                    sr = StepRecord(step_idx=i, tactic=tac, success=False,
-                                    error=err, error_category="server_crash", lean_calls=lean_calls,
-                                    atom_had_args=not atom_is_bare(atom))
+                    sr = StepRecord(
+                        step_idx=i,
+                        tactic=tac,
+                        success=False,
+                        error=err,
+                        error_category="server_crash",
+                        lean_calls=lean_calls,
+                        atom_had_args=not atom_is_bare(atom),
+                    )
                     res.steps.append(sr)
                     res.total_lean_calls += lean_calls
                     res.divergence_step = i
@@ -363,9 +380,15 @@ def _run_cosine_seq_bare(
         if not step_ok:
             step_err = err
 
-        sr = StepRecord(step_idx=i, tactic=step_tac, success=step_ok,
-                        error=step_err, error_category=_categorize_error(step_err) if not step_ok else "",
-                        lean_calls=lean_calls, atom_had_args=not atom_is_bare(atom))
+        sr = StepRecord(
+            step_idx=i,
+            tactic=step_tac,
+            success=step_ok,
+            error=step_err,
+            error_category=_categorize_error(step_err) if not step_ok else "",
+            lean_calls=lean_calls,
+            atom_had_args=not atom_is_bare(atom),
+        )
         res.steps.append(sr)
         res.total_lean_calls += lean_calls
 
@@ -394,8 +417,8 @@ class Rw36Result:
     file_path: str = ""
     step_index: int = 0
     n_atoms: int = 0
-    n_args_atoms: int = 0           # atoms with positional args
-    first_atom_bare: bool = False   # first atom is bare
+    n_args_atoms: int = 0  # atoms with positional args
+    first_atom_bare: bool = False  # first atom is bare
     canonical_action_ir: str = ""
 
     goal_started: bool = False
@@ -441,7 +464,7 @@ class Rw36Result:
     cosine_seq_step_errors: list = field(default_factory=list)
 
     # partition
-    partition: str = ""   # args_redundant | args_necessary | unexecutable_oracle | not_started
+    partition: str = ""  # args_redundant | args_necessary | unexecutable_oracle | not_started
 
     elapsed_s: float = 0.0
 
@@ -600,19 +623,27 @@ def run_one_example(
     res.oracle_seq_full = oracle_seq_r.full_seq_accept
     res.oracle_seq_divergence = oracle_seq_r.divergence_step
     res.oracle_seq_lean_calls = oracle_seq_r.total_lean_calls
-    res.oracle_seq_step_errors = [(s.step_idx, s.error_category, s.atom_had_args)
-                                   for s in oracle_seq_r.steps if not s.success]
+    res.oracle_seq_step_errors = [
+        (s.step_idx, s.error_category, s.atom_had_args) for s in oracle_seq_r.steps if not s.success
+    ]
 
     # --- cosine_seq_bare ---
     cosine_seq_r = _run_cosine_seq_bare(
-        atoms, goal_str, goal_id, kernel, premise_names, encoder,
-        max_scope_premises, cosine_topk,
+        atoms,
+        goal_str,
+        goal_id,
+        kernel,
+        premise_names,
+        encoder,
+        max_scope_premises,
+        cosine_topk,
     )
     res.cosine_seq_full = cosine_seq_r.full_seq_accept
     res.cosine_seq_divergence = cosine_seq_r.divergence_step
     res.cosine_seq_lean_calls = cosine_seq_r.total_lean_calls
-    res.cosine_seq_step_errors = [(s.step_idx, s.error_category, s.atom_had_args)
-                                   for s in cosine_seq_r.steps if not s.success]
+    res.cosine_seq_step_errors = [
+        (s.step_idx, s.error_category, s.atom_had_args) for s in cosine_seq_r.steps if not s.success
+    ]
 
     res.elapsed_s = time.time() - t0
     return res
@@ -636,7 +667,7 @@ def print_report(results: list[Rw36Result], total: int) -> None:
     print("rw3-with-args Benchmark (EXP-RW-036)")
     print("=" * 70)
     print(f"\nExamples (rw3-with-args, step-0): {total}")
-    print(f"GoalStart: {n}/{total} ({100*n/max(total,1):.1f}%)")
+    print(f"GoalStart: {n}/{total} ({100 * n / max(total, 1):.1f}%)")
     if fail_cats:
         for cat, cnt in fail_cats.most_common():
             print(f"  {cat}: {cnt}")
@@ -647,10 +678,12 @@ def print_report(results: list[Rw36Result], total: int) -> None:
     # Atom profile
     n_args_atoms_hist = Counter(r.n_args_atoms for r in started)
     first_bare_count = sum(r.first_atom_bare for r in started)
-    print(f"\nAtom profile (started):")
-    print(f"  First atom is bare: {first_bare_count}/{n} ({100*first_bare_count/n:.1f}%)")
-    print(f"  Args-atoms per example: " +
-          ", ".join(f"{k}={v}" for k, v in sorted(n_args_atoms_hist.items())))
+    print("\nAtom profile (started):")
+    print(f"  First atom is bare: {first_bare_count}/{n} ({100 * first_bare_count / n:.1f}%)")
+    print(
+        "  Args-atoms per example: "
+        + ", ".join(f"{k}={v}" for k, v in sorted(n_args_atoms_hist.items()))
+    )
 
     # --- First-atom conditions ---
     oracle_ok = sum(r.oracle_first_success for r in started)
@@ -667,24 +700,29 @@ def print_report(results: list[Rw36Result], total: int) -> None:
     print("-" * 85)
 
     def row(label: str, ok_s: int, ok_gs: int) -> None:
-        r1, r2 = f"{ok_s}/{n}", f"{100*ok_s/max(n,1):.1f}%"
-        r3, r4 = f"{ok_gs}/{m}", f"{100*ok_gs/max(m,1):.1f}%"
+        r1, r2 = f"{ok_s}/{n}", f"{100 * ok_s / max(n, 1):.1f}%"
+        r3, r4 = f"{ok_gs}/{m}", f"{100 * ok_gs / max(m, 1):.1f}%"
         print(f"{label:<45} {r1:>10} {r2:>7} {r3:>16} {r4:>7}")
 
     row("Oracle first atom (exact: dir+args)", oracle_ok, oracle_gs)
     row("Cosine top-5 bare (no args)", c5b_ok, c5b_gs)
-    row("Cosine top-5 + heuristic hyp args", c5h_ok, sum(r.cosine5_heur_success for r in gold_scope))
+    row(
+        "Cosine top-5 + heuristic hyp args", c5h_ok, sum(r.cosine5_heur_success for r in gold_scope)
+    )
 
-    print(f"\nGold first atom in scope: {m}/{n} ({100*m/max(n,1):.1f}%)")
+    print(f"\nGold first atom in scope: {m}/{n} ({100 * m / max(n, 1):.1f}%)")
     ranks = [r.gold_first_rank for r in started if r.gold_first_rank >= 0]
     if ranks:
         print(f"Gold first-atom rank: mean={np.mean(ranks):.1f}, median={np.median(ranks):.1f}")
 
     # Oracle failure taxonomy
-    err_cats = Counter(r.oracle_first_error_category for r in started
-                       if not r.oracle_first_success and r.oracle_first_error_category)
+    err_cats = Counter(
+        r.oracle_first_error_category
+        for r in started
+        if not r.oracle_first_success and r.oracle_first_error_category
+    )
     if err_cats:
-        print(f"\nOracle first-atom failure taxonomy:")
+        print("\nOracle first-atom failure taxonomy:")
         for cat, cnt in err_cats.most_common():
             print(f"  {cat}: {cnt}")
 
@@ -694,13 +732,13 @@ def print_report(results: list[Rw36Result], total: int) -> None:
     total_all = len(results)
     for bkt in ("args_redundant", "args_necessary", "unexecutable_oracle", "not_started"):
         v = part_counts[bkt]
-        print(f"  {bkt:<25}: {v:>4}/{total_all} ({100*v/total_all:.1f}%)")
+        print(f"  {bkt:<25}: {v:>4}/{total_all} ({100 * v / total_all:.1f}%)")
 
     # Cross-tab: bare vs heuristic (among started)
     heur_only = sum(1 for r in started if not r.cosine5_bare_success and r.cosine5_heur_success)
     both = sum(1 for r in started if r.cosine5_bare_success and r.cosine5_heur_success)
     neither = sum(1 for r in started if not r.cosine5_bare_success and not r.cosine5_heur_success)
-    print(f"\n  Bare succeeds:        {c5b_ok}/{n} ({100*c5b_ok/n:.1f}%)")
+    print(f"\n  Bare succeeds:        {c5b_ok}/{n} ({100 * c5b_ok / n:.1f}%)")
     print(f"  Heuristic-only wins:  {heur_only}/{n}  ← args confirmed necessary cases")
     print(f"  Both succeed:         {both}/{n}")
     print(f"  Neither:              {neither}/{n}")
@@ -712,19 +750,27 @@ def print_report(results: list[Rw36Result], total: int) -> None:
     print(f"\n{'--- EXP-RW-036b: Sequential Acceptance ---'}")
     print(f"\n{'Condition':<45} {'FullSeq':>8} {'Rate':>7}")
     print("-" * 62)
-    print(f"{'Oracle sequential (exact: dir+args)':<45} {oracle_seq_full:>8} {100*oracle_seq_full/n:>6.1f}%")
-    print(f"{'Cosine-5 sequential bare':<45} {cosine_seq_full:>8} {100*cosine_seq_full/n:>6.1f}%")
+    print(
+        f"{'Oracle sequential (exact: dir+args)':<45} {oracle_seq_full:>8} {100 * oracle_seq_full / n:>6.1f}%"
+    )
+    print(
+        f"{'Cosine-5 sequential bare':<45} {cosine_seq_full:>8} {100 * cosine_seq_full / n:>6.1f}%"
+    )
 
     # Accept@k for oracle_seq
-    print(f"\nAccept@k (oracle_seq_exact):")
+    print("\nAccept@k (oracle_seq_exact):")
     for k in range(1, 5):
-        ok_k = sum(1 for r in started if r.oracle_seq_divergence == -1 or r.oracle_seq_divergence >= k)
-        print(f"  k={k}: {ok_k}/{n} ({100*ok_k/n:.1f}%)")
+        ok_k = sum(
+            1 for r in started if r.oracle_seq_divergence == -1 or r.oracle_seq_divergence >= k
+        )
+        print(f"  k={k}: {ok_k}/{n} ({100 * ok_k / n:.1f}%)")
 
-    print(f"\nAccept@k (cosine_seq_bare):")
+    print("\nAccept@k (cosine_seq_bare):")
     for k in range(1, 5):
-        ok_k = sum(1 for r in started if r.cosine_seq_divergence == -1 or r.cosine_seq_divergence >= k)
-        print(f"  k={k}: {ok_k}/{n} ({100*ok_k/n:.1f}%)")
+        ok_k = sum(
+            1 for r in started if r.cosine_seq_divergence == -1 or r.cosine_seq_divergence >= k
+        )
+        print(f"  k={k}: {ok_k}/{n} ({100 * ok_k / n:.1f}%)")
 
     # Failure taxonomy by step index (oracle_seq), annotated with atom_had_args
     oracle_err_by_step: dict[int, Counter] = defaultdict(Counter)
@@ -733,7 +779,7 @@ def print_report(results: list[Rw36Result], total: int) -> None:
             key = f"{cat}({'args' if had_args else 'bare'})"
             oracle_err_by_step[step_idx][key] += 1
     if oracle_err_by_step:
-        print(f"\nOracle sequential failure taxonomy by step index (bare|args annotation):")
+        print("\nOracle sequential failure taxonomy by step index (bare|args annotation):")
         for step in sorted(oracle_err_by_step)[:6]:
             cats = oracle_err_by_step[step].most_common()
             cat_str = ", ".join(f"{c}:{v}" for c, v in cats)
@@ -744,21 +790,26 @@ def print_report(results: list[Rw36Result], total: int) -> None:
     c_calls = sum(r.cosine_seq_lean_calls for r in started)
     c5_calls = sum(r.cosine5_bare_calls for r in started)
     c5h_calls = sum(r.cosine5_heur_calls for r in started)
-    print(f"\nLean call budget (per started example):")
-    print(f"  cosine5_bare_first:    {c5_calls/n:.1f}")
-    print(f"  cosine5_heur_first:    {c5h_calls/n:.1f} (additional heuristic calls)")
-    print(f"  oracle_seq_exact:      {o_calls/n:.1f}")
-    print(f"  cosine_seq_bare:       {c_calls/n:.1f}")
+    print("\nLean call budget (per started example):")
+    print(f"  cosine5_bare_first:    {c5_calls / n:.1f}")
+    print(f"  cosine5_heur_first:    {c5h_calls / n:.1f} (additional heuristic calls)")
+    print(f"  oracle_seq_exact:      {o_calls / n:.1f}")
+    print(f"  cosine_seq_bare:       {c_calls / n:.1f}")
 
     # Per atom-count breakdown
     atom_groups = sorted(set(r.n_atoms for r in started))
     if len(atom_groups) > 1:
-        print(f"\nPartition by total atom count:")
+        print("\nPartition by total atom count:")
         for k in atom_groups:
             grp = [r for r in started if r.n_atoms == k]
             c_arg = Counter(r.partition for r in grp)
-            print(f"  {k} atoms ({len(grp)}): " +
-                  ", ".join(f"{bkt}={c_arg[bkt]}" for bkt in ("args_redundant", "args_necessary", "unexecutable_oracle")))
+            print(
+                f"  {k} atoms ({len(grp)}): "
+                + ", ".join(
+                    f"{bkt}={c_arg[bkt]}"
+                    for bkt in ("args_redundant", "args_necessary", "unexecutable_oracle")
+                )
+            )
 
     elapsed = [r.elapsed_s for r in results if r.elapsed_s > 0]
     if elapsed:
@@ -771,16 +822,32 @@ def print_report(results: list[Rw36Result], total: int) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _worker_cmd(args: argparse.Namespace, shard_index: int, num_shards: int, shard_out: str) -> list[str]:
+def _worker_cmd(
+    args: argparse.Namespace, shard_index: int, num_shards: int, shard_out: str
+) -> list[str]:
     cmd = [
-        sys.executable, "-m", "scripts.run_rw36_benchmark",
-        "--worker", "--shard-index", str(shard_index), "--num-shards", str(num_shards),
-        "--output", shard_out,
-        "--data", args.data, "--db", args.db,
-        "--lean-project", args.lean_project,
-        "--cosine-topk", str(args.cosine_topk),
-        "--max-scope-premises", str(args.max_scope_premises),
-        "--restart-every", str(args.restart_every),
+        sys.executable,
+        "-m",
+        "scripts.run_rw36_benchmark",
+        "--worker",
+        "--shard-index",
+        str(shard_index),
+        "--num-shards",
+        str(num_shards),
+        "--output",
+        shard_out,
+        "--data",
+        args.data,
+        "--db",
+        args.db,
+        "--lean-project",
+        args.lean_project,
+        "--cosine-topk",
+        str(args.cosine_topk),
+        "--max-scope-premises",
+        str(args.max_scope_premises),
+        "--restart-every",
+        str(args.restart_every),
     ]
     if args.limit > 0:
         cmd += ["--limit", str(args.limit)]
@@ -818,24 +885,39 @@ def run_parallel(args: argparse.Namespace) -> None:
                 for line in f:
                     if line.strip():
                         merged.append(json.loads(line))
-    merged.sort(key=lambda d: (d.get("file_path", ""), d.get("theorem_full_name", ""), d.get("step_index", 0)))
+    merged.sort(
+        key=lambda d: (
+            d.get("file_path", ""),
+            d.get("theorem_full_name", ""),
+            d.get("step_index", 0),
+        )
+    )
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "w") as f:
         for row in merged:
             f.write(json.dumps(row) + "\n")
 
-    results = [Rw36Result(**{k: v for k, v in row.items() if k in Rw36Result.__dataclass_fields__})
-               for row in merged]
+    results = [
+        Rw36Result(**{k: v for k, v in row.items() if k in Rw36Result.__dataclass_fields__})
+        for row in merged
+    ]
     print_report(results, len(results))
 
 
 def run_worker(args: argparse.Namespace) -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
-    examples = load_rw3_args_examples(args.data, step0_only=not args.include_step_gt0, limit=args.limit)
+    examples = load_rw3_args_examples(
+        args.data, step0_only=not args.include_step_gt0, limit=args.limit
+    )
     if args.num_shards > 1:
         examples = [ex for i, ex in enumerate(examples) if i % args.num_shards == args.shard_index]
-    logger.info("Worker shard %d/%d: %d rw3-with-args examples", args.shard_index + 1, args.num_shards, len(examples))
+    logger.info(
+        "Worker shard %d/%d: %d rw3-with-args examples",
+        args.shard_index + 1,
+        args.num_shards,
+        len(examples),
+    )
 
     conn = sqlite3.connect(args.db)
     id_to_name, name_to_id = load_entity_maps(conn)
@@ -843,15 +925,20 @@ def run_worker(args: argparse.Namespace) -> None:
     encoder = None
     try:
         from sentence_transformers import SentenceTransformer
+
         encoder = SentenceTransformer("all-MiniLM-L6-v2")
         logger.info("Loaded MiniLM encoder")
     except ImportError:
         logger.warning("sentence-transformers not available")
 
-    kernel = LeanKernel(LeanConfig(
-        backend="pantograph", timeout=120,
-        project_root=args.lean_project, imports=["Mathlib"],
-    ))
+    kernel = LeanKernel(
+        LeanConfig(
+            backend="pantograph",
+            timeout=120,
+            project_root=args.lean_project,
+            imports=["Mathlib"],
+        )
+    )
     logger.info("Initializing Pantograph with Mathlib")
 
     results: list[Rw36Result] = []
@@ -872,9 +959,13 @@ def run_worker(args: argparse.Namespace) -> None:
 
             try:
                 res = run_one_example(
-                    example=ex, kernel=kernel, conn=conn,
-                    id_to_name=id_to_name, name_to_id=name_to_id,
-                    encoder=encoder, project_root=args.lean_project,
+                    example=ex,
+                    kernel=kernel,
+                    conn=conn,
+                    id_to_name=id_to_name,
+                    name_to_id=name_to_id,
+                    encoder=encoder,
+                    project_root=args.lean_project,
                     max_scope_premises=args.max_scope_premises,
                     cosine_topk=args.cosine_topk,
                 )

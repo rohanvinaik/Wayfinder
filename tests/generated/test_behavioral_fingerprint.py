@@ -18,6 +18,7 @@ def test_compute_action_entropy_returns_expected_output() -> None:
     result = compute_action_entropy(...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
 
+
 def test_compute_action_entropy_boundary_values() -> None:
     """Test compute_action_entropy with edge cases that mutation testing targets."""
     # Boundary: predictions
@@ -26,11 +27,11 @@ def test_compute_action_entropy_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_compute_action_distribution_returns_expected_output() -> None:
     """Test compute_action_distribution with valid input."""
     result = compute_action_distribution(...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_compute_action_distribution_boundary_values() -> None:
     """Test compute_action_distribution with edge cases that mutation testing targets."""
@@ -40,11 +41,11 @@ def test_compute_action_distribution_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_compute_variance_eigenvalues_returns_expected_output() -> None:
     """Test compute_variance_eigenvalues with valid input."""
     result = compute_variance_eigenvalues(..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_compute_variance_eigenvalues_boundary_values() -> None:
     """Test compute_variance_eigenvalues with edge cases that mutation testing targets."""
@@ -55,11 +56,11 @@ def test_compute_variance_eigenvalues_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_compute_discreteness_returns_expected_output() -> None:
     """Test compute_discreteness with valid input."""
     result = compute_discreteness(...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_compute_discreteness_boundary_values() -> None:
     """Test compute_discreteness with edge cases that mutation testing targets."""
@@ -69,11 +70,11 @@ def test_compute_discreteness_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_fingerprint_stability_returns_expected_output() -> None:
     """Test fingerprint_stability with valid input."""
     result = fingerprint_stability(...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_fingerprint_stability_boundary_values() -> None:
     """Test fingerprint_stability with edge cases that mutation testing targets."""
@@ -81,7 +82,6 @@ def test_fingerprint_stability_boundary_values() -> None:
     # TODO: Test with boundary inputs (0, -1, empty string, None)
     result = fingerprint_stability(...)
     assert result == EXPECTED  # TODO: Replace with actual expected value
-
 
 
 class TestBehavioralFingerprintConfig:
@@ -92,6 +92,3 @@ class TestBehavioralFingerprintConfig:
         obj = BehavioralFingerprint()
         # TODO: Assert specific field values, not just existence
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
-
-
-

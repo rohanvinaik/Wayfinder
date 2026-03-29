@@ -1,9 +1,9 @@
 # Wayfinder: Operational Research Plan
 
-**Version:** 2.4
-**Date:** March 19, 2026
+**Version:** 2.7
+**Date:** March 26, 2026
 **Corresponding documents:** `WAYFINDER_RESEARCH.md` (theory), `WAYFINDER_DESIGN.md` (engineering), `EXPERIMENT_RESULTS.md` (results ledger)
-**Status:** Canonical execution plan for `docs/Research_Paper/`. v1 implementation complete. Phase 0 data pipeline complete. NAV-001/002 trained (monolithic navigator, chaotic PAB). Pivot to Society of Mind architecture (v2) is complete at the design level; the current execution branch is to keep `cosine_rw` plus interleaved bootstrap as the frozen deployed local baseline, keep source-context compilation (`ContextIR`) as the parallel infrastructure track, and move the learned frontier above rewrite-family execution to executable action selection, controller-visible move typing, residual-conditioned orchestration, and specialist-specific training regimes once those specialist contracts are validated.
+**Status:** Canonical execution plan for `docs/Research_Paper/`. v1 implementation complete. Phase 0 data pipeline complete. `EXP-058` remains the publishable paired 2000-theorem baseline at 1277/2000 (63.8%). `norm_cast`-based 2-step residual search is partially deployed and projects 1371/2000 (68.6%) on the same theorem set. The original / first-order SoM has already been tuned deterministically, including `EXP-SOM-010` and `models/som_torch_v1/best.pt`. Dr. Ducky is now implemented as the deterministic 1.5th-order residual executor with in-repo production backends for equality saturation, proof-DSL transport/witness search, bounded relational closure, recursive rewrite control, and arithmetic normalization; the runtime smoke pass closes `4/5` backend cases and progresses `5/5`. `EXP-SOM-012` is now frozen at `3440` processed theorems, and the active execution branch is post-freeze: quantify hard-tail headroom, measure Ducky closure lift on the frozen corpus, freeze second-order controller packets, then train the second-order SoM on that corpus. In parallel, `EXP-SOM-016` is now the canonical final first-order benchmark collector: a frozen random 2,000-theorem Mathlib run over the integrated first-order stack, with crash-stable theorem rows, trigger-probe supervision, hard-resolution packetization, and second-order packet/features emitted from the same benchmark. As of the current `EXP-SOM-016 r5` run, hard residuals are now pushed through the inline hardtail bridge during scoring, and the live collector is emitting theorem rows, bridge rows, controller decisions, and rarified-gap packets from the same benchmark. The second-order SoM is therefore a post-run orchestration/training program, not yet the canonical live theorem-search controller.
 
 ---
 
@@ -19,11 +19,37 @@ This plan covers data pipeline execution and experimental evaluation. The curren
 - step>0 replay is usable for semantic evaluation, and replayed states support cosine-ranked `rw0`
 - `rw1` is operationally equivalent to `rw0` under tier-conditioned default direction
 - theorem-faithful Tier B start states are validated for step-0 and usable for step>0 base states
-- live Lean verification now validates executable action selection for `apply` (`selector_top1 = 35/91` vs `cosine_top1 = 15/91`)
-- the next runtime step is not another always-on lane; it is expanding the provenance-aware executable dataset, deploying the `apply` selector into theorem search, and then extending the same regime to `refine_named`
-- `ContextIR` is the parallel infrastructure track for replay coverage and future local families
+- large trigger-data collection now shows that `cannot start goal` failures cluster in high-context namespaces and should be collected as structured `goal_start_failure` rows rather than dropped
+- live Lean verification validates executable action selection for `apply` (`selector_top1 = 35/91` vs `cosine_top1 = 15/91`), but `apply` remains residual in the strong post-`exact?` regime
+- `EXP-058` is the theorem-search comparison baseline: 1277/2000 (63.8%), 72.6% proved|started
+- `norm_cast; exact?` is validated as a live residual recovery path and is already deployed in `proof_search.py`
+- a PyTorch multistep SoM family router is trained (`models/som_torch_v1/best.pt`, 95.6% top-1, 99.4% top-3 on held-out step data); this belongs to the original / first-order SoM program and is strong supervised routing evidence rather than a deployed second-order theorem-search controller
+- the first paired `EXP-SOM-011` runtime pass is complete, but both candidate conditions were run concurrently on the same machine; effective per-condition compute budget was cut by at least roughly one third, so its theorem counts are a residual-harvest result, not a clean single-condition replacement for `EXP-058`
+- `EXP-SOM-011` still produced the key post-main worklists on real theorem failures: roughly 504-505 `hard_proof_solver`, 241 `compiler_specialist`, and 142-144 `theorem_replanner`
+- the combined hard bucket now has 506 unique theorems with 78% reduced-goal coverage and full theorem-narrative coverage; this is enough to support a real Stage-0 hard-proof data program
+- `EXP-SOM-012` is now frozen and materialized into the second-order corpus; the freeze produced `3440` processed rows, `386` hard residual packets, `588` compiler/startability packets, `2332` Dr. Ducky ledger packets, and `974` second-order controller packets
+- Dr. Ducky is now implemented as a real deterministic residual subsystem: typed capsules, proof skeletons, theorem-faithful replay, cached-state local fact synthesis, and honest progress validation on benchmark residual slices
+- the next runtime step is no longer “just rerun routing”; it is to materialize residual states (`last_goal`, hard-proof local/planner splits), derive a theorem-level hard corpus (`q75`, `min_steps >= 5`), run a richer trace-collection benchmark on that corpus with `scripts/run_exp_som012_hard_collect.py`, materialize current-SoM and hard-residual artifacts with `scripts/build_hard_collection_bundle.py`, materialize a symbolic hard-resolution layer with proof-graph priors and k-line exemplars, then run bounded-budget depth ladders and oracle-gap audits on the hard bucket before launching the learned post-main hard-proof SoM
+- the concrete Stage-1/Stage-2 hard-proof harnesses are now `scripts/run_exp_som012_depth_ladder.py` and `scripts/run_exp_som012_oracle_gap.py`, both aligned to the same reduced-goal row format as the hard collector
+- theorem-search evaluation is now two-level by default: headline theorem counts plus typed residual buckets (`skipped_start`, `single_goal_near_miss`, `progressed_but_unsolved`, follow-on stage)
+- theorem-search evaluation must also separate `raw_success` from `honest_success`; self-application closures are useful structural diagnostics but are excluded from zero-shot claims, k-line memory, and hard-proof training targets
+- reusable proof memory is constrained to abstract strategy structure and lemma-level priors; the system may retain homologies, tactic snippets, and residual-plan geometry, but not exact target-theorem replay as executable memory
+- the post-run pipeline should materialize three separate worklists from every paired theorem benchmark: `compiler_specialist`, `hard_proof_solver`, and `theorem_replanner`
+- post-main theorem-search claims should be budgeted and plotted as curves at `128`, `256`, `512`, and `1024` attempts rather than only as single endpoints
+- `ContextIR` plus goal-start repair are the parallel compiler tracks for replay coverage, theorem-site reconstruction, and future local families
 - rewrite-family local execution is collapsed enough that learning now shifts above it: controller-visible move typing, residual-conditioned orchestration, and executable action selection over shortlists
-- full SoM training remains downstream of multiple validated specialist regimes, not the next immediate milestone
+- full end-to-end SoM claims still depend on paired theorem-search wins, but family routing and 2-step residual search are now validated specialist regimes rather than purely design-level work
+- the proposed "hard proof solver" is theory-aligned only as a semi-isolated post-main SoM stage, not as a new always-on global lane
+- the learned hard-proof SoM should consume symbolic hard-resolution packets rather than raw residual strings by default; those packets should include candidate prior lemmas from the proof graph, solved-trace exemplars, residual skeleton geometry, proof-plan geometry, prior-graph locality, and multigoal dependency structure
+- the symbolic hard-resolution layer should now also emit explicit `specialist_targets` (`inequality_specialist`, `membership_specialist`, `witness_instantiation_specialist`, `side_condition_sweeper`, `multigoal_planner`, `forward_reasoner`) and `lane_suppression_hints`, since early hard-trace analysis shows those families directly rather than only as vague “hard” residuals; `exists_close` traces in `CategoryTheory` should additionally surface canonical witness priors such as zero objects or zero morphisms before generic search
+- the symbolic hard-resolution layer should also emit `search_control_geometry` and `negative_kline_geometry`, because the current hard run shows large repeated no-progress plateaus; plateau avoidance belongs partly in learned negative memory and partly in symbolic branch control
+- the runtime Arbiter should apply narrow domain-aware suppression where traces make the mismatch obvious, especially demoting numeric solver tactics for `CategoryTheory`, `AlgebraicGeometry`, and abstract algebraic bridge residuals while preserving rewrite and extensionality style moves
+- the hard layer should now also surface `close_before_unpack`, `hypothesis_injection`, and `symmetric_unfolding` for abstract structural equalities; local-hypothesis / diagram-chase misses should not be mixed with metavariable-corrupted or fold/unfold-loop branches
+- replay-local namespace leakage such as `_wayfinder_replay__...` should be treated as compiler-specialist / goal-sanitizer failures rather than as reasoning misses, and abstract-domain duplicate-goal pseudo-progress should be rejected at runtime instead of being counted as genuine search advance
+- Lean metaprogramming wrappers such as `autoParam` / `optParam` should be stripped before routing and before local-close specialists see the residual state, and `open scoped`-driven typeclass failures should be promoted to an explicit `scoped_context_missing` compiler-specialist regime
+- hard-bucket summaries should now expose search-pathology counts (`metavariable_corruption`, `state_loop`, `definition_tug_of_war`, `goal_explosion`) so clean residual reasoning can be separated from branch-corruption traces before hard-SoM training
+- hard theorem corpora must now carry theorem-site metadata (`file_path`, `module`) and canonicalized theorem IDs by construction; the current hard-eval run shows that “metadata_missing” is largely a dataset-format failure, not an irreducible theorem-start problem
+- compiler-specialist packets should no longer stop at labels; they should expose explicit reconstruction actions such as theorem-site lookup, file-context replay, symbol-name canonicalization, and source-header replay (`variable`, `open`, `open scoped`, `include/omit`, `local notation`, `local attribute`)
 
 This plan produces five categories of results:
 
@@ -42,6 +68,633 @@ Every phase states what it validates in each stream. The experimental pipeline i
 **Time horizon:** 6-10 weeks for Phase 0-4 (v1). Phase 5 extensions. Phase 6 Society of Mind (v2, 4-6 additional weeks). Phase 7 Energy-Constrained Navigation (v2.1, 4-6 additional weeks).
 
 **Compute budget:** Apple Silicon (M-series Mac) as primary target. The architecture is designed for efficiency: small learnable navigational components (~400K trainable params) and symbolic search (SQLite). Encoder selection (Phase 0.6) is complete: `all-MiniLM-L6-v2` (22M, 384d) selected as primary encoder — frozen, no fine-tuning needed. 617 goals/sec on MPS, minimal memory. LeanDojo retriever (`kaiyuy/leandojo-lean4-retriever-byt5-small`, 218M, 1472d) reserved as ablation candidate for Phase 2.2 encoder comparison.
+
+## Current Architecture Stack
+
+The canonical architecture is now explicitly layered:
+
+1. **Main theorem-search stack**
+   - strong cheap first-order search
+   - `EXP-058` baseline plus validated `norm_cast` / 2-step residual extension
+   - compiler/startability repair remains a parallel specialist track
+2. **Original / first-order SoM**
+   - deterministically tuned control substrate over the main runtime
+   - includes temporal-controller, arbiter, and multistep family-routing work (`EXP-SOM-010`, `som_torch_v1`)
+   - supplies packet features and controller priors, but is not yet the settled replacement for the live search loop
+3. **Dr. Ducky (1.5th-order executor)**
+   - deterministic residual capsules over local hard states
+   - typed prescriptions, proof skeletons, programmatic hole filling
+   - Lean-backed replay/execution and verified progress measurement
+4. **Second-order SoM**
+   - learns routing, budget allocation, escalation, and specialist invocation over symbolic packets
+   - consumes residual buckets, search-pathology geometry, compiler-startability data, first-order SoM control traces, Dr. Ducky capsules, and executor outcomes
+   - will be trained after the current hard-run data program completes
+
+This supersedes any stale reading of Phase 6/6.5 as “the full second-order runtime is already the canonical search loop.” The historical Phase 6 sections remain useful as the original hypothesis, but the operative execution order is now defined by the hard-run program and the SoM experiment slate.
+
+## Theoretical End-State
+
+The long-run theoretical claim of the project should be read narrowly but strongly:
+
+- **not** “Wayfinder proves all mathematical truth”
+- **yes** “on a fixed formal corpus under a fixed axiomatic environment, the architecture family has a plausible path to practical completeness”
+
+The current research program stops at second-order because that is the next major empirical lift, not because higher order is conceptually forbidden. If second-order leaves a smaller but still structured residual tail, the architecture can be extended to third-order and beyond, provided each additional order satisfies one design rule:
+
+- it must produce a **strictly better residual representation** than the prior order
+
+In practice that means a higher-order layer should compress duplicated planner tails, discover latent lemma structure, expose invariants, or otherwise make the remaining proof state cleaner and more tractable. A higher-order layer that merely reruns the same controller over the same packet geometry is not a valid extension.
+
+So the plan should be read in two scopes at once:
+
+1. **Current program scope**
+   - finish the final first-order benchmark
+   - train/evaluate the second-order SoM
+   - measure the full-stack lift honestly
+2. **Architecture-family scope**
+   - if second-order still leaves a structured rarified tail, continue residualization at higher orders until the residual no longer admits meaningful compression
+
+This is the correct sense in which Wayfinder aspires to near-complete coverage on fixed formal corpora: by repeated proof compilation and residual compression, not by assuming one controller order is final by definition.
+
+## Immediate Execution Order (Canonical)
+
+The current repo-wide execution order is:
+
+0. run `EXP-SOM-016` as the formal final first-order benchmark on a frozen random 2,000-theorem Mathlib sample, and materialize all first-order / hard-resolution / second-order packet surfaces from that same run
+1. quantify headroom on the frozen hard corpus (`EXP-SOM-013A`)
+2. measure Dr. Ducky closure lift and backend-family lift on theorem-faithful replay (`EXP-DD-013B/C`, `EXP-DD-014A/B/C/D`)
+3. run the fully integrated hard-tail bridge (`EXP-DD-015`) so contracted residuals are actually handed back into the Phase-1 proof-producing runtime before any second-order success claim
+   - the default bridge seed set should come from `bundle/dr_ducky/executor_validation_stratified120_rows.jsonl`, filtered to theorem-faithful started/progressed rows
+   - the bridge should not begin on pathological raw-order rows like `Batteries.UnionFind.rootD_parent` when a validated tractable seed set exists
+   - the bridge must emit `selected_theorems.json` and a startup `summary.json` before encoder/model/Lean startup so monitoring works from the first second
+4. identify which remaining deficits are compiler-limited, engine-limited, projector-limited, controller-limited, or true rarified-tail gaps
+5. freeze the second-order symbolic packet schema once backend-family and bridge outcomes are stable (`EXP-SOM-013B`)
+6. train the second-order SoM on symbolic packets that include first-order SoM telemetry, bridge traces, and both Ducky passes (`EXP-SOM-013D`)
+7. rerun the integrated bridge with the learned controller in place
+8. run paired theorem-search comparisons against the static strong baseline
+
+## `EXP-SOM-016`: Final First-Order Benchmark Collector
+
+`EXP-SOM-016` is the canonical benchmark that should be run once the integrated first-order stack is stable enough to freeze for publication and for final model training.
+
+It is defined as:
+
+- a random sample of `2000` theorems drawn from the full Mathlib theorem corpus
+- theorem-faithful search with the integrated first-order stack
+- crash-stable per-theorem JSONL recording
+- `MONITOR.txt`, `summary.json`, and `report.json` updated throughout
+- trigger-probe supervision for apply-trigger / selector training
+- postrun hard-resolution packetization
+- postrun second-order packet freeze and dense feature materialization
+
+Required primary artifacts:
+
+- `sample_manifest.jsonl`
+- `details.jsonl`
+- `goal_start_failures.jsonl`
+- `trigger_states.jsonl`
+- `bundle/collection_all.jsonl`
+- `bundle/hard_proof_all.jsonl`
+- `bundle/hard_resolution_layer/`
+- `bundle/second_order_som/second_order_packets.jsonl`
+- `bundle/second_order_som/features/train.npz`
+- `bundle/second_order_som/features/eval.npz`
+
+Canonical launcher:
+
+- [run_exp_som016_final_collect_guarded.sh](/Users/rohanvinaik/Projects/Wayfinder/scripts/run_exp_som016_final_collect_guarded.sh)
+
+Canonical collector:
+
+- [run_exp_som016_final_collect.py](/Users/rohanvinaik/Projects/Wayfinder/scripts/run_exp_som016_final_collect.py)
+
+Purpose:
+
+- produce the formal final first-order score on a clean random Mathlib sample
+- produce the final training/analysis corpus for first-order and second-order SoM work from the same run
+- tag the unsolved remainder by difficulty bucket, follow-on stage, and residual geometry so the second-order program is trained on the actual first-order residual manifold rather than on ad hoc synthetic examples
+
+Operational note:
+- the first post-freeze execution of `EXP-SOM-013A`, `EXP-DD-014A/B/C/D`, and deterministic `EXP-DD-015` should be treated as an **audit/smoke pass**
+- after that pass finishes, the repo should emit a smoke audit and then relaunch the same stage set at **complete frozen-corpus scale**
+- the canonical scripts for that promotion path are now:
+  - `scripts/run_postfreeze_stage2_remaining.sh`
+  - `scripts/audit_postfreeze_stage2_smoke.py`
+  - `scripts/run_postfreeze_stage2_complete.sh`
+
+For Dr. Ducky specifically, the required postrun artifacts are now:
+
+- `dr_ducky_capsules.jsonl`
+- `dr_ducky_ledger_packets.jsonl`
+- `dr_ducky_engine_outcomes.jsonl`
+- `dr_ducky_projector_outcomes.jsonl`
+- `dr_ducky_closure_report.json`
+
+And the required evaluation split is:
+
+- routing validation
+- theorem-faithful replay validation
+- certificate generation
+- projector compilation
+- honest progress lift
+- honest closure lift
+
+## Ready-To-Run Post-`EXP-SOM-012` Experiment Slate
+
+The post-freeze program is now explicit. It should be read as the concrete handoff from the live hard benchmark into the data-geometry, Dr. Ducky, and second-order SoM stack.
+
+The operative closure path is:
+
+1. **Data geometry**
+   - freeze and materialize symbolic packet surfaces from the hard run
+2. **Dr. Ducky**
+   - execute deterministic local symbolic closure experiments over theorem-faithful replay
+3. **Second-order SoM**
+   - consume those packetized outcomes as routing/budget/escalation supervision
+
+## Conditions Required For Hard-Tail Closure
+
+The program is now explicitly designed to test whether the full layered architecture can close a nontrivial fraction of the current hard tail. That claim depends on six concrete conditions:
+
+1. **The first-order stack must already solve the majority class**
+   - satisfied today by the `EXP-058` baseline and the tuned first-order SoM work
+   - this is what makes the remaining gap small enough and structured enough to study as a separate regime
+2. **The hard tail must be frozen into symbolic packet geometry**
+   - satisfied today by the frozen hard-run bundle and second-order packet freeze
+   - this is the role of first-order and second-order data geometry
+3. **Dr. Ducky must show real theorem-faithful progress on that tail**
+   - satisfied today at the progress level
+   - current frozen stratified result: `69/120` honest progress, `0/120` honest closure
+4. **At least some backend families must convert that progress into closure**
+   - this is the active target of `EXP-DD-014A/B/C/D`
+   - without this step, the second-order controller only learns to allocate progress, not closure
+5. **The second-order SoM must be trained on symbolic outcomes, not raw residual text**
+   - enabled today by `second_order_packets.jsonl` and `ducky_outcome_packets.jsonl`
+   - training/runtime path is now implemented through `bundle/second_order_som/features/`, `scripts/train_second_order_som.py`, and `scripts/run_exp_som013d_train_second_order_guarded.sh`
+6. **The final system claim must be made at theorem-search level**
+   - the decisive comparison is:
+     - static strong baseline
+     - baseline + Dr. Ducky
+     - baseline + Dr. Ducky + second-order SoM
+
+If these conditions are met, the research program will be in a legitimate position to claim that the integrated architecture can close a nontrivial portion of the first-order remainder rather than merely analyze it.
+
+Assume the benchmark is frozen into:
+
+```bash
+RUN_DIR=runs/exp_som012_hard_eval_r2_frozen
+BUNDLE_DIR=$RUN_DIR/bundle
+DUCKY_DIR=$BUNDLE_DIR/dr_ducky
+```
+
+### `EXP-DD-013A`: Frozen Hard-Corpus Materialization
+
+**Question:** Is the frozen hard-run corpus fully materialized into the packet surfaces required by Dr. Ducky and the later second-order SoM?
+
+**Commands:**
+
+```bash
+python -m scripts.audit_hard_run \
+  --run-dir "$RUN_DIR" \
+  --output-json "$RUN_DIR/audit.json"
+
+python -m scripts.build_hard_collection_bundle \
+  --inputs "$RUN_DIR/details.jsonl" \
+  --output-dir "$BUNDLE_DIR"
+
+python -m scripts.build_hard_resolution_layer \
+  --bundle-dir "$BUNDLE_DIR" \
+  --db data/proof_network_v3.db
+```
+
+**Primary outputs:**
+
+- `$RUN_DIR/audit.json`
+- `$BUNDLE_DIR/collection_all.jsonl`
+- `$BUNDLE_DIR/hard_resolution_layer/resolution_packets.jsonl`
+- `$BUNDLE_DIR/hard_resolution_layer/hard_som_packets.jsonl`
+- `$BUNDLE_DIR/hard_resolution_layer/compiler_specialist_packets.jsonl`
+- `$BUNDLE_DIR/hard_resolution_layer/surface_inventory.json`
+
+**Success gates:**
+
+- all required packet files exist and are non-empty
+- packet counts reconcile against the frozen `details.jsonl`
+- `surface_inventory.json` is stable enough to drive family-specific closure experiments
+
+### `EXP-DD-013B`: Dr. Ducky Closure Benchmark
+
+**Question:** On theorem-faithful replay, how much local contraction and closure does Dr. Ducky achieve on targeted and stratified frozen residual slices?
+
+Sampling policy:
+- `executor_validation_stratified120` is a guarded round-robin sample across the four local residual buckets after the targeted theorem set is injected.
+- targeted rows are capped by `--limit`; they do not silently overrun the requested slice size.
+
+**Commands:**
+
+```bash
+python -m scripts.build_dr_ducky_worklist \
+  --run-dir "$RUN_DIR" \
+  --output-dir "$DUCKY_DIR"
+
+python -m scripts.run_dr_ducky_executor_validation \
+  --run-dir "$RUN_DIR" \
+  --limit 20 \
+  --row-timeout-seconds 180 \
+  --restart-every 12 \
+  --disable-tactic linarith \
+  --disable-tactic nlinarith \
+  --output-json "$DUCKY_DIR/executor_validation_local20_vnext_summary.json" \
+  --output-jsonl "$DUCKY_DIR/executor_validation_local20_vnext_rows.jsonl" \
+  --engine-outcomes-jsonl "$DUCKY_DIR/executor_validation_local20_vnext_engine_outcomes.jsonl" \
+  --projector-outcomes-jsonl "$DUCKY_DIR/executor_validation_local20_vnext_projector_outcomes.jsonl" \
+  --closure-report-json "$DUCKY_DIR/executor_validation_local20_vnext_closure_report.json"
+
+python -m scripts.run_dr_ducky_executor_validation \
+  --run-dir "$RUN_DIR" \
+  --limit 120 \
+  --row-timeout-seconds 180 \
+  --restart-every 12 \
+  --disable-tactic linarith \
+  --disable-tactic nlinarith \
+  --output-json "$DUCKY_DIR/executor_validation_stratified120_summary.json" \
+  --output-jsonl "$DUCKY_DIR/executor_validation_stratified120_rows.jsonl" \
+  --engine-outcomes-jsonl "$DUCKY_DIR/executor_validation_stratified120_engine_outcomes.jsonl" \
+  --projector-outcomes-jsonl "$DUCKY_DIR/executor_validation_stratified120_projector_outcomes.jsonl" \
+  --closure-report-json "$DUCKY_DIR/executor_validation_stratified120_closure_report.json"
+
+python -m scripts.validate_dr_ducky_design \
+  --run-dir "$RUN_DIR" \
+  --output-json "$DUCKY_DIR/validation.json" \
+  --output-md docs/Research_Paper/Ducky/VALIDATION_REPORT.md
+```
+
+**Primary outputs:**
+
+- `$DUCKY_DIR/dr_ducky_capsules.jsonl`
+- `$DUCKY_DIR/dr_ducky_ledger_packets.jsonl`
+- `$DUCKY_DIR/executor_validation_local20_vnext_*.json*`
+- `$DUCKY_DIR/executor_validation_stratified120_*.json*`
+- `$DUCKY_DIR/validation.json`
+
+**Success gates:**
+
+- theorem-faithful starts remain strong
+- certificate generation and projector emission are non-trivial
+- honest progress is stable on both slices
+- closure lift, if present, is reported separately from progress
+- guarded validation remains live under row timeouts and writes incremental summary / closure artifacts during execution
+
+**Operational note:** the canonical overnight launcher for this phase is now
+`[scripts/run_dr_ducky_overnight_guarded.sh](/Users/rohanvinaik/Projects/Wayfinder/scripts/run_dr_ducky_overnight_guarded.sh)`.
+It wraps the stratified pass plus the residual-bucket ablations with:
+
+- row-level timeouts
+- periodic Pantograph restarts
+- streamed summary / closure report writes
+- validation-safe suppression of `linarith` and `nlinarith`
+
+### `EXP-DD-013C`: Dr. Ducky Residual-Bucket Ablation
+
+**Question:** Which residual buckets benefit most from each current Ducky engine family and projector path?
+
+**Commands:**
+
+```bash
+python -m scripts.run_dr_ducky_executor_validation \
+  --run-dir "$RUN_DIR" \
+  --limit 80 \
+  --row-timeout-seconds 180 \
+  --restart-every 12 \
+  --disable-tactic linarith \
+  --disable-tactic nlinarith \
+  --residual-bucket single_goal_near_miss \
+  --output-json "$DUCKY_DIR/ablation_single_goal_near_miss_summary.json" \
+  --output-jsonl "$DUCKY_DIR/ablation_single_goal_near_miss_rows.jsonl" \
+  --engine-outcomes-jsonl "$DUCKY_DIR/ablation_single_goal_near_miss_engine_outcomes.jsonl" \
+  --projector-outcomes-jsonl "$DUCKY_DIR/ablation_single_goal_near_miss_projector_outcomes.jsonl" \
+  --closure-report-json "$DUCKY_DIR/ablation_single_goal_near_miss_closure_report.json"
+
+python -m scripts.run_dr_ducky_executor_validation \
+  --run-dir "$RUN_DIR" \
+  --limit 80 \
+  --row-timeout-seconds 180 \
+  --restart-every 12 \
+  --disable-tactic linarith \
+  --disable-tactic nlinarith \
+  --residual-bucket single_goal_stall \
+  --output-json "$DUCKY_DIR/ablation_single_goal_stall_summary.json" \
+  --output-jsonl "$DUCKY_DIR/ablation_single_goal_stall_rows.jsonl" \
+  --engine-outcomes-jsonl "$DUCKY_DIR/ablation_single_goal_stall_engine_outcomes.jsonl" \
+  --projector-outcomes-jsonl "$DUCKY_DIR/ablation_single_goal_stall_projector_outcomes.jsonl" \
+  --closure-report-json "$DUCKY_DIR/ablation_single_goal_stall_closure_report.json"
+
+python -m scripts.run_dr_ducky_executor_validation \
+  --run-dir "$RUN_DIR" \
+  --limit 80 \
+  --row-timeout-seconds 180 \
+  --restart-every 12 \
+  --disable-tactic linarith \
+  --disable-tactic nlinarith \
+  --residual-bucket multi_goal_small_progress \
+  --output-json "$DUCKY_DIR/ablation_multi_goal_small_progress_summary.json" \
+  --output-jsonl "$DUCKY_DIR/ablation_multi_goal_small_progress_rows.jsonl" \
+  --engine-outcomes-jsonl "$DUCKY_DIR/ablation_multi_goal_small_progress_engine_outcomes.jsonl" \
+  --projector-outcomes-jsonl "$DUCKY_DIR/ablation_multi_goal_small_progress_projector_outcomes.jsonl" \
+  --closure-report-json "$DUCKY_DIR/ablation_multi_goal_small_progress_closure_report.json"
+
+python -m scripts.run_dr_ducky_executor_validation \
+  --run-dir "$RUN_DIR" \
+  --limit 80 \
+  --row-timeout-seconds 180 \
+  --restart-every 12 \
+  --disable-tactic linarith \
+  --disable-tactic nlinarith \
+  --residual-bucket multi_goal_large_progress \
+  --output-json "$DUCKY_DIR/ablation_multi_goal_large_progress_summary.json" \
+  --output-jsonl "$DUCKY_DIR/ablation_multi_goal_large_progress_rows.jsonl" \
+  --engine-outcomes-jsonl "$DUCKY_DIR/ablation_multi_goal_large_progress_engine_outcomes.jsonl" \
+  --projector-outcomes-jsonl "$DUCKY_DIR/ablation_multi_goal_large_progress_projector_outcomes.jsonl" \
+  --closure-report-json "$DUCKY_DIR/ablation_multi_goal_large_progress_closure_report.json"
+```
+
+**Primary outputs:**
+
+- per-bucket summary/rows/engine/projector/closure reports
+
+**Success gates:**
+
+- per-bucket differences are measurable in `by_engine`, `by_certificate_shape`, and `by_projector_status`
+- the repo can identify which buckets are closure-limited vs routing-limited
+- these outputs are rich enough to define second-order SoM invocation and budget targets
+
+### `EXP-SOM-013A`: Frozen Hard-Bucket Headroom Audit
+
+**Question:** Before second-order controller training, how much headroom exists from deeper post-main search and from idealized oracle choices on the frozen hard bucket?
+
+**Commands:**
+
+```bash
+python -m scripts.run_exp_som012_depth_ladder \
+  --inputs "$BUNDLE_DIR/hard_proof_local.jsonl" \
+  --output-dir "$RUN_DIR/depth_ladder_local" \
+  --cosine-rw \
+  --cosine-rw-seq
+
+python -m scripts.run_exp_som012_depth_ladder \
+  --inputs "$BUNDLE_DIR/hard_proof_planner.jsonl" \
+  --output-dir "$RUN_DIR/depth_ladder_planner" \
+  --cosine-rw \
+  --cosine-rw-seq
+
+python -m scripts.run_exp_som012_oracle_gap \
+  --inputs "$BUNDLE_DIR/hard_proof_all.jsonl" \
+  --resolution-packets "$BUNDLE_DIR/hard_resolution_layer/resolution_packets.jsonl" \
+  --output-dir "$RUN_DIR/oracle_gap"
+```
+
+**Run-layout rule:** these outputs are new post-freeze experiments and should live as sibling run directories under `runs/`, using the frozen `EXP-SOM-012` bundle only as input. They should not be nested under the source run except for deterministic derived artifacts in `bundle/`.
+
+**Primary outputs:**
+
+- `$RUN_DIR/depth_ladder_local/summary.json`
+- `$RUN_DIR/depth_ladder_planner/summary.json`
+- `$RUN_DIR/oracle_gap/summary.json`
+
+**Success gates:**
+
+- bounded-budget depth curves are present for local and planner hard buckets
+- oracle gaps cleanly separate startability, premise, closer, and combined headroom
+- controller training targets are justified by measured headroom, not intuition
+
+### `EXP-SOM-013D`: Train the learned second-order SoM
+
+**Question:** Can the frozen symbolic packet surface support a learned controller that predicts Ducky invocation, engine/backend budgeting, and bridge-stage policy decisions strongly enough to justify a theorem-level rerun?
+
+**Canonical launcher:** [run_exp_som013d_train_second_order_guarded.sh](/Users/rohanvinaik/Projects/Wayfinder/scripts/run_exp_som013d_train_second_order_guarded.sh)
+
+**Training protocol:** adapted from the original / first-order SoM regime.
+
+1. stage 1 trains local executor-facing heads:
+   - Ducky invocation
+   - observed progress
+   - engine targets
+   - backend targets
+2. stage 2 freezes that local surface and trains controller-facing heads:
+   - packet kind
+   - projector rejection risk
+3. stage 3 performs low-LR joint finetuning
+4. every stage uses PAB-style stability stopping rather than fixed-step-only termination
+
+**Primary outputs:**
+
+- sibling run directory containing:
+  - `model.pt`
+  - `metadata_snapshot.json`
+  - `summary.json`
+  - `history.json`
+
+**Success gates:**
+
+- nontrivial eval accuracy on:
+  - Ducky invocation
+  - packet kind
+  - engine target prediction
+  - backend target prediction
+- stage histories show stable convergence under the adapted PAB monitor, not just end-of-budget checkpoint selection
+- checkpoint is loadable by `scripts/run_exp_dd015_integrated_bridge.py`
+- learned rerun produces theorem-level bridge summaries with `controller_mode = learned_second_order_som_v1`
+
+### `EXP-SOM-013B`: Second-Order Packet Freeze
+
+**Question:** Are the symbolic packets rich enough to launch second-order controller training without going back to raw residual text?
+
+**Command:**
+
+```bash
+python -m scripts.build_second_order_packet_freeze \
+  --run-dir "$RUN_DIR"
+```
+
+**Primary outputs:**
+
+- `$BUNDLE_DIR/second_order_som/second_order_packets.jsonl`
+- `$BUNDLE_DIR/second_order_som/ducky_outcome_packets.jsonl`
+- `$BUNDLE_DIR/second_order_som/summary.json`
+- `$DUCKY_DIR/dr_ducky_engine_outcomes.jsonl`
+- `$DUCKY_DIR/dr_ducky_projector_outcomes.jsonl`
+- `$DUCKY_DIR/dr_ducky_closure_report.json`
+
+**Required inputs:**
+
+- `$BUNDLE_DIR/hard_resolution_layer/hard_som_packets.jsonl`
+- `$BUNDLE_DIR/hard_resolution_layer/compiler_specialist_packets.jsonl`
+- `$DUCKY_DIR/dr_ducky_ledger_packets.jsonl`
+- `$DUCKY_DIR/dr_ducky_engine_outcomes.jsonl`
+- `$DUCKY_DIR/dr_ducky_projector_outcomes.jsonl`
+- `$DUCKY_DIR/dr_ducky_closure_report.json`
+- first-order SoM telemetry already emitted through the hard bundle
+
+**Launch gate:**
+
+- `EXP-DD-013A` through `EXP-SOM-013A` are complete
+- packet schemas are frozen
+- Ducky artifact counts and hard-resolution packet counts reconcile
+- the next implementation step is the packet-to-feature adapter for second-order controller training, not more raw-trace collection
+
+### `EXP-SOM-013C`: Second-Order Feature Dataset Build
+
+**Question:** Can the frozen symbolic packet manifold be converted into trainable controller arrays without returning to raw trace parsing?
+
+**Command:**
+
+```bash
+python -m scripts.build_second_order_feature_dataset \
+  --packets "$BUNDLE_DIR/second_order_som/second_order_packets.jsonl" \
+  --output-dir "$BUNDLE_DIR/second_order_som/features"
+```
+
+**Primary outputs:**
+
+- `$BUNDLE_DIR/second_order_som/features/train.npz`
+- `$BUNDLE_DIR/second_order_som/features/eval.npz`
+- `$BUNDLE_DIR/second_order_som/features/metadata.json`
+- `$BUNDLE_DIR/second_order_som/features/summary.json`
+
+**Launch gate:**
+
+- `EXP-SOM-013B` is complete
+- the packet set has a valid train/eval partition, either from source split or deterministic theorem resharing
+- engine/backend targets and controller labels are exposed as trainable arrays
+
+### `EXP-DD-014A`: egglog EqSat backend benchmark
+
+**Question:** Does a real e-graph/extraction backend produce closure lift on equality-heavy hard residuals?
+
+**Canonical launcher:** [run_exp_dd014a_eqsat_guarded.sh](/Users/rohanvinaik/Projects/Wayfinder/scripts/run_exp_dd014a_eqsat_guarded.sh)
+
+**Primary surfaces:**
+
+- `$DUCKY_DIR/summary.json -> by_backend_preference.egglog_eqsat`
+- executor `by_backend_family.egglog_eqsat`
+- equality-heavy replay slices from `EXP-DD-013C`
+
+**Launch gate:** `EXP-DD-013B` and `EXP-DD-013C` show equality-heavy honest progress but weak closure.
+
+### `EXP-DD-014B`: Rosette-style proof DSL benchmark
+
+**Question:** Does solver-aided proof-DSL interpretation improve local fact transport, binder drilldown, and witness closure?
+
+**Canonical launcher:** [run_exp_dd014b_proof_dsl_guarded.sh](/Users/rohanvinaik/Projects/Wayfinder/scripts/run_exp_dd014b_proof_dsl_guarded.sh)
+
+**Primary surfaces:**
+
+- `proof_dsl_programs`
+- `solver_constraints`
+- executor `by_backend_family.rosette_proof_dsl`
+
+**Launch gate:** local fact / witness / binder residuals remain progress-positive but closure-limited after `EXP-DD-013C`.
+
+### `EXP-DD-014C`: Kodkod-style bounded relational benchmark
+
+**Question:** Does bounded relational search improve membership, `Finite`, and filter/eventuality residuals?
+
+**Canonical launcher:** [run_exp_dd014c_relational_guarded.sh](/Users/rohanvinaik/Projects/Wayfinder/scripts/run_exp_dd014c_relational_guarded.sh)
+
+**Primary surfaces:**
+
+- `relational_search_specs`
+- executor `by_backend_family.kodkod_relational`
+
+**Launch gate:** membership and structural-property residuals remain among the main non-closing Ducky families.
+
+### `EXP-DD-014D`: Integrated symbolic closing benchmark
+
+**Question:** What is the closure lift of the full symbolic Dr. Ducky VM once the egglog, Rosette-style DSL, and Kodkod-style bounded relational backends are all present?
+
+**Canonical launcher:** [run_exp_dd014d_integrated_guarded.sh](/Users/rohanvinaik/Projects/Wayfinder/scripts/run_exp_dd014d_integrated_guarded.sh)
+
+**Comparison conditions:**
+
+1. current Ducky baseline
+2. `+ egglog_eqsat`
+3. `+ rosette_proof_dsl`
+4. `+ kodkod_relational`
+5. full integrated Ducky
+
+**Success criterion:** honest closure lift on the frozen hard residual corpus, reported by residual bucket and backend family before any second-order SoM retraining claim.
+
+**Architectural note:** `EXP-DD-014A/B/C/D` are backend/component experiments. They do not by themselves establish theorem-level closure for the full architecture. The final closure claim still requires the contracted residuals to be handed back into the first-order proof-producing stack and then measured in paired theorem-search runs.
+
+**Current pre-freeze smoke evidence:** [runtime_smoke_summary.json](/Users/rohanvinaik/Projects/Wayfinder/runs/exp_som012_hard_eval_r2/bundle/dr_ducky/runtime_smoke_summary.json) shows `5/5` backend cases progressing and `4/5` closing with the in-repo production runtimes.
+
+### `EXP-DD-015`: Integrated hard-tail bridge
+
+**Question:** After Dr. Ducky contracts a frozen hard residual, can the actual first-order proof-producing runtime plus the explicit symbolic closer layer (`solve_by_elim` / `apply?` / `exact?`) close more of the theorem, and if not, does a second Ducky pass after second-order control plus the same symbolic closer layer produce a materially rarified proof-gap packet?
+
+**Canonical launcher:** [run_exp_dd015_integrated_bridge_guarded.sh](/Users/rohanvinaik/Projects/Wayfinder/scripts/run_exp_dd015_integrated_bridge_guarded.sh)
+
+**Runtime path:**
+
+1. theorem-faithful replay
+2. Dr. Ducky pass 1
+3. first-order proof-closing search
+4. post-Ducky symbolic closer layer (`solve_by_elim` / `apply?` / `exact?`)
+5. second-order packet policy / controller refinement
+6. Dr. Ducky pass 2
+7. post-Ducky symbolic closer layer (`solve_by_elim` / `apply?` / `exact?`)
+8. rarified proof-gap packet emission
+
+**Primary outputs:**
+
+- `rows.jsonl`
+- `controller_decisions.jsonl`
+- `rarified_gap_packets.jsonl`
+- `summary.json`
+
+**Success criteria:**
+
+- theorem-faithful replay remains stable
+- some theorems now close through the integrated bridge rather than only progressing inside Ducky-only replay
+- non-closed theorems end in rarified-gap packets that are smaller and more structured than the original residual
+- bridge artifacts are rich enough to define second-order training targets for Ducky1, first-order closure handoff, Ducky2, and final-tail escalation
+- the same runner can be rerun with a trained second-order checkpoint, holding the rest of the closure path fixed
+
+### Final Publication Path
+
+The remaining path from the current frozen state to a publication-ready system is:
+
+1. complete `EXP-SOM-013A` to quantify hard-tail headroom and separate closer, routing, and replanner deficits
+2. complete `EXP-DD-014A/B/C/D` to determine which symbolic backend families actually create honest closure lift
+3. complete `EXP-DD-015` to measure theorem-level lift from the full bridge, not just backend-isolated replay
+4. build the trainable second-order feature dataset from the frozen packets (`EXP-SOM-013C`)
+5. patch Dr. Ducky and the bridge only where the backend/bridge experiments show real leverage:
+   - stronger certificates
+   - stronger projector lowering
+   - stronger local fact transport
+   - stronger domain micro-theories
+6. freeze the second-order symbolic packet schema once backend-family and bridge lift are stable
+7. train the second-order SoM (`EXP-SOM-013D`) on:
+   - hard-resolution packets
+   - compiler/startability packets
+   - first-order SoM telemetry
+   - Dr. Ducky capsule / engine / projector / closure outcomes
+   - integrated bridge decisions and rarified-gap packets
+8. rerun `EXP-DD-015` with the learned controller checkpoint while keeping the rest of the bridge fixed
+9. run paired theorem-search comparisons under three conditions:
+   - static strong baseline
+   - static strong baseline + Dr. Ducky
+   - static strong baseline + Dr. Ducky + second-order SoM
+10. evaluate the hard-tail recovery claim directly:
+   - what fraction of the first-order remainder now closes
+   - which residual buckets move
+   - which gains come from Ducky alone versus second-order orchestration
+-10. build the publication bundle:
+   - frozen code revision
+   - frozen artifacts
+   - ablation tables
+   - case studies
+   - reproducibility commands
 
 ---
 
@@ -911,6 +1564,14 @@ If the SubgoalDecomposer shows promise in ablations:
 
 *Prerequisites: Phase 1-2 (v1 navigator trained, PAB baselines established). Phase 3-5 not required — SoM development can proceed in parallel with v1 benchmark evaluation.*
 
+**Execution note (2026-03-25):** the historical Phase 6 subsections mix two things: real original / first-order SoM work and an earlier hypothesis that the next SoM layer would immediately become the canonical runtime. The canonical current execution order is now:
+- treat the original / first-order SoM work (`EXP-SOM-010`, `som_torch_v1`, temporal/arbiter components) as completed controller substrate and supervision,
+- complete `EXP-SOM-012` hard collection,
+- materialize residual, compiler, hard-resolution, and Dr. Ducky artifacts,
+- then train and benchmark the second-order SoM on that corpus.
+
+In other words, the second-order SoM remains the next orchestration/training layer, not the already-settled default search loop. The original / first-order SoM is real completed work; it is simply not the same thing as the planned second-order controller.
+
 ### 6.0 Establish v1 Baselines (NAV-001/002 Analysis) ✅ COMPLETE
 
 **What**: Confirm that the monolithic navigator produces chaotic PAB dynamics, validating the need for decomposition.
@@ -969,15 +1630,26 @@ If all three are chaotic, the issue is capacity or data, not composition gap —
 #   6. Aggregate theorem/template-level move profiles from `SubtaskIR`
 #   7. Output: template_taxonomy.json (template_id → bank_signature, tactic_pattern, count, move_profile)
 #   8. Augment nav_training.jsonl with template_id labels + theorem-level `template_move_profile`
+#   9. Emit symbolicized theorem-level packets for teacher models:
+#      template_narrative_train.jsonl
+#        - theorem statement / namespace
+#        - proof-history summary
+#        - ordered `SubtaskIR` / trigger-profile summaries
+#        - startability / context-repair status
+#        - compact lane-history summary
 ```
 
-**Output**: `data/template_taxonomy.json` and `data/nav_train_templates.jsonl` with template labels and theorem-level move summaries.
+**Output**:
+- `data/template_taxonomy.json`
+- `data/nav_train_templates.jsonl` with template labels and theorem-level move summaries
+- `data/template_narrative_train.jsonl` with symbolicized theorem/story packets for offline teacher models
 
 **Operational pipeline**: `scripts/run_enhanced_controller_pipeline.sh`
 - rebuild canonical local data if needed
 - refresh `SubtaskIR` training data + validation
 - rebuild `nav_training.jsonl` with stable theorem keys and canonical move metadata
 - rebuild `template_taxonomy.json` / `nav_train_templates.jsonl`
+- rebuild `template_narrative_train.jsonl` for narrative/planning teacher experiments
 - rebuild `move_inventory.json`
 
 **Main experimental entrypoint**: `scripts/run_main_experiment.sh`
@@ -991,6 +1663,7 @@ If all three are chaotic, the issue is capacity or data, not composition gap —
 - **Quantitative coherence**: silhouette score ≥ 0.3 on bank-signature centroids (measures within-cluster similarity vs between-cluster separation)
 - **NMI**: normalized mutual information between template labels and dominant tactic ≥ 0.5 (templates should correlate with tactic choice)
 - Manual inspection of 20 proofs per template to verify qualitative coherence
+- Teacher-packet parseability: ≥ 95% of rows in `template_narrative_train.jsonl` must serialize into the typed packet schema without falling back to raw tactic strings
 
 **Stop/go**: If templates cover < 70% of proofs OR silhouette < 0.2, the taxonomy needs refinement. If > 30 templates needed, re-cluster with coarser bank-signature quantization.
 
@@ -1015,11 +1688,21 @@ If all three are chaotic, the issue is capacity or data, not composition gap —
 # Evaluation: Top-1 and top-3 accuracy on nav_eval.jsonl
 ```
 
+**Teacher/runtime split:**
+- Runtime RECOGNITION remains a lightweight classifier over typed proof-state features.
+- Story-capable or non-math reasoning models may be used **offline** on `template_narrative_train.jsonl`
+  to:
+  - audit/refine the template taxonomy
+  - propose soft template labels
+  - summarize theorem-level strategy packets into teacher targets
+- These teacher models must consume symbolicized packets (`SubtaskIR`, trigger summaries, proof-history summaries, namespace/context features), not raw Lean tactic streams.
+
 **Metrics**:
 - Top-1 template accuracy (target: ≥ 60%)
 - Top-3 template accuracy (target: ≥ 85%)
 - Per-template precision/recall (identify templates that are hard to classify)
 - PAB stability of the template classifier itself (should be "stable" — this is a Regime A task)
+- Agreement between distilled runtime classifier and teacher soft labels on held-out theorem packets (diagnostic only, not a primary gate)
 
 **Alignment note:** `subtask_kind` belongs here (RECOGNITION / PLANNING), not on the navigator.
 The navigator may use only descriptive move metadata (`goal_target_head`, `trigger_signature`)
@@ -1050,9 +1733,22 @@ for regularization.
 #       + MSE on step estimates
 ```
 
-**Stage 3 (deferred): Story-writing LLM integration.** For the hardest proofs where learned sketches fail, integrate a small LLM (DeepSeek-Math 1.3B or Qwen 3.5) fine-tuned to generate natural-language proof narratives. Parse narratives into structured sketches. This is the Relational-AI pattern: narrative model produces strategy, specialist models execute.
+**Stage 3 (deferred teacher track): Story-writing / reasoning teacher integration.** For the hardest proofs where learned sketches fail, integrate a small narrative or reasoning model offline. This model operates on symbolicized planning packets, not raw Lean text:
+- template ID / top-k template candidates
+- theorem statement + namespace
+- proof-history summary
+- `SubtaskIR` / trigger-profile summaries
+- startability/context-repair status
 
-**Validation**: For 200 test proofs, compare sketch-predicted subgoal sequences to actual proof structure. Measure: subgoal count accuracy, anchor target overlap with ground truth, ordering correctness.
+It generates natural-language or semi-structured proof narratives, which are then parsed into
+structured sketches and distilled into the runtime sketch predictor. This is the Relational-AI /
+Winston pattern: a narrative teacher produces strategy, specialist models execute.
+
+**Validation**:
+- For 200 test proofs, compare sketch-predicted subgoal sequences to actual proof structure.
+- Measure: subgoal count accuracy, anchor target overlap with ground truth, ordering correctness.
+- For teacher-generated narratives: measure schema-parse rate into `SubgoalSpec`, agreement with
+  actual proof structure, and distillation lift over the small sketch predictor baseline.
 
 **Stop/go**: If sketch subgoal sequences match actual proof structure ≥ 40% of the time for complex templates, proceed. If < 20%, the sketch predictor needs more capacity or the templates need refinement.
 
@@ -1207,6 +1903,28 @@ ActionIR      # family-specific local action object
 - Shadow traces collected from 50-theorem Mathlib benchmark (660 steps). All 12 proved theorems succeed at phase=structural_setup, escalation=0.
 - The controller is correctly routing, but the executor has nothing to route TO in local_close phase. Executor quality is the current bottleneck, not orchestration.
 
+**Data collection requirement:**
+- Every orchestration experiment must emit typed temporal packets, not only theorem-level summaries:
+  - `TemporalState` snapshot
+  - current template
+  - proof-history summary
+  - recent lane / family history
+  - startability / repair status
+  - current residual type / `SubtaskIR` hints when available
+  - exact outcome labels from Lean-backed execution
+- Store these as `data/temporal_train.jsonl`.
+- Mine successful trajectories into `data/strategy_memory.json`:
+  - a k-line-like memory keyed by template, namespace/context features, trigger profiles, and recent lane history
+  - outputs preferred lane order, escalation prior, and repair heuristics
+
+**Teacher/runtime split:**
+- Runtime temporal control should remain compact: rule-based, MLP, GRU, or a small recurrent model.
+- Story/reasoning models are allowed only as **offline teachers** over `temporal_train.jsonl` to:
+  - propose lane ordering / replan labels
+  - summarize proof-history trajectories
+  - induce strategy-memory entries
+- Do not evaluate raw-Lean story models as direct theorem-search controllers.
+
 **Interfaces**:
 ```python
 TemporalState
@@ -1233,6 +1951,8 @@ TemporalController.update(state, goal, lane, family, tactic, success) -> None
 - lane hit rate: how often the controller’s top lane matches the lane that actually closes or advances the goal
 - phase calibration: agreement between predicted phase and trace-derived successful phase
 - replan utility: success after replan vs success without replan
+- k-line utility: delta in lane-hit rate or wasted-attempt reduction when `strategy_memory.json` is enabled as a prior
+- teacher-distillation transfer: whether offline teacher labels improve the compact controller over typed-state-only supervision
 
 **Stop/go**:
 - Do not claim temporal-controller benefit until `TC1` or `TC2` beats the current static baseline on paired theorems.
@@ -2205,6 +2925,11 @@ families, but it is no longer the reason to delay the next executable-selector t
 - Whole-Mathlib census (`scripts/context_ir_census.py`) shows the relevant source-context constructs are common, not edge cases: `open scoped` 2370, `local notation` 496, `local attribute` 915, `scoped_notation` 402, `include` 1064, `omit` 422, and `inline_only` `... in` forms 6742.
 - On `rw0_eval.jsonl`, the benchmark audit (`scripts/context_ir_benchmark_audit.py`) finds these constructs active at theorem sites frequently: `open` on 693 processed examples, `open_scoped` on 262, `local_notation` on 42, `local_attribute` on 42, `include` on 47. The most common unsupported patterns are exactly the next-declaration and scoped forms the current wrapper path does not compile (`open Classical in`, `variable (M) in`, `include Q in`, `open scoped Classical in`).
 
+**Goal-startability findings (new):**
+- Large trigger-collection shards now show hundreds of `Could not create goal` failures concentrated in structurally heavy namespaces such as `CategoryTheory`, `MeasureTheory`, `Submodule`, `Subgroup`, and `Filter`.
+- These failures are not mainly lexical noise; unicode and apostrophes are rare. The dominant pattern is theorem-site context/elaboration complexity: universes, dense typeclass constraints, scoped notation, and source-context dependence.
+- Training data that silently skips these theorems biases trigger/executable-selector datasets toward already-startable goals. Startability must therefore become its own collected dataset and its own specialist boundary.
+
 **Canonical next steps (in order):**
 
 1. **Freeze the aligned baseline.**
@@ -2212,12 +2937,27 @@ families, but it is no longer the reason to delay the next executable-selector t
    - Use `cosine_rw` plus interleaved bootstrap as the canonical runtime baseline.
    - Treat standalone `cosine_rw_seq`, ungated `apply`, and global `simp` deployment as historical or diagnostic ablations, not the forward default.
 
-2. **Expand the executable dataset with provenance before broadening the selector story.**
+2. **Collect goal-start failure rows and repaired starts as first-class data.**
+   - Do not skip `cannot start goal` theorems.
+   - For every failed direct start, write a structured row with:
+     - theorem/site metadata
+     - namespace prefix
+     - theorem type / raw goal text
+     - source-context features from `ContextIR`
+     - goal-shape counts
+     - structured `LeanFeedback`
+     - repair attempt outcome (`goal_via_file_context`, tier used, repaired goal when available)
+   - Treat this as a separate source kind:
+     - `goal_start_failure`
+   - Use it to train/evaluate a startability/context-repair policy before folding those theorems into downstream trigger negatives.
+
+3. **Expand the executable dataset with provenance before broadening the selector story.**
    - Collect `(goal, candidate)` probe rows from:
      - canonical step-0 `apply`
      - canonical mid-step `apply`
      - post-bootstrap apply-shaped residuals
      - mid-search apply-shaped states
+     - repaired starts that successfully enter search after theorem-site context reconstruction
    - Preserve provenance on every row:
      - `source_kind`
      - `search_stage`
@@ -2232,7 +2972,25 @@ families, but it is no longer the reason to delay the next executable-selector t
      - `executable = accepted_with_goals ∪ closed`
      - `non_executable = all remaining failure categories`
 
-3. **Train source-aware executable selectors, not another name reranker.**
+4. **Build theorem-level narrative/orchestration datasets in parallel with executor data.**
+   - Emit symbolicized theorem/trace packets for the slots above execution:
+     - `template_narrative_train.jsonl`
+     - `temporal_train.jsonl`
+     - `strategy_memory.json`
+   - Required fields include:
+     - theorem statement / namespace
+     - proof-history summary
+     - `SubtaskIR` / trigger-profile summaries
+     - lane history
+     - startability / repair status
+     - exact Lean-backed outcomes
+   - Use story-capable / reasoning-capable models only as **offline teachers** on these packets:
+     - template audit
+     - proof-sketch supervision
+     - temporal-control label proposal
+     - k-line / strategy-memory induction
+
+5. **Train source-aware executable selectors, not another name reranker.**
    - `apply` is now the first validated execution-level selector regime.
    - Evaluate by source, not just pooled metrics:
      - canonical step-0
@@ -2245,7 +3003,7 @@ families, but it is no longer the reason to delay the next executable-selector t
      - failure-category composition
    - Treat static shape filters as features and instrumentation, not as standalone gates.
 
-4. **Integrate the `apply` executable selector into theorem search.**
+6. **Integrate the `apply` executable selector into theorem search.**
    - Run theorem-search ablations with:
      - baseline (`cosine_rw` + interleaved bootstrap)
      - baseline + selector-driven `apply`
@@ -2253,7 +3011,15 @@ families, but it is no longer the reason to delay the next executable-selector t
    - The question is no longer premise-name recovery. It is whether compiler-validated
      `accepted_with_goals` converts into more solved theorems at acceptable call budget.
 
-5. **Keep `ContextIR` as the enabling compiler track, not the primary local-family milestone.**
+7. **Treat goal startability / context repair as a routing problem, not a skip condition.**
+   - Add a startability/context-repair policy above ordinary search:
+     - `direct_start`
+     - `file_context_repair`
+     - `unsupported / defer`
+   - Distinguish theorem-site compiler failures from local proof failures in all new datasets.
+   - Do not label a theorem as a trigger/action negative when the initial goal never became executable.
+
+8. **Keep `ContextIR` as the enabling compiler track, not the primary local-family milestone.**
    - Parse theorem-site lexical context into an explicit IR: scope frames + directives + unsupported forms.
    - Treat Lean source notation as a DSL with scoped side effects, not as header text.
    - Prioritize the context effects that still matter for helper/specialist families:
@@ -2266,7 +3032,7 @@ families, but it is no longer the reason to delay the next executable-selector t
      - `python -m scripts.context_ir_census`
      - `python -m scripts.context_ir_benchmark_audit --dataset data/canonical/rw0_eval.jsonl`
 
-6. **Extend the same executable-selection regime family-by-family.**
+9. **Extend the same executable-selection regime family-by-family.**
    - Immediate next family:
      - `refine_named` via structured action / skeleton selection
    - Immediate non-target:
@@ -2277,13 +3043,13 @@ families, but it is no longer the reason to delay the next executable-selector t
      cost/yield justifies broader use.
    - Only promote a family to default-on theorem search after it shows nonzero theorem-level gain at acceptable call budget.
 
-7. **Keep step>0 replay and semantic `rw` as a coverage track only.**
+10. **Keep step>0 replay and semantic `rw` as a coverage track only.**
    - Keep state-guided replay and per-step alias rebuilding.
    - Prioritize post-step subgoal selection and alpha-equivalent goal matching.
    - Current replay gate: `ReplaySuccess | base_state >= 35%`.
    - Primary step>0 metric remains `LeanValid@k | replayed`, not oracle-match.
 
-8. **Delay full SoM training until there are multiple validated specialist regimes.**
+11. **Delay full SoM training until there are multiple validated specialist regimes.**
    - Full specialist routing/training should sit on top of validated executor contracts:
      - `rw` finisher
      - interleaved bootstrap scaffolder
@@ -2291,7 +3057,7 @@ families, but it is no longer the reason to delay the next executable-selector t
      - `refine_named` structured-action selector
    - Do not treat "Society of Mind" as a substitute for proving out these specialist contracts.
 
-9. **Move the learned frontier above the rewrite executor.**
+12. **Move the learned frontier above the rewrite executor.**
    - Do not spend more cycles trying to beat cosine on rewrite-family local execution with standalone rewrite decoders.
    - Do not build a standalone direction head for the current `rw0/rw1` split; the family gate already carries that signal.
    - Focus learning on the parts cheap geometry still does not solve:
@@ -2310,15 +3076,20 @@ families, but it is no longer the reason to delay the next executable-selector t
   family are validated at live executable metrics
 - temporal-controller value claims that assume `apply` / `refine` are already productive global lanes
 - theorem-search claims based only on offline gold recovery or MRR without live `LeanAccepted`
+- trigger-model training/evaluation on datasets that silently drop goal-start failures and repaired starts
+- direct deployment of story/reasoning LLMs below the compiler boundary (raw Lean execution, action lowering, or unification-sensitive local choice)
+- orchestration experiments that collect only theorem-level success/failure without typed temporal packets and proof-history summaries
 
-**Key insight:** The deterministic compiler layer now has two parts:
+**Key insight:** The deterministic compiler layer now has four parts:
 1. **Source-context compilation** (`ContextIR`) to reconstruct the executable theorem-site environment.
-2. **Action compilation** (`ActionIR`) to lower family-specific local choices into Lean syntax.
-3. **Executable feedback compilation** (`LeanFeedback` + probe datasets) to turn Lean's own
+2. **Goal-startability / context repair** to decide whether a theorem can start directly, needs theorem-site replay, or should be deferred as an unsupported compiler case.
+3. **Action compilation** (`ActionIR`) to lower family-specific local choices into Lean syntax.
+4. **Executable feedback compilation** (`LeanFeedback` + probe datasets) to turn Lean's own
    elaboration/unification outcomes into training targets for executable selectors.
 
 The remaining gap is no longer a missing rewrite-family scorer. It is the combination of:
 - a missing compiler layer that links theorem source notation to executable local proof states, and
+- a startability/context-repair layer that turns theorem statements into faithful initial goals, and
 - family-specific executable-action selection over scoped candidates, and
 - the higher-level orchestration / mixed-family selection problems that cheap geometry does not solve by itself.
 
@@ -2339,8 +3110,10 @@ controller training, auditability, and proof-schema mining. The relevant code pa
 **Updated order after rewrite-family collapse:**
 1. freeze `NAV-004` as the aligned theorem-search checkpoint
 2. freeze rewrite-family execution around `cosine_rw` + interleaved bootstrap
-3. expand the provenance-aware executable dataset for `apply`
-4. train and deploy source-aware `apply` executable selectors into theorem search
-5. extend the same executable-selection regime to `refine_named`
-6. use `SubtaskIR` / trigger profiles to lift validated specialist behavior into a planner-facing move space
-7. only then train the full SoM with explicit per-source / per-specialist training regimes
+3. collect `goal_start_failure` rows and repaired-start outcomes as first-class data
+4. expand the provenance-aware executable dataset for `apply`
+5. build symbolicized theorem-level narrative / temporal datasets (`template_narrative_train.jsonl`, `temporal_train.jsonl`, `strategy_memory.json`)
+6. train and deploy source-aware `apply` executable selectors into theorem search
+7. extend the same executable-selection regime to `refine_named`
+8. use `SubtaskIR` / trigger profiles plus narrative/temporal teacher signals to lift validated specialist behavior into planner-facing move space
+9. only then train the full SoM with explicit per-source / per-specialist training regimes

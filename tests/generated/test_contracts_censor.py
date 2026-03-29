@@ -5,6 +5,7 @@ from __future__ import annotations
 
 # Source module: src.censor
 
+
 # from src.censor import compute_false_prune_rate
 def test_compute_false_prune_rate_returns_float() -> None:
     """Contract: compute_false_prune_rate returns float."""
@@ -12,10 +13,10 @@ def test_compute_false_prune_rate_returns_float() -> None:
     # result = compute_false_prune_rate(..., ..., ...)
     # assert isinstance(result, (int, float))
 
+
 # from src.censor import should_prune
 def test_should_prune_returns_bool() -> None:
     """Contract: should_prune returns bool."""
     # TODO: Provide valid arguments
     # result = should_prune(..., ...)
     # assert isinstance(result, bool)
-

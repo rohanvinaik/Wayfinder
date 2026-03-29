@@ -1,0 +1,164 @@
+ablation:
+  variants:
+  - name: full_wayfinder
+  - name: dense_retrieval
+  - name: tactic_classification
+  - name: no_spreading
+  - name: no_progress_head
+  - name: continuous_decoder
+  - name: no_idf_weighting
+  - name: no_bank_alignment
+  - name: binary_critic
+  - name: no_proof_history
+  - name: no_hammer_delegation
+  - name: no_accessible_premises
+  - name: three_bank_navigation
+  - name: encoder_leandojo_byt5
+  - name: encoder_pplx_embed
+axle:
+  cache_enabled: true
+  enabled: false
+  environment: lean-4.28.0
+  ignore_imports: false
+  max_concurrency: 10
+  repair_terminal_tactics:
+  - grind
+  - aesop
+  - simp
+  - omega
+  - decide
+  timeout_seconds: 120
+data:
+  anchor_labels: data/anchor_labels.json
+  move_inventory: data/move_inventory.json
+  nav_eval: data/nav_eval.jsonl
+  nav_train: data/nav_train_specialist_apply.jsonl
+  proof_network_db: data/proof_network_v3.db
+  template_train: data/nav_train_templates.jsonl
+evaluation:
+  benchmark_theorems: data/mathlib_benchmark_50.jsonl
+  retrieval_eval_samples: 500
+  spreading_eval_samples: 200
+invariants:
+  accessible_premises_on: true
+  encoder_explicitly_chosen: true
+  eval_data_frozen: true
+  gap_analysis_before_training: true
+  hammer_delegation_on: true
+  pab_from_step_zero: true
+  scoring_auditable: true
+  scoring_configurable: true
+  single_inference_per_state: true
+  six_bank_default: true
+  soft_critic_targets: true
+lean:
+  backend: pantograph
+  imports:
+  - Mathlib
+  project_root: data/lean_project/
+logging:
+  checkpoint_dir: models/
+  eval_results_suffix: _nav_eval_results.json
+  run_dir: runs/
+  training_log_suffix: _nav_training_log.jsonl
+model:
+  bridge:
+    bridge_dim: 128
+    history_dim: 64
+  encoder:
+    frozen: true
+    output_dim: 384
+    type: all-MiniLM-L6-v2
+  goal_analyzer:
+    feature_dim: 256
+    navigable_banks:
+    - structure
+    - domain
+    - depth
+    - automation
+    - context
+    - decomposition
+    num_anchors: 18729
+  navigator:
+    hidden_dim: 256
+    input_dim: 128
+    navigable_banks:
+    - structure
+    - domain
+    - depth
+    - automation
+    - context
+    - decomposition
+    num_anchors: 18729
+    num_layers: 2
+    ternary_enabled: true
+navigation:
+  anchor_threshold: 0.3
+  num_anchors: 18729
+  premise_limit: 16
+  scoring_mechanism: confidence_weighted
+  spread_depth: 2
+  tactic_limit: 8
+pab:
+  checkpoint_interval: 50
+  early_exit_enabled: true
+  enabled: true
+  save_profiles: true
+  validation_subset_size: 64
+safety:
+  gradient_check_every_n_steps: 50
+  max_grad_norm: 1.0
+  nan_abort: true
+  nan_checkpoint_before_abort: true
+  ternary_distribution_log_every_n_steps: 100
+search:
+  accessible_premises: true
+  budget: 600
+  cosine_rw_seq_max_atoms: 10
+  cosine_rw_seq_max_calls: 50
+  hammer_delegation: true
+  hammer_timeout: 60
+  max_candidates_per_step: 8
+training:
+  auxiliary:
+    enabled: true
+    goal_head_min_support: 100
+    max_goal_heads: 64
+    max_trigger_signatures: 128
+    navigator_heads:
+    - goal_target_head
+    - trigger_signature
+    subtask_min_support: 25
+    template_heads:
+    - subtask_kind
+    - goal_target_head
+    - trigger_signature
+    trigger_min_support: 250
+  batch_size: 16
+  curriculum:
+    phase_a:
+      iterations: 500
+      max_steps: 2
+    phase_b:
+      iterations: 1500
+      max_steps: 5
+    phase_c:
+      iterations: null
+      max_steps: null
+  device: mps
+  learning_rate: 0.0001
+  loss:
+    initial_log_sigma: 0.0
+  max_iterations: 5000
+  optimizer: adamw
+  proof_history: true
+  scheduler: cosine
+  seed: 42
+  soft_critic_targets: true
+  template_classifier:
+    auxiliary_loss_weight: 0.25
+    batch_size: 32
+    learning_rate: 0.001
+    max_iterations: 2000
+  warmup_steps: 200
+  weight_decay: 0.01

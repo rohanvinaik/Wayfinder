@@ -5,10 +5,10 @@ from __future__ import annotations
 
 # Source module: src.pab_tracker
 
+
 # from src.pab_tracker import should_early_exit
 def test_should_early_exit_returns_bool() -> None:
     """Contract: should_early_exit returns bool."""
     # TODO: Provide valid arguments
     # result = should_early_exit(...)
     # assert isinstance(result, bool)
-

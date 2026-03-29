@@ -140,8 +140,6 @@ def evaluate(
         # Build query from theorem's DB entry (anchors + bank positions)
         query = _build_query_from_theorem(conn, ex["theorem_id"], ex.get("bank_positions", {}))
         results = navigate(conn, query, limit=32, entity_type="lemma")
-        retrieved_ids = {r.entity_id for r in results}
-
         # Check recall at each k
         for k in ks:
             top_k_ids = {r.entity_id for r in results[:k]}

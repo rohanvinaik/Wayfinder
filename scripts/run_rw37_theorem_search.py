@@ -21,6 +21,7 @@ Usage:
         --theorems data/mathlib_benchmark_50.jsonl \\
         --output runs/rw37_results.json
 """
+
 from __future__ import annotations
 
 import argparse
@@ -42,7 +43,6 @@ from scripts.run_benchmark import (
     load_benchmark_theorems,
 )
 from src.proof_search import SearchConfig, SearchResult, search
-
 
 # ---------------------------------------------------------------------------
 # Per-theorem result
@@ -76,7 +76,14 @@ def _dominant_lane(result: SearchResult) -> str:
     prov = result.close_provenance
     if not result.success:
         return "failed"
-    for label in ("learned", "cosine_rw_seq", "cosine_rw", "solver_bootstrap", "structural_core", "automation"):
+    for label in (
+        "learned",
+        "cosine_rw_seq",
+        "cosine_rw",
+        "solver_bootstrap",
+        "structural_core",
+        "automation",
+    ):
         if any(p == label or p.startswith(label) for p in prov):
             return label
     return "unknown"
@@ -93,7 +100,8 @@ def _rw_progress(result: SearchResult) -> int:
     theorem ultimately wasn't proved (or was proved by a later lane).
     """
     rw_tactics = sum(
-        1 for t in result.tactics_used
+        1
+        for t in result.tactics_used
         if isinstance(t, str) and t.startswith("rw [") or t.startswith("rw_seq(")
     )
     rw_closes = sum(1 for p in result.close_provenance if p.startswith("cosine_rw"))
@@ -169,7 +177,9 @@ def _run_condition(
     return results
 
 
-def _merge(combined: list[TheoremResult], cond_results: list[TheoremResult], condition: str) -> None:
+def _merge(
+    combined: list[TheoremResult], cond_results: list[TheoremResult], condition: str
+) -> None:
     by_id = {r.theorem_id: r for r in cond_results}
     for res in combined:
         cr = by_id.get(res.theorem_id)
@@ -210,8 +220,14 @@ def print_report(results: list[TheoremResult]) -> None:
     rw_seq_won = [r for r in results if not r.baseline_success and r.rw_seq_success]
     rw_seq_lost = [r for r in results if r.baseline_success and not r.rw_seq_success]
 
-    rw_touched = sum(1 for r in results if r.rw_progress_events > 0 or (r.rw_success and not r.baseline_success))
-    rw_seq_touched = sum(1 for r in results if r.rw_seq_progress_events > 0 or (r.rw_seq_success and not r.baseline_success))
+    rw_touched = sum(
+        1 for r in results if r.rw_progress_events > 0 or (r.rw_success and not r.baseline_success)
+    )
+    rw_seq_touched = sum(
+        1
+        for r in results
+        if r.rw_seq_progress_events > 0 or (r.rw_seq_success and not r.baseline_success)
+    )
 
     base_calls = sum(r.baseline_attempts for r in results)
     rw_calls = sum(r.rw_attempts for r in results)
@@ -226,34 +242,44 @@ def print_report(results: list[TheoremResult]) -> None:
     print(f"\nTheorems: {n}")
     print(f"\n{'Condition':<35} {'Proved':>8} {'Rate':>7} {'Delta':>8}")
     print("-" * 60)
-    print(f"{'baseline':<35} {base_ok:>8} {100*base_ok/max(n,1):>6.1f}%        —")
-    print(f"{'+ cosine_rw':<35} {rw_ok:>8} {100*rw_ok/max(n,1):>6.1f}%  {rw_ok - base_ok:>+6}")
-    print(f"{'+ cosine_rw_seq':<35} {rw_seq_ok:>8} {100*rw_seq_ok/max(n,1):>6.1f}%  {rw_seq_ok - base_ok:>+6}")
+    print(f"{'baseline':<35} {base_ok:>8} {100 * base_ok / max(n, 1):>6.1f}%        —")
+    print(f"{'+ cosine_rw':<35} {rw_ok:>8} {100 * rw_ok / max(n, 1):>6.1f}%  {rw_ok - base_ok:>+6}")
+    print(
+        f"{'+ cosine_rw_seq':<35} {rw_seq_ok:>8} {100 * rw_seq_ok / max(n, 1):>6.1f}%  {rw_seq_ok - base_ok:>+6}"
+    )
 
-    print(f"\nNo-regression check:")
+    print("\nNo-regression check:")
     print(f"  baseline proved, +cosine_rw lost:     {len(rw_lost)}")
     print(f"  baseline proved, +cosine_rw_seq lost: {len(rw_seq_lost)}")
 
-    print(f"\nUnique theorems touched by rw lane (won + progress-only):")
-    print(f"  +cosine_rw:     {rw_touched}  (won={len(rw_won)}, progress_only={rw_touched - len(rw_won)})")
-    print(f"  +cosine_rw_seq: {rw_seq_touched}  (won={len(rw_seq_won)}, progress_only={rw_seq_touched - len(rw_seq_won)})")
+    print("\nUnique theorems touched by rw lane (won + progress-only):")
+    print(
+        f"  +cosine_rw:     {rw_touched}  (won={len(rw_won)}, progress_only={rw_touched - len(rw_won)})"
+    )
+    print(
+        f"  +cosine_rw_seq: {rw_seq_touched}  (won={len(rw_seq_won)}, progress_only={rw_seq_touched - len(rw_seq_won)})"
+    )
 
-    print(f"\nLean calls / theorem:")
-    print(f"  baseline:       {base_calls/max(n,1):.1f}  (total {base_calls})")
-    print(f"  +cosine_rw:     {rw_calls/max(n,1):.1f}  (+{(rw_calls - base_calls)/max(n,1):.1f}/theorem)")
-    print(f"  +cosine_rw_seq: {rw_seq_calls/max(n,1):.1f}  (+{(rw_seq_calls - base_calls)/max(n,1):.1f}/theorem)")
+    print("\nLean calls / theorem:")
+    print(f"  baseline:       {base_calls / max(n, 1):.1f}  (total {base_calls})")
+    print(
+        f"  +cosine_rw:     {rw_calls / max(n, 1):.1f}  (+{(rw_calls - base_calls) / max(n, 1):.1f}/theorem)"
+    )
+    print(
+        f"  +cosine_rw_seq: {rw_seq_calls / max(n, 1):.1f}  (+{(rw_seq_calls - base_calls) / max(n, 1):.1f}/theorem)"
+    )
 
-    print(f"\nTime / theorem:")
-    print(f"  baseline:       {base_time/max(n,1):.1f}s  (total {base_time:.0f}s)")
-    print(f"  +cosine_rw:     {rw_time/max(n,1):.1f}s")
-    print(f"  +cosine_rw_seq: {rw_seq_time/max(n,1):.1f}s")
+    print("\nTime / theorem:")
+    print(f"  baseline:       {base_time / max(n, 1):.1f}s  (total {base_time:.0f}s)")
+    print(f"  +cosine_rw:     {rw_time / max(n, 1):.1f}s")
+    print(f"  +cosine_rw_seq: {rw_seq_time / max(n, 1):.1f}s")
 
     if rw_seq_won:
-        print(f"\nTheorems won by +cosine_rw_seq:")
+        print("\nTheorems won by +cosine_rw_seq:")
         for r in rw_seq_won:
             print(f"  {r.theorem_id}  (lane={r.rw_seq_close_lane})")
     if rw_seq_lost:
-        print(f"\nRegressions from +cosine_rw_seq:")
+        print("\nRegressions from +cosine_rw_seq:")
         for r in rw_seq_lost:
             print(f"  {r.theorem_id}  (baseline_lane={r.baseline_close_lane})")
     print("=" * 70)
@@ -298,6 +324,7 @@ def main() -> None:
     encoder = None
     try:
         from sentence_transformers import SentenceTransformer
+
         encoder = SentenceTransformer("all-MiniLM-L6-v2")
         logger.info("Loaded MiniLM encoder")
     except ImportError:
@@ -324,18 +351,20 @@ def main() -> None:
     combined = [TheoremResult(theorem_id=t["theorem_id"], source=t["source"]) for t in theorems]
 
     for condition, cfg, enc, label in [
-        ("baseline", cfg_baseline, None,    "baseline (no cosine)"),
-        ("rw",       cfg_rw,       encoder, "+cosine_rw"),
-        ("rw_seq",   cfg_rw_seq,   encoder, "+cosine_rw_seq"),
+        ("baseline", cfg_baseline, None, "baseline (no cosine)"),
+        ("rw", cfg_rw, encoder, "+cosine_rw"),
+        ("rw_seq", cfg_rw_seq, encoder, "+cosine_rw_seq"),
     ]:
         logger.info("Condition: %s (%d theorems)", label, len(theorems))
         t0 = time.time()
         cond_results = _run_condition(condition, theorems, cfg, pipeline, lean, conn, enc)
         elapsed = time.time() - t0
         proved = sum(
-            r.baseline_success if condition == "baseline" else
-            r.rw_success if condition == "rw" else
-            r.rw_seq_success
+            r.baseline_success
+            if condition == "baseline"
+            else r.rw_success
+            if condition == "rw"
+            else r.rw_seq_success
             for r in cond_results
         )
         logger.info("  %d/%d proved in %.0fs", proved, len(theorems), elapsed)
@@ -347,11 +376,15 @@ def main() -> None:
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w") as f:
-        json.dump({
-            "experiment": "EXP-RW-037",
-            "n_theorems": len(combined),
-            "results": [asdict(r) for r in combined],
-        }, f, indent=2)
+        json.dump(
+            {
+                "experiment": "EXP-RW-037",
+                "n_theorems": len(combined),
+                "results": [asdict(r) for r in combined],
+            },
+            f,
+            indent=2,
+        )
     logger.info("Written to %s", output_path)
 
     print_report(combined)

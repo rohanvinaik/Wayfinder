@@ -21,6 +21,7 @@ class TestProofNavigatorConfig:
         obj = ProofNavigator()
         assert obj == EXPECTED  # TODO: Replace with expected instance
 
+
 class TestProofNavigatorState:
     """State invariant tests for ProofNavigator."""
 
@@ -41,6 +42,3 @@ class TestProofNavigatorState:
         obj = ProofNavigator()
         obj.predict()  # TODO: Provide arguments
         # TODO: Assert state changed correctly
-
-
-

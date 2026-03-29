@@ -43,7 +43,6 @@ from scripts.run_benchmark import (
 )
 from src.proof_search import SearchConfig, SearchResult, search
 
-
 # ---------------------------------------------------------------------------
 # Per-theorem result
 # ---------------------------------------------------------------------------
@@ -81,9 +80,17 @@ def _dominant_lane(result: SearchResult) -> str:
     prov = result.close_provenance
     if not result.success:
         return "failed"
-    for label in ("learned", "cosine_apply", "cosine_simp", "cosine_rw_seq",
-                  "cosine_rw", "interleaved_bootstrap", "solver_bootstrap",
-                  "structural_core", "automation"):
+    for label in (
+        "learned",
+        "cosine_apply",
+        "cosine_simp",
+        "cosine_rw_seq",
+        "cosine_rw",
+        "interleaved_bootstrap",
+        "solver_bootstrap",
+        "structural_core",
+        "automation",
+    ):
         if label in prov:
             return label
     return prov[-1] if prov else "unknown"
@@ -157,7 +164,9 @@ def _run_condition(
     return results
 
 
-def _merge(combined: list[TheoremResult], cond_results: list[TheoremResult], condition: str) -> None:
+def _merge(
+    combined: list[TheoremResult], cond_results: list[TheoremResult], condition: str
+) -> None:
     by_id = {r.theorem_id: r for r in cond_results}
     for res in combined:
         cr = by_id.get(res.theorem_id)
@@ -189,26 +198,26 @@ def _merge(combined: list[TheoremResult], cond_results: list[TheoremResult], con
 
 def print_report(results: list[TheoremResult]) -> None:
     n = len(results)
-    base_ok  = sum(r.baseline_success for r in results)
-    ung_ok   = sum(r.ungated_success for r in results)
+    base_ok = sum(r.baseline_success for r in results)
+    ung_ok = sum(r.ungated_success for r in results)
     gated_ok = sum(r.gated_success for r in results)
 
-    ung_lost   = [r for r in results if r.baseline_success and not r.ungated_success]
+    ung_lost = [r for r in results if r.baseline_success and not r.ungated_success]
     gated_lost = [r for r in results if r.baseline_success and not r.gated_success]
-    ung_won    = [r for r in results if not r.baseline_success and r.ungated_success]
-    gated_won  = [r for r in results if not r.baseline_success and r.gated_success]
+    ung_won = [r for r in results if not r.baseline_success and r.ungated_success]
+    gated_won = [r for r in results if not r.baseline_success and r.gated_success]
 
-    ung_touched   = sum(1 for r in results if r.ungated_apply_closes > 0)
+    ung_touched = sum(1 for r in results if r.ungated_apply_closes > 0)
     gated_touched = sum(1 for r in results if r.gated_apply_closes > 0)
-    ung_closes    = sum(r.ungated_apply_closes for r in results)
-    gated_closes  = sum(r.gated_apply_closes for r in results)
+    ung_closes = sum(r.ungated_apply_closes for r in results)
+    gated_closes = sum(r.gated_apply_closes for r in results)
 
-    c_base  = sum(r.baseline_attempts for r in results)
-    c_ung   = sum(r.ungated_attempts for r in results)
+    c_base = sum(r.baseline_attempts for r in results)
+    c_ung = sum(r.ungated_attempts for r in results)
     c_gated = sum(r.gated_attempts for r in results)
 
-    t_base  = sum(r.baseline_time_s for r in results)
-    t_ung   = sum(r.ungated_time_s for r in results)
+    t_base = sum(r.baseline_time_s for r in results)
+    t_ung = sum(r.ungated_time_s for r in results)
     t_gated = sum(r.gated_time_s for r in results)
 
     print("\n" + "=" * 72)
@@ -217,38 +226,48 @@ def print_report(results: list[TheoremResult]) -> None:
     print(f"\nTheorems: {n}")
     print(f"\n{'Condition':<45} {'Proved':>7} {'Rate':>7} {'Delta':>7}")
     print("-" * 68)
-    print(f"{'baseline (+IB +cosine_rw)':<45} {base_ok:>7} {100*base_ok/max(n,1):>6.1f}%       —")
-    print(f"{'+ cosine_apply ungated':<45} {ung_ok:>7} {100*ung_ok/max(n,1):>6.1f}%  {ung_ok-base_ok:>+6}")
-    print(f"{'+ cosine_apply gated':<45} {gated_ok:>7} {100*gated_ok/max(n,1):>6.1f}%  {gated_ok-base_ok:>+6}")
+    print(
+        f"{'baseline (+IB +cosine_rw)':<45} {base_ok:>7} {100 * base_ok / max(n, 1):>6.1f}%       —"
+    )
+    print(
+        f"{'+ cosine_apply ungated':<45} {ung_ok:>7} {100 * ung_ok / max(n, 1):>6.1f}%  {ung_ok - base_ok:>+6}"
+    )
+    print(
+        f"{'+ cosine_apply gated':<45} {gated_ok:>7} {100 * gated_ok / max(n, 1):>6.1f}%  {gated_ok - base_ok:>+6}"
+    )
 
-    print(f"\nNo-regression check:")
+    print("\nNo-regression check:")
     print(f"  baseline proved, ungated lost:  {len(ung_lost)}")
     print(f"  baseline proved, gated lost:    {len(gated_lost)}")
 
-    print(f"\nGate effectiveness:")
+    print("\nGate effectiveness:")
     print(f"  ungated — theorems touched: {ung_touched}, subgoal closes: {ung_closes}")
     print(f"  gated   — theorems touched: {gated_touched}, subgoal closes: {gated_closes}")
 
     if gated_won:
-        print(f"\n  Theorems won by gated (vs baseline):")
+        print("\n  Theorems won by gated (vs baseline):")
         for r in gated_won:
-            print(f"    {r.theorem_id}  (lane={r.gated_close_lane}, apply_closes={r.gated_apply_closes})")
+            print(
+                f"    {r.theorem_id}  (lane={r.gated_close_lane}, apply_closes={r.gated_apply_closes})"
+            )
     if ung_won and not gated_won:
-        print(f"\n  Theorems won by ungated only (gate may be too conservative):")
+        print("\n  Theorems won by ungated only (gate may be too conservative):")
         for r in ung_won:
-            print(f"    {r.theorem_id}  (lane={r.ungated_close_lane}, apply_closes={r.ungated_apply_closes})")
+            print(
+                f"    {r.theorem_id}  (lane={r.ungated_close_lane}, apply_closes={r.ungated_apply_closes})"
+            )
 
     saved_calls = c_ung - c_gated
-    print(f"\nLean calls / theorem:")
-    print(f"  baseline:  {c_base/max(n,1):.1f}  (total {c_base})")
-    print(f"  ungated:   {c_ung/max(n,1):.1f}  (+{(c_ung-c_base)/max(n,1):.1f}/thm)")
-    print(f"  gated:     {c_gated/max(n,1):.1f}  (+{(c_gated-c_base)/max(n,1):.1f}/thm)")
-    print(f"  gate saved: {saved_calls} calls ({saved_calls/max(n,1):.1f}/thm)")
+    print("\nLean calls / theorem:")
+    print(f"  baseline:  {c_base / max(n, 1):.1f}  (total {c_base})")
+    print(f"  ungated:   {c_ung / max(n, 1):.1f}  (+{(c_ung - c_base) / max(n, 1):.1f}/thm)")
+    print(f"  gated:     {c_gated / max(n, 1):.1f}  (+{(c_gated - c_base) / max(n, 1):.1f}/thm)")
+    print(f"  gate saved: {saved_calls} calls ({saved_calls / max(n, 1):.1f}/thm)")
 
-    print(f"\nTime / theorem:")
-    print(f"  baseline:  {t_base/max(n,1):.1f}s")
-    print(f"  ungated:   {t_ung/max(n,1):.1f}s")
-    print(f"  gated:     {t_gated/max(n,1):.1f}s")
+    print("\nTime / theorem:")
+    print(f"  baseline:  {t_base / max(n, 1):.1f}s")
+    print(f"  ungated:   {t_ung / max(n, 1):.1f}s")
+    print(f"  gated:     {t_gated / max(n, 1):.1f}s")
     print("=" * 72)
 
 
@@ -294,6 +313,7 @@ def main() -> None:
     encoder = None
     try:
         from sentence_transformers import SentenceTransformer
+
         encoder = SentenceTransformer("all-MiniLM-L6-v2")
         logger.info("Loaded MiniLM encoder")
     except ImportError:
@@ -316,24 +336,26 @@ def main() -> None:
         return cfg
 
     cfg_baseline = _make_cfg(apply=False)
-    cfg_ungated  = _make_cfg(apply=True, gated=False)
-    cfg_gated    = _make_cfg(apply=True, gated=True)
+    cfg_ungated = _make_cfg(apply=True, gated=False)
+    cfg_gated = _make_cfg(apply=True, gated=True)
 
     combined = [TheoremResult(theorem_id=t["theorem_id"], source=t["source"]) for t in theorems]
 
     for condition, cfg, enc, label in [
-        ("baseline", cfg_baseline, None,    "baseline (+IB +cosine_rw, no apply)"),
-        ("ungated",  cfg_ungated,  encoder, "+cosine_apply ungated"),
-        ("gated",    cfg_gated,    encoder, "+cosine_apply gated"),
+        ("baseline", cfg_baseline, None, "baseline (+IB +cosine_rw, no apply)"),
+        ("ungated", cfg_ungated, encoder, "+cosine_apply ungated"),
+        ("gated", cfg_gated, encoder, "+cosine_apply gated"),
     ]:
         logger.info("Condition: %s (%d theorems)", label, len(theorems))
         t0 = time.time()
         cond_results = _run_condition(condition, theorems, cfg, pipeline, lean, conn, enc)
         elapsed = time.time() - t0
         proved = sum(
-            r.baseline_success if condition == "baseline" else
-            r.ungated_success if condition == "ungated" else
-            r.gated_success
+            r.baseline_success
+            if condition == "baseline"
+            else r.ungated_success
+            if condition == "ungated"
+            else r.gated_success
             for r in cond_results
         )
         logger.info("  %d/%d proved in %.0fs", proved, len(theorems), elapsed)
@@ -345,14 +367,18 @@ def main() -> None:
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w") as f:
-        json.dump({
-            "experiment": "EXP-APPLY-042",
-            "apply_beam": args.apply_beam,
-            "ib_max_depth": args.ib_max_depth,
-            "ib_max_calls": args.ib_max_calls,
-            "n_theorems": len(combined),
-            "results": [asdict(r) for r in combined],
-        }, f, indent=2)
+        json.dump(
+            {
+                "experiment": "EXP-APPLY-042",
+                "apply_beam": args.apply_beam,
+                "ib_max_depth": args.ib_max_depth,
+                "ib_max_calls": args.ib_max_calls,
+                "n_theorems": len(combined),
+                "results": [asdict(r) for r in combined],
+            },
+            f,
+            indent=2,
+        )
     logger.info("Written to %s", output_path)
 
     print_report(combined)

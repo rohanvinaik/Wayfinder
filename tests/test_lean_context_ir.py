@@ -11,9 +11,19 @@ from src.lean_context_ir import classify_context_directive, extract_context_ir, 
 
 
 class TestClassifyContextDirective(unittest.TestCase):
+    def test_recognizes_local_macro(self):
+        kind, inline_only = classify_context_directive('local macro:max "foo" : term =>')
+        self.assertEqual(kind, "local_macro")
+        self.assertFalse(inline_only)
+
     def test_recognizes_open_scoped(self):
         kind, inline_only = classify_context_directive("open scoped MeasureTheory")
         self.assertEqual(kind, "open_scoped")
+        self.assertFalse(inline_only)
+
+    def test_recognizes_scoped_notation_keyword(self):
+        kind, inline_only = classify_context_directive('scoped notation "X" => Nat')
+        self.assertEqual(kind, "scoped_notation")
         self.assertFalse(inline_only)
 
     def test_marks_inline_only(self):
@@ -44,6 +54,8 @@ class TestExtractContextIR(unittest.TestCase):
             section Baz
             variable {α : Type*}
             local notation "ZZ" => Nat
+            scoped notation "WW" => Nat.succ
+            local instance : Inhabited Nat := ⟨0⟩
             attribute [local simp] foo
             include α
             theorem demo : True := by
@@ -62,6 +74,8 @@ class TestExtractContextIR(unittest.TestCase):
                 "section Baz",
                 "variable {α : Type*}",
                 'local notation "ZZ" => Nat',
+                'scoped notation "WW" => Nat.succ',
+                "local instance : Inhabited Nat := ⟨0⟩",
                 "attribute [local simp] foo",
                 "include α",
             ],
@@ -70,7 +84,8 @@ class TestExtractContextIR(unittest.TestCase):
         counts = ir.feature_counts()
         self.assertEqual(counts["open_scoped"], 1)
         self.assertEqual(counts["local_notation"], 1)
-        self.assertEqual(counts["local_attribute"], 1)
+        self.assertEqual(counts["scoped_notation"], 1)
+        self.assertEqual(counts["local_attribute"], 2)
         self.assertEqual(counts["include"], 1)
 
     def test_records_inline_only_directive_as_unsupported(self):
@@ -86,10 +101,56 @@ class TestExtractContextIR(unittest.TestCase):
         line = find_decl_line(path, "demo")
         ir = extract_context_ir(path, line)
         self.assertEqual(ir.prefix_lines, ["section"])
+        self.assertEqual(ir.inline_lines, ["variable (R : Type*) in"])
         self.assertEqual(ir.suffix_lines, ["end"])
-        self.assertEqual(len(ir.unsupported), 1)
-        self.assertEqual(ir.unsupported[0].kind, "variable")
-        self.assertEqual(ir.unsupported[0].reason, "inline_next_decl_only")
+        self.assertEqual(ir.unsupported, [])
+
+    def test_extracts_inline_set_option_directive(self):
+        path = self._write(
+            """
+            section
+            set_option pp.universes true in
+            theorem demo : True := by
+              trivial
+            end
+            """
+        )
+        line = find_decl_line(path, "demo")
+        ir = extract_context_ir(path, line)
+        self.assertEqual(ir.prefix_lines, ["section"])
+        self.assertEqual(ir.inline_lines, ["set_option pp.universes true in"])
+        self.assertEqual(ir.suffix_lines, ["end"])
+
+    def test_extracts_multiline_local_macro_directive(self):
+        path = self._write(
+            """
+            section
+            local macro:max "foo" : term =>
+              `(Nat)
+            theorem demo : True := by
+              trivial
+            end
+            """
+        )
+        line = find_decl_line(path, "demo")
+        ir = extract_context_ir(path, line)
+        self.assertEqual(ir.prefix_lines[0], "section")
+        self.assertIn('local macro:max "foo" : term =>\n  `(Nat)', ir.prefix_lines)
+        self.assertEqual(ir.suffix_lines, ["end"])
+
+    def test_preserves_public_section(self):
+        path = self._write(
+            """
+            public section
+            theorem demo : True := by
+              trivial
+            end
+            """
+        )
+        line = find_decl_line(path, "demo")
+        ir = extract_context_ir(path, line)
+        self.assertEqual(ir.prefix_lines, ["public section"])
+        self.assertEqual(ir.suffix_lines, ["end"])
 
     def test_find_decl_line(self):
         path = self._write(

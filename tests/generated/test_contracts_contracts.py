@@ -5,12 +5,6 @@ from __future__ import annotations
 
 # Source module: src.contracts
 
-# from src.contracts import to_dict
-def test_to_dict_returns_dict_str_any() -> None:
-    """Contract: to_dict returns dict[str, Any]."""
-    # TODO: Provide valid arguments
-    # result = to_dict()
-    # assert isinstance(result, dict)
 
 # from src.contracts import to_dict
 def test_to_dict_returns_dict_str_any() -> None:
@@ -18,6 +12,15 @@ def test_to_dict_returns_dict_str_any() -> None:
     # TODO: Provide valid arguments
     # result = to_dict()
     # assert isinstance(result, dict)
+
+
+# from src.contracts import to_dict
+def test_to_dict_returns_dict_str_any() -> None:
+    """Contract: to_dict returns dict[str, Any]."""
+    # TODO: Provide valid arguments
+    # result = to_dict()
+    # assert isinstance(result, dict)
+
 
 # from src.contracts import from_dict
 def test_from_dict_http() -> None:
@@ -31,12 +34,14 @@ def test_from_dict_http() -> None:
     with patch("requests.get", return_value=mock_resp):
         pass  # TODO: call from_dict with valid args and assert result
 
+
 # from src.contracts import to_dict
 def test_to_dict_returns_dict_str_any() -> None:
     """Contract: to_dict returns dict[str, Any]."""
     # TODO: Provide valid arguments
     # result = to_dict()
     # assert isinstance(result, dict)
+
 
 # from src.contracts import from_dict
 def test_from_dict_http() -> None:
@@ -50,12 +55,14 @@ def test_from_dict_http() -> None:
     with patch("requests.get", return_value=mock_resp):
         pass  # TODO: call from_dict with valid args and assert result
 
+
 # from src.contracts import to_dict
 def test_to_dict_returns_dict_str_any() -> None:
     """Contract: to_dict returns dict[str, Any]."""
     # TODO: Provide valid arguments
     # result = to_dict()
     # assert isinstance(result, dict)
+
 
 # from src.contracts import from_dict
 def test_from_dict_http() -> None:
@@ -68,6 +75,7 @@ def test_from_dict_http() -> None:
     mock_resp.text = ""
     with patch("requests.get", return_value=mock_resp):
         pass  # TODO: call from_dict with valid args and assert result
+
 
 # from src.contracts import to_dict
 def test_to_dict_returns_dict_str_str() -> None:
@@ -76,6 +84,7 @@ def test_to_dict_returns_dict_str_str() -> None:
     # result = to_dict()
     # assert isinstance(result, dict)
 
+
 # from src.contracts import from_dict
 def test_from_dict_http() -> None:
     """Contract: from_dict handles HTTP response."""
@@ -87,6 +96,7 @@ def test_from_dict_http() -> None:
     mock_resp.text = ""
     with patch("requests.get", return_value=mock_resp):
         pass  # TODO: call from_dict with valid args and assert result
+
 
 # from src.contracts import to_dict
 def test_to_dict_returns_dict_str_any() -> None:
@@ -95,6 +105,7 @@ def test_to_dict_returns_dict_str_any() -> None:
     # result = to_dict()
     # assert isinstance(result, dict)
 
+
 # from src.contracts import from_dict
 def test_from_dict_http() -> None:
     """Contract: from_dict handles HTTP response."""
@@ -106,6 +117,7 @@ def test_from_dict_http() -> None:
     mock_resp.text = ""
     with patch("requests.get", return_value=mock_resp):
         pass  # TODO: call from_dict with valid args and assert result
+
 
 # from src.contracts import to_dict
 def test_to_dict_returns_dict_str_any() -> None:
@@ -114,6 +126,7 @@ def test_to_dict_returns_dict_str_any() -> None:
     # result = to_dict()
     # assert isinstance(result, dict)
 
+
 # from src.contracts import from_dict
 def test_from_dict_http() -> None:
     """Contract: from_dict handles HTTP response."""
@@ -125,4 +138,3 @@ def test_from_dict_http() -> None:
     mock_resp.text = ""
     with patch("requests.get", return_value=mock_resp):
         pass  # TODO: call from_dict with valid args and assert result
-

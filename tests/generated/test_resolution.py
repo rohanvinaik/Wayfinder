@@ -11,6 +11,7 @@ def test_build_query_returns_expected_output() -> None:
     result = build_query(..., ..., ..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
 
+
 def test_build_query_boundary_values() -> None:
     """Test build_query with edge cases that mutation testing targets."""
     # Boundary: nav_output
@@ -21,11 +22,11 @@ def test_build_query_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_resolve_returns_expected_output() -> None:
     """Test resolve with valid input."""
     result = resolve(..., ..., ..., ..., ..., ..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_resolve_boundary_values() -> None:
     """Test resolve with edge cases that mutation testing targets."""
@@ -35,7 +36,6 @@ def test_resolve_boundary_values() -> None:
     # TODO: Test with boundary inputs (0, -1, empty string, None)
     result = resolve(..., ..., ..., ..., ..., ..., ...)
     assert result == EXPECTED  # TODO: Replace with actual expected value
-
 
 
 class TestSearchContextConfig:
@@ -48,7 +48,6 @@ class TestSearchContextConfig:
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
 
 
-
 class TestCandidateConfig:
     """Configuration tests for Candidate."""
 
@@ -57,6 +56,3 @@ class TestCandidateConfig:
         obj = Candidate()
         # TODO: Assert specific field values, not just existence
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
-
-
-

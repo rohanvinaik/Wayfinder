@@ -41,9 +41,7 @@ class TestGetEncoderModelName(unittest.TestCase):
         self.assertEqual(get_encoder_model_name({}), "all-MiniLM-L6-v2")
 
     def test_type_takes_priority(self):
-        self.assertEqual(
-            get_encoder_model_name({"type": "a", "model_name": "b"}), "a"
-        )
+        self.assertEqual(get_encoder_model_name({"type": "a", "model_name": "b"}), "a")
 
 
 # ---------------------------------------------------------------------------
@@ -59,9 +57,7 @@ class TestResolveBaseModelName(unittest.TestCase):
         )
 
     def test_unknown_returns_self(self):
-        self.assertEqual(
-            _resolve_base_model_name("some-random-model"), "some-random-model"
-        )
+        self.assertEqual(_resolve_base_model_name("some-random-model"), "some-random-model")
 
 
 # ---------------------------------------------------------------------------
@@ -84,14 +80,10 @@ class TestIsPeftModel(unittest.TestCase):
 
 class TestShouldTrustRemoteCode(unittest.TestCase):
     def test_skip_stella(self):
-        self.assertFalse(
-            _should_trust_remote_code("dunzhang/stella_en_1.5B_v5")
-        )
+        self.assertFalse(_should_trust_remote_code("dunzhang/stella_en_1.5B_v5"))
 
     def test_skip_gte_qwen(self):
-        self.assertFalse(
-            _should_trust_remote_code("Alibaba-NLP/gte-Qwen2-7B-instruct")
-        )
+        self.assertFalse(_should_trust_remote_code("Alibaba-NLP/gte-Qwen2-7B-instruct"))
 
     def test_normal_model_trusted(self):
         self.assertTrue(_should_trust_remote_code("all-MiniLM-L6-v2"))
@@ -141,14 +133,10 @@ class TestPreferredEncodeBatchSize(unittest.TestCase):
         self.assertEqual(_preferred_encode_batch_size("t5", "cuda"), 16)
 
     def test_sentence_transformer_cpu(self):
-        self.assertEqual(
-            _preferred_encode_batch_size("sentence_transformer", "cpu"), 16
-        )
+        self.assertEqual(_preferred_encode_batch_size("sentence_transformer", "cpu"), 16)
 
     def test_sentence_transformer_cuda(self):
-        self.assertEqual(
-            _preferred_encode_batch_size("sentence_transformer", "cuda"), 64
-        )
+        self.assertEqual(_preferred_encode_batch_size("sentence_transformer", "cuda"), 64)
 
     def test_swap_backend_changes_result(self):
         """SWAP: different backends on same device produce different sizes."""

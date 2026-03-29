@@ -5,6 +5,7 @@ from __future__ import annotations
 
 # Source module: src.pab_profile
 
+
 # from src.pab_profile import save
 def test_save_file_io(tmp_path) -> None:
     """Contract: save handles file I/O."""
@@ -13,6 +14,7 @@ def test_save_file_io(tmp_path) -> None:
     # TODO: call save(str(test_file)) and assert result
     pass
 
+
 # from src.pab_profile import load
 def test_load_file_io(tmp_path) -> None:
     """Contract: load handles file I/O."""
@@ -20,4 +22,3 @@ def test_load_file_io(tmp_path) -> None:
     test_file.write_text("test content")
     # TODO: call load(str(test_file)) and assert result
     pass
-

@@ -5,12 +5,14 @@ from __future__ import annotations
 
 # Source module: src.trainer
 
+
 # from src.trainer import load_config
 def test_load_config_returns_dict() -> None:
     """Contract: load_config returns dict."""
     # TODO: Provide valid arguments
     # result = load_config(...)
     # assert isinstance(result, dict)
+
 
 # from src.trainer import load_config
 def test_load_config_file_io(tmp_path) -> None:
@@ -20,12 +22,14 @@ def test_load_config_file_io(tmp_path) -> None:
     # TODO: call load_config(str(test_file)) and assert result
     pass
 
+
 # from src.trainer import config
 def test_config_returns_dict() -> None:
     """Contract: config returns dict."""
     # TODO: Provide valid arguments
     # result = config()
     # assert isinstance(result, dict)
+
 
 # from src.trainer import run_id
 def test_run_id_returns_str() -> None:
@@ -34,6 +38,7 @@ def test_run_id_returns_str() -> None:
     # result = run_id()
     # assert isinstance(result, str)
 
+
 # from src.trainer import device
 def test_device_returns_str() -> None:
     """Contract: device returns str."""
@@ -41,12 +46,14 @@ def test_device_returns_str() -> None:
     # result = device()
     # assert isinstance(result, str)
 
+
 # from src.trainer import seed
 def test_seed_returns_int() -> None:
     """Contract: seed returns int."""
     # TODO: Provide valid arguments
     # result = seed()
     # assert isinstance(result, int)
+
 
 # from src.trainer import setup
 def test_setup_http() -> None:
@@ -60,12 +67,14 @@ def test_setup_http() -> None:
     with patch("requests.get", return_value=mock_resp):
         pass  # TODO: call setup with valid args and assert result
 
+
 # from src.trainer import check_gradient_health
 def test_check_gradient_health_returns_bool() -> None:
     """Contract: check_gradient_health returns bool."""
     # TODO: Provide valid arguments
     # result = check_gradient_health()
     # assert isinstance(result, bool)
+
 
 # from src.trainer import log_ternary_distribution
 def test_log_ternary_distribution_returns_dict_str_dict_str_float() -> None:
@@ -74,10 +83,10 @@ def test_log_ternary_distribution_returns_dict_str_dict_str_float() -> None:
     # result = log_ternary_distribution(...)
     # assert isinstance(result, dict)
 
+
 # from src.trainer import train
 def test_train_returns_dict() -> None:
     """Contract: train returns dict."""
     # TODO: Provide valid arguments
     # result = train(...)
     # assert isinstance(result, dict)
-

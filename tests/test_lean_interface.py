@@ -8,9 +8,14 @@ from src.lean_interface import (
     ReplayResult,
     ServerCrashError,
     _build_hammer_tactics,
+    _candidate_open_namespaces,
     _classify_tactic_failure,
+    _find_decl_bounds_in_source,
+    _resolve_alias_target_in_source,
+    _resolve_source_file_path,
     extract_file_header,
     resolve_lean_path,
+    theorem_type_from_goal_pp,
 )
 from src.nav_contracts import LeanFeedback, TacticResult
 
@@ -28,6 +33,231 @@ class TestLeanConfig(unittest.TestCase):
         self.assertEqual(cfg.backend, "pantograph")
         self.assertEqual(cfg.timeout, 10)
         self.assertEqual(cfg.hammer_timeout, 120)
+
+
+class TestReplaySourceHelpers(unittest.TestCase):
+    def test_theorem_type_from_goal_pp_builds_binders_and_target(self):
+        goal_pp = (
+            "P : MorphismProperty Scheme\n"
+            "Q : AffineTargetMorphismProperty\n"
+            "inst✝ : HasAffineProperty P Q\n"
+            "X Y : Scheme\n"
+            "f : X ⟶ Y\n"
+            "⊢ P f\n"
+        )
+        theorem_type = theorem_type_from_goal_pp(goal_pp)
+        self.assertEqual(
+            theorem_type,
+            "∀ (P : MorphismProperty Scheme) (Q : AffineTargetMorphismProperty) "
+            "[_inst : HasAffineProperty P Q] (X Y : Scheme) (f : X ⟶ Y), P f",
+        )
+
+    def test_candidate_open_namespaces_uses_conservative_top_levels(self):
+        namespaces = _candidate_open_namespaces(
+            theorem_name="AlgebraicGeometry.HasAffineProperty.isLocalAtSource",
+            file_path="Mathlib/AlgebraicGeometry/Morphisms/Constructors.lean",
+        )
+        self.assertEqual(namespaces, ["AlgebraicGeometry"])
+
+    def test_find_decl_bounds_in_source_locates_named_theorem(self):
+        lines = [
+            "section Foo\n",
+            "def helper : Nat := 0\n",
+            "theorem demo : True := by\n",
+            "  trivial\n",
+            "\n",
+            "theorem next_demo : True := by\n",
+            "  trivial\n",
+        ]
+        start, end = _find_decl_bounds_in_source(lines, "demo")
+        self.assertEqual((start, end), (3, 5))
+
+    def test_find_decl_bounds_in_source_locates_dotted_suffix_theorem(self):
+        lines = [
+            "namespace Submodule\n",
+            "theorem Quotient.equiv_trans : True := by\n",
+            "  trivial\n",
+            "theorem next_demo : True := by\n",
+            "  trivial\n",
+        ]
+        start, end = _find_decl_bounds_in_source(
+            lines,
+            "equiv_trans",
+            theorem_full_name="Submodule.Quotient.equiv_trans",
+        )
+        self.assertEqual((start, end), (2, 3))
+
+    def test_find_decl_bounds_in_source_prefers_specific_dotted_name_over_short_suffix(self):
+        lines = [
+            "namespace Distrib\n",
+            "theorem ext : True := by\n",
+            "  trivial\n",
+            "end Distrib\n",
+            "theorem AddGroupWithOne.ext : True := by\n",
+            "  trivial\n",
+        ]
+        start, end = _find_decl_bounds_in_source(
+            lines,
+            "ext",
+            theorem_full_name="AddGroupWithOne.ext",
+        )
+        self.assertEqual((start, end), (5, 6))
+
+    def test_find_decl_bounds_in_source_handles_normalized_name_drift(self):
+        lines = [
+            "theorem iIndepFun.indepFun_finset_prod_of_notMem : True := by\n",
+            "  trivial\n",
+        ]
+        start, end = _find_decl_bounds_in_source(
+            lines,
+            "indepFun_finset_prod_of_not_mem",
+            theorem_full_name="ProbabilityTheory.Kernel.iIndepFun.indepFun_finset_prod_of_not_mem",
+        )
+        self.assertEqual((start, end), (1, 2))
+
+    def test_find_decl_bounds_in_source_locates_alias(self):
+        lines = [
+            "@[deprecated] alias topologically_isLocalAtSource := topologically_isZariskiLocalAtSource\n",
+            "lemma next_demo : True := by\n",
+            "  trivial\n",
+        ]
+        start, end = _find_decl_bounds_in_source(
+            lines,
+            "isLocalAtSource",
+            theorem_full_name="topologically_isLocalAtSource",
+        )
+        self.assertEqual((start, end), (1, 1))
+
+    def test_resolve_alias_target_in_source_handles_multiline_alias(self):
+        lines = [
+            "@[deprecated (since := \"2025-10-07\")]\n",
+            "alias Scheme.exists_hom_isAffine_of_isLocalAtSource :=\n",
+            "  Scheme.exists_hom_isAffine_of_isZariskiLocalAtSource\n",
+        ]
+        target = _resolve_alias_target_in_source(
+            lines,
+            "exists_hom_isAffine_of_isLocalAtSource",
+            theorem_full_name="Scheme.exists_hom_isAffine_of_isLocalAtSource",
+        )
+        self.assertEqual(target, "Scheme.exists_hom_isAffine_of_isZariskiLocalAtSource")
+
+    def test_resolve_source_file_path_uses_hint_when_module_missing(self):
+        project_root = "/tmp/project"
+        expected = "/tmp/project/Mathlib/Foo/Bar.lean"
+        from unittest.mock import patch
+
+        with patch("os.path.exists", side_effect=lambda path: path == expected):
+            resolved = _resolve_source_file_path(
+                project_root=project_root,
+                module="",
+                file_path_hint="Mathlib/Foo/Bar.lean",
+            )
+        self.assertEqual(resolved, expected)
+
+    def test_resolve_source_file_path_searches_nested_decl_when_hint_is_reexport(self):
+        project_root = "/tmp/project"
+        reexport = "/tmp/project/.lake/packages/mathlib/Mathlib/Foo/Bar.lean"
+        nested = "/tmp/project/.lake/packages/mathlib/Mathlib/Foo/Bar/Baz.lean"
+        file_contents = {
+            reexport: "import Mathlib.Foo.Bar.Baz\n",
+            nested: "theorem ns.theorem_notMem : True := by\n  trivial\n",
+        }
+        from unittest.mock import mock_open, patch
+
+        def _exists(path: str) -> bool:
+            return path in file_contents or path in {
+                "/tmp/project/.lake/packages/mathlib/Mathlib/Foo",
+                "/tmp/project/.lake/packages/mathlib/Mathlib/Foo/Bar",
+            }
+
+        def _isdir(path: str) -> bool:
+            return path in {
+                "/tmp/project/.lake/packages/mathlib/Mathlib/Foo",
+                "/tmp/project/.lake/packages/mathlib/Mathlib/Foo/Bar",
+            }
+
+        def _walk(path: str):
+            if path == "/tmp/project/.lake/packages/mathlib/Mathlib/Foo":
+                yield (path, ["Bar"], ["Bar.lean"])
+                yield ("/tmp/project/.lake/packages/mathlib/Mathlib/Foo/Bar", [], ["Baz.lean"])
+
+        def _open(path: str, *args, **kwargs):
+            data = file_contents[path]
+            return mock_open(read_data=data)()
+
+        with (
+            patch("os.path.exists", side_effect=_exists),
+            patch("os.path.isdir", side_effect=_isdir),
+            patch("os.walk", side_effect=_walk),
+            patch("builtins.open", side_effect=_open),
+        ):
+            resolved = _resolve_source_file_path(
+                project_root=project_root,
+                module="",
+                file_path_hint="Mathlib/Foo/Bar.lean",
+                theorem_full_name="ns.theorem_not_mem",
+            )
+        self.assertEqual(resolved, nested)
+
+    def test_extract_support_slice_includes_local_notation_and_leti(self):
+        lines = [
+            "section Foo\n",
+            "variable {R : Type*}\n",
+            'local notation "ZZ" => Nat\n',
+            "letI : Inhabited Nat := ⟨0⟩\n",
+            "def helper : Nat := 0\n",
+            "theorem demo : True := by\n",
+            "  trivial\n",
+            "end Foo\n",
+        ]
+        support = LeanKernel._extract_support_slice(lines, 6, 7, "demo")
+        joined = "\n".join(support)
+        self.assertIn('local notation "ZZ" => Nat', joined)
+        self.assertIn("letI : Inhabited Nat := ⟨0⟩", joined)
+        self.assertIn("def helper : Nat := 0", joined)
+
+    def test_extract_support_slice_includes_private_lemmas_and_local_macros(self):
+        lines = [
+            "section Foo\n",
+            'local macro:max "foo" : term =>\n',
+            "  `(Nat)\n",
+            "private lemma helper : True := by\n",
+            "  trivial\n",
+            "theorem demo : True := by\n",
+            "  trivial\n",
+            "end Foo\n",
+        ]
+        support = LeanKernel._extract_support_slice(lines, 6, 7, "demo")
+        joined = "\n".join(support)
+        self.assertIn('local macro:max "foo" : term =>', joined)
+        self.assertIn("private lemma helper : True := by", joined)
+
+    def test_extract_support_slice_includes_private_noncomputable_defs(self):
+        lines = [
+            "section Foo\n",
+            "private noncomputable def aux : Nat := 0\n",
+            "theorem demo : True := by\n",
+            "  trivial\n",
+            "end Foo\n",
+        ]
+        support = LeanKernel._extract_support_slice(lines, 3, 4, "demo")
+        self.assertIn("private noncomputable def aux : Nat := 0", "\n".join(support))
+
+    def test_wrap_replay_namespace_preserves_header(self):
+        src = (
+            "module\n\n"
+            "import Mathlib\n"
+            "\n"
+            "section Foo\n"
+            "theorem demo : True := by\n"
+            "  trivial\n"
+        )
+        wrapped = LeanKernel._wrap_replay_namespace(src, "demo")
+        self.assertIn("module", wrapped.splitlines()[0])
+        self.assertIn("import Mathlib", wrapped)
+        self.assertIn("namespace _wayfinder_replay_demo", wrapped)
+        self.assertIn("section Foo", wrapped)
+        self.assertIn("end _wayfinder_replay_demo", wrapped)
 
 
 class TestLeanKernelInit(unittest.TestCase):
@@ -208,22 +438,24 @@ class TestBuildHammerTactics(unittest.TestCase):
 
     def test_no_premises(self):
         tactics = _build_hammer_tactics([])
-        # Without premises: exactly 4 tactics in specific order
-        self.assertEqual(tactics, ["aesop", "omega", "decide", "simp"])
+        # Without premises: symbolic closers in specific order
+        self.assertEqual(tactics, ["solve_by_elim", "aesop", "omega", "decide", "simp", "apply?"])
 
     def test_no_premises_count(self):
-        self.assertEqual(len(_build_hammer_tactics([])), 4)
+        self.assertEqual(len(_build_hammer_tactics([])), 6)
 
     def test_with_premises(self):
         tactics = _build_hammer_tactics(["Nat.add_comm", "Nat.add_zero"])
-        # With premises: 6 tactics in specific order
-        self.assertEqual(len(tactics), 6)
+        # With premises: 8 tactics in specific order
+        self.assertEqual(len(tactics), 8)
         self.assertEqual(tactics[0], "aesop (add safe [Nat.add_comm, Nat.add_zero])")
-        self.assertEqual(tactics[1], "aesop")
-        self.assertEqual(tactics[2], "omega")
-        self.assertEqual(tactics[3], "decide")
-        self.assertEqual(tactics[4], "simp [Nat.add_comm, Nat.add_zero]")
-        self.assertEqual(tactics[5], "simp")
+        self.assertEqual(tactics[1], "solve_by_elim")
+        self.assertEqual(tactics[2], "aesop")
+        self.assertEqual(tactics[3], "omega")
+        self.assertEqual(tactics[4], "decide")
+        self.assertEqual(tactics[5], "simp [Nat.add_comm, Nat.add_zero]")
+        self.assertEqual(tactics[6], "simp")
+        self.assertEqual(tactics[7], "apply?")
 
     def test_premise_limit_at_16(self):
         many = [f"lemma_{i}" for i in range(30)]
@@ -354,10 +586,13 @@ class TestCrashRestart(unittest.TestCase):
         kernel._goal_states[("", "⊢ P")] = mock_state
         mock_server.goal_tactic.side_effect = BrokenPipeError("pipe closed")
 
-        with patch.dict('sys.modules', {
-            'pantograph': MagicMock(),
-            'pantograph.server': mock_panto_server,
-        }):
+        with patch.dict(
+            "sys.modules",
+            {
+                "pantograph": MagicMock(),
+                "pantograph.server": mock_panto_server,
+            },
+        ):
             with self.assertRaises(ServerCrashError):
                 kernel._pantograph_try_tactic("⊢ P", "rfl")
 
@@ -368,6 +603,7 @@ class TestCrashRestart(unittest.TestCase):
 
         # Mock server that crashes on goal_start
         from unittest.mock import MagicMock
+
         mock_server = MagicMock()
         mock_server.goal_start.side_effect = BrokenPipeError("pipe closed")
         kernel._server = mock_server
@@ -381,9 +617,14 @@ class TestReplayResult(unittest.TestCase):
 
     def test_construction(self):
         r = ReplayResult(
-            success=True, goal_state="⊢ True", goal_state_obj=None,
-            tier_used="A", failure_category="", failing_prefix_idx=-1,
-            crash_retries=0, env_key="file:thm:abc",
+            success=True,
+            goal_state="⊢ True",
+            goal_state_obj=None,
+            tier_used="A",
+            failure_category="",
+            failing_prefix_idx=-1,
+            crash_retries=0,
+            env_key="file:thm:abc",
         )
         self.assertTrue(r.success)
         self.assertEqual(r.tier_used, "A")
@@ -391,9 +632,14 @@ class TestReplayResult(unittest.TestCase):
 
     def test_failure_construction(self):
         r = ReplayResult(
-            success=False, goal_state="", goal_state_obj=None,
-            tier_used="B", failure_category="file_not_found",
-            failing_prefix_idx=-1, crash_retries=1, env_key="",
+            success=False,
+            goal_state="",
+            goal_state_obj=None,
+            tier_used="B",
+            failure_category="file_not_found",
+            failing_prefix_idx=-1,
+            crash_retries=1,
+            env_key="",
         )
         self.assertFalse(r.success)
         self.assertEqual(r.failure_category, "file_not_found")
@@ -401,9 +647,14 @@ class TestReplayResult(unittest.TestCase):
 
     def test_feedback_construction(self):
         r = ReplayResult(
-            success=False, goal_state="", goal_state_obj=None,
-            tier_used="B", failure_category="goal_creation_fail",
-            failing_prefix_idx=-1, crash_retries=0, env_key="env",
+            success=False,
+            goal_state="",
+            goal_state_obj=None,
+            tier_used="B",
+            failure_category="goal_creation_fail",
+            failing_prefix_idx=-1,
+            crash_retries=0,
+            env_key="env",
             feedback=LeanFeedback(
                 stage="goal_creation",
                 category="goal_creation_fail",
@@ -437,6 +688,7 @@ class TestEnvironmentCaching(unittest.TestCase):
         """Tactic cache uses 3-tuple (env_key, goal, tactic)."""
         kernel = LeanKernel()
         from src.nav_contracts import TacticResult
+
         r = TacticResult(success=True, tactic="rfl", premises=[], new_goals=[])
         kernel._tactic_cache[("env1", "⊢ P", "rfl", 0)] = r
         kernel._tactic_cache[("env2", "⊢ P", "rfl", 0)] = TacticResult(
@@ -464,7 +716,7 @@ class TestEnvironmentCaching(unittest.TestCase):
 
         kernel = LeanKernel()
         kernel._server_contaminated = True
-        kernel._load_sorry_reset_count = 63
+        kernel._load_sorry_reset_count = 255
         kernel.gc = MagicMock()
         kernel._restart_server = MagicMock()
 
@@ -478,19 +730,18 @@ class TestFileHelpers(unittest.TestCase):
     """Test resolve_lean_path and extract_file_header."""
 
     def test_resolve_lean_path(self):
-        result = resolve_lean_path(
-            "Mathlib/Analysis/Foo.lean", "/project"
-        )
+        result = resolve_lean_path("Mathlib/Analysis/Foo.lean", "/project")
         self.assertEqual(result, "/project/.lake/packages/mathlib/Mathlib/Analysis/Foo.lean")
 
     def test_extract_file_header(self):
         import os
         import tempfile
+
         content = (
             "import Mathlib.Data.Nat\nopen Nat\nvariable (n : Nat)\n"
             "namespace Foo\n\ntheorem bar : True := trivial\n"
         )
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.lean', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".lean", delete=False) as f:
             f.write(content)
             path = f.name
         try:
@@ -505,8 +756,9 @@ class TestFileHelpers(unittest.TestCase):
     def test_extract_file_header_empty(self):
         import os
         import tempfile
+
         content = "theorem bar : True := trivial\n"
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.lean', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".lean", delete=False) as f:
             f.write(content)
             path = f.name
         try:
@@ -525,8 +777,12 @@ class TestLeanFeedback(unittest.TestCase):
         self.assertEqual(fb.raw_error, "")
 
     def test_to_dict(self):
-        fb = LeanFeedback(stage="tactic_parse", category="parse_error",
-                          messages=[{"data": "unexpected token"}], raw_error="err")
+        fb = LeanFeedback(
+            stage="tactic_parse",
+            category="parse_error",
+            messages=[{"data": "unexpected token"}],
+            raw_error="err",
+        )
         d = fb.to_dict()
         self.assertEqual(d["stage"], "tactic_parse")
         self.assertEqual(d["category"], "parse_error")
@@ -565,6 +821,7 @@ class TestClassifyTacticFailure(unittest.TestCase):
             kind = None
             data = "unknown identifier 'Nat.foo'"
             pos = "1:0"
+
         exc = self._make_exc([FakeMsg()])
         fb = _classify_tactic_failure(exc)
         self.assertEqual(fb.category, "unknown_identifier")
@@ -576,6 +833,7 @@ class TestClassifyTacticFailure(unittest.TestCase):
             kind = None
             data = "type mismatch: expected Nat, got Int"
             pos = "1:0"
+
         exc = self._make_exc([FakeMsg()])
         fb = _classify_tactic_failure(exc)
         self.assertEqual(fb.category, "unification_mismatch")
@@ -586,6 +844,7 @@ class TestClassifyTacticFailure(unittest.TestCase):
             kind = None
             data = "could not unify the conclusion with the goal"
             pos = "1:0"
+
         exc = self._make_exc([FakeMsg()])
         fb = _classify_tactic_failure(exc)
         self.assertEqual(fb.category, "unification_mismatch")
@@ -596,6 +855,7 @@ class TestClassifyTacticFailure(unittest.TestCase):
             kind = None
             data = "failed to synthesize instance Ring Nat"
             pos = "1:0"
+
         exc = self._make_exc([FakeMsg()])
         fb = _classify_tactic_failure(exc)
         self.assertEqual(fb.category, "typeclass_missing")
@@ -606,17 +866,22 @@ class TestClassifyTacticFailure(unittest.TestCase):
             kind = None
             data = "some unrecognised error"
             pos = "1:0"
+
         exc = self._make_exc([FakeMsg()])
         fb = _classify_tactic_failure(exc)
         self.assertEqual(fb.category, "other")
 
     def test_tactic_result_carries_feedback(self):
         r = TacticResult(
-            success=False, tactic="apply foo", premises=[],
+            success=False,
+            tactic="apply foo",
+            premises=[],
             error_message="unknown identifier 'foo'",
             feedback=LeanFeedback(
-                stage="tactic_exec", category="unknown_identifier",
-                messages=[], raw_error="unknown identifier 'foo'",
+                stage="tactic_exec",
+                category="unknown_identifier",
+                messages=[],
+                raw_error="unknown identifier 'foo'",
             ),
         )
         self.assertIsNotNone(r.feedback)

@@ -5,12 +5,14 @@ from __future__ import annotations
 
 # Source module: src.data
 
+
 # from src.data import load_proofs_jsonl
 def test_load_proofs_jsonl_returns_list_proofexample() -> None:
     """Contract: load_proofs_jsonl returns list[ProofExample]."""
     # TODO: Provide valid arguments
     # result = load_proofs_jsonl(...)
     # assert isinstance(result, list)
+
 
 # from src.data import load_proofs_jsonl
 def test_load_proofs_jsonl_file_io(tmp_path) -> None:
@@ -20,12 +22,14 @@ def test_load_proofs_jsonl_file_io(tmp_path) -> None:
     # TODO: call load_proofs_jsonl(str(test_file)) and assert result
     pass
 
+
 # from src.data import save_proofs_jsonl
 def test_save_proofs_jsonl_returns_int() -> None:
     """Contract: save_proofs_jsonl returns int."""
     # TODO: Provide valid arguments
     # result = save_proofs_jsonl(..., ...)
     # assert isinstance(result, int)
+
 
 # from src.data import save_proofs_jsonl
 def test_save_proofs_jsonl_file_io(tmp_path) -> None:
@@ -35,12 +39,14 @@ def test_save_proofs_jsonl_file_io(tmp_path) -> None:
     # TODO: call save_proofs_jsonl(str(test_file)) and assert result
     pass
 
+
 # from src.data import load_ood_prompts_jsonl
 def test_load_ood_prompts_jsonl_returns_list_oodprompt() -> None:
     """Contract: load_ood_prompts_jsonl returns list[OODPrompt]."""
     # TODO: Provide valid arguments
     # result = load_ood_prompts_jsonl(...)
     # assert isinstance(result, list)
+
 
 # from src.data import load_ood_prompts_jsonl
 def test_load_ood_prompts_jsonl_file_io(tmp_path) -> None:
@@ -50,12 +56,14 @@ def test_load_ood_prompts_jsonl_file_io(tmp_path) -> None:
     # TODO: call load_ood_prompts_jsonl(str(test_file)) and assert result
     pass
 
+
 # from src.data import load_nav_examples_jsonl
 def test_load_nav_examples_jsonl_returns_list_navigationalexample() -> None:
     """Contract: load_nav_examples_jsonl returns list[NavigationalExample]."""
     # TODO: Provide valid arguments
     # result = load_nav_examples_jsonl(...)
     # assert isinstance(result, list)
+
 
 # from src.data import load_nav_examples_jsonl
 def test_load_nav_examples_jsonl_file_io(tmp_path) -> None:
@@ -64,4 +72,3 @@ def test_load_nav_examples_jsonl_file_io(tmp_path) -> None:
     test_file.write_text("test content")
     # TODO: call load_nav_examples_jsonl(str(test_file)) and assert result
     pass
-

@@ -21,6 +21,7 @@ class TestSketchPredictorConfig:
         obj = SketchPredictor()
         assert obj == EXPECTED  # TODO: Replace with expected instance
 
+
 class TestSketchPredictorState:
     """State invariant tests for SketchPredictor."""
 
@@ -41,6 +42,3 @@ class TestSketchPredictorState:
         obj = SketchPredictor()
         obj.predict()  # TODO: Provide arguments
         # TODO: Assert state changed correctly
-
-
-

@@ -288,8 +288,15 @@ def landmark_expand_retrieve(
         residual = trace1.residual or LandmarkResidualReport()
 
         packet = build_guidance_packet(
-            query, landmarks, results, frozen, residual,
-            expanded, data, nbr_sigs, idf_cache,
+            query,
+            landmarks,
+            results,
+            frozen,
+            residual,
+            expanded,
+            data,
+            nbr_sigs,
+            idf_cache,
         )
 
         committee = run_lens_committee(packet)

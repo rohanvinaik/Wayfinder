@@ -19,6 +19,7 @@ def test_load_config_returns_expected_output() -> None:
     result = load_config(...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
 
+
 def test_load_config_boundary_values() -> None:
     """Test load_config with edge cases that mutation testing targets."""
     # Boundary: path
@@ -27,11 +28,11 @@ def test_load_config_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_load_modules_returns_expected_output() -> None:
     """Test load_modules with valid input."""
     result = load_modules(..., ..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_load_modules_boundary_values() -> None:
     """Test load_modules with edge cases that mutation testing targets."""
@@ -43,11 +44,11 @@ def test_load_modules_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_load_benchmark_theorems_returns_expected_output() -> None:
     """Test load_benchmark_theorems with valid input."""
     result = load_benchmark_theorems(..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_load_benchmark_theorems_boundary_values() -> None:
     """Test load_benchmark_theorems with edge cases that mutation testing targets."""
@@ -58,11 +59,11 @@ def test_load_benchmark_theorems_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_run_benchmark_returns_expected_output() -> None:
     """Test run_benchmark with valid input."""
     result = run_benchmark(..., ..., ..., ..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_run_benchmark_boundary_values() -> None:
     """Test run_benchmark with edge cases that mutation testing targets."""
@@ -73,10 +74,12 @@ def test_run_benchmark_boundary_values() -> None:
     result = run_benchmark(..., ..., ..., ..., ...)
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
+
 def test_run_benchmark_raises_valueerror_on_invalid_input() -> None:
     """Test run_benchmark raises ValueError on invalid input."""
     with pytest.raises(ValueError):
         run_benchmark(None)
+
 
 def test_run_benchmark_handles_errors_gracefully() -> None:
     """Test run_benchmark error handling."""
@@ -84,11 +87,7 @@ def test_run_benchmark_handles_errors_gracefully() -> None:
     pass
 
 
-
 def test_main_returns_expected_output() -> None:
     """Test main with valid input."""
     result = main()
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
-
-
-

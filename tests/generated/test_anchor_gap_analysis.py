@@ -20,6 +20,7 @@ def test_load_proof_steps_returns_expected_output() -> None:
     result = load_proof_steps(..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
 
+
 def test_load_proof_steps_boundary_values() -> None:
     """Test load_proof_steps with edge cases that mutation testing targets."""
     # Boundary: db_path
@@ -29,11 +30,11 @@ def test_load_proof_steps_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_build_perfect_query_returns_expected_output() -> None:
     """Test build_perfect_query with valid input."""
     result = build_perfect_query(..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_build_perfect_query_boundary_values() -> None:
     """Test build_perfect_query with edge cases that mutation testing targets."""
@@ -44,11 +45,11 @@ def test_build_perfect_query_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_navigate_with_query_returns_expected_output() -> None:
     """Test navigate_with_query with valid input."""
     result = navigate_with_query(..., ..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_navigate_with_query_boundary_values() -> None:
     """Test navigate_with_query with edge cases that mutation testing targets."""
@@ -60,11 +61,11 @@ def test_navigate_with_query_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_find_gap_anchors_from_conn_returns_expected_output() -> None:
     """Test find_gap_anchors_from_conn with valid input."""
     result = find_gap_anchors_from_conn(..., ..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_find_gap_anchors_from_conn_boundary_values() -> None:
     """Test find_gap_anchors_from_conn with edge cases that mutation testing targets."""
@@ -76,11 +77,11 @@ def test_find_gap_anchors_from_conn_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_analyze_step_returns_expected_output() -> None:
     """Test analyze_step with valid input."""
     result = analyze_step(..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_analyze_step_boundary_values() -> None:
     """Test analyze_step with edge cases that mutation testing targets."""
@@ -91,11 +92,11 @@ def test_analyze_step_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_run_analysis_returns_expected_output() -> None:
     """Test run_analysis with valid input."""
     result = run_analysis(..., ..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_run_analysis_boundary_values() -> None:
     """Test run_analysis with edge cases that mutation testing targets."""
@@ -107,12 +108,10 @@ def test_run_analysis_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_main_returns_expected_output() -> None:
     """Test main with valid input."""
     result = main()
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
-
 
 
 class TestGapRecordConfig:
@@ -123,6 +122,3 @@ class TestGapRecordConfig:
         obj = GapRecord()
         # TODO: Assert specific field values, not just existence
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
-
-
-

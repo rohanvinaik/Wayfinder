@@ -5,12 +5,14 @@ from __future__ import annotations
 
 # Source module: src.encoder_config
 
+
 # from src.encoder_config import get_encoder_model_name
 def test_get_encoder_model_name_returns_str() -> None:
     """Contract: get_encoder_model_name returns str."""
     # TODO: Provide valid arguments
     # result = get_encoder_model_name(...)
     # assert isinstance(result, str)
+
 
 # from src.encoder_config import get_encoder_model_name
 def test_get_encoder_model_name_http() -> None:
@@ -23,4 +25,3 @@ def test_get_encoder_model_name_http() -> None:
     mock_resp.text = ""
     with patch("requests.get", return_value=mock_resp):
         pass  # TODO: call get_encoder_model_name with valid args and assert result
-

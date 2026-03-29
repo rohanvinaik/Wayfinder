@@ -5,6 +5,7 @@ from __future__ import annotations
 
 # Source module: scripts.eval_encoders
 
+
 # from scripts.eval_encoders import resolve_model_path
 def test_resolve_model_path_returns_str() -> None:
     """Contract: resolve_model_path returns str."""
@@ -12,12 +13,14 @@ def test_resolve_model_path_returns_str() -> None:
     # result = resolve_model_path(..., ...)
     # assert isinstance(result, str)
 
+
 # from scripts.eval_encoders import load_goal_states
 def test_load_goal_states_returns_tuple_list_str_dict_str_list_int() -> None:
     """Contract: load_goal_states returns tuple[list[str], dict[str, list[int]]]."""
     # TODO: Provide valid arguments
     # result = load_goal_states(..., ...)
     # assert isinstance(result, tuple)
+
 
 # from scripts.eval_encoders import load_goal_states
 def test_load_goal_states_file_io(tmp_path) -> None:
@@ -27,12 +30,14 @@ def test_load_goal_states_file_io(tmp_path) -> None:
     # TODO: call load_goal_states(str(test_file)) and assert result
     pass
 
+
 # from scripts.eval_encoders import check_tokenizer_coverage
 def test_check_tokenizer_coverage_returns_dict() -> None:
     """Contract: check_tokenizer_coverage returns dict."""
     # TODO: Provide valid arguments
     # result = check_tokenizer_coverage(...)
     # assert isinstance(result, dict)
+
 
 def test_check_tokenizer_coverage_preserves_length() -> None:
     """Contract: check_tokenizer_coverage output length matches input length (map pattern)."""
@@ -41,6 +46,7 @@ def test_check_tokenizer_coverage_preserves_length() -> None:
     # result = check_tokenizer_coverage(input_data)
     # assert len(result) == len(input_data)
 
+
 # from scripts.eval_encoders import evaluate_model
 def test_evaluate_model_returns_dict() -> None:
     """Contract: evaluate_model returns dict."""
@@ -48,12 +54,14 @@ def test_evaluate_model_returns_dict() -> None:
     # result = evaluate_model(..., ..., ..., ...)
     # assert isinstance(result, dict)
 
+
 def test_main_preserves_length() -> None:
     """Contract: main output length matches input length (map pattern)."""
     # TODO: Provide test input for 'candidates'
     # input_data = [...]
     # result = main(input_data)
     # assert len(result) == len(input_data)
+
 
 # from scripts.eval_encoders import main
 def test_main_http() -> None:
@@ -75,4 +83,3 @@ def test_main_file_io(tmp_path) -> None:
     test_file.write_text("test content")
     # TODO: call main(str(test_file)) and assert result
     pass
-

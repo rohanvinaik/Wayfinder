@@ -11,6 +11,7 @@ def test_compute_batch_metrics_returns_expected_output() -> None:
     result = compute_batch_metrics(..., ..., ..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
 
+
 def test_compute_batch_metrics_boundary_values() -> None:
     """Test compute_batch_metrics with edge cases that mutation testing targets."""
     # Boundary: batch
@@ -19,7 +20,6 @@ def test_compute_batch_metrics_boundary_values() -> None:
     # TODO: Test with boundary inputs (0, -1, empty string, None)
     result = compute_batch_metrics(..., ..., ..., ...)
     assert result == EXPECTED  # TODO: Replace with actual expected value
-
 
 
 class TestTrainerStepsMixinState:
@@ -36,6 +36,3 @@ class TestTrainerStepsMixinState:
         obj = TrainerStepsMixin()
         obj.train_step()  # TODO: Provide arguments
         # TODO: Assert state changed correctly
-
-
-

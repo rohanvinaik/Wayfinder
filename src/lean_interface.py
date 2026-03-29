@@ -12,7 +12,9 @@ Backends:
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
+import io
 import logging
 import os
 import re
@@ -24,10 +26,13 @@ from src.nav_contracts import LeanFeedback, TacticResult
 
 logger = logging.getLogger(__name__)
 
+_DECL_MODIFIERS = r"(?:(?:noncomputable|private|protected)\s+)*"
+
 
 # ---------------------------------------------------------------------------
 # Lean feedback classification
 # ---------------------------------------------------------------------------
+
 
 def _serialise_messages(messages: object) -> list[dict]:
     """Convert a list of Pantograph Message objects to plain dicts.
@@ -53,13 +58,15 @@ def _serialise_messages(messages: object) -> list[dict]:
                     "column": getattr(p, "column", None),
                 }
 
-            result.append({
-                "severity": str(getattr(m, "severity", "error")),
-                "kind": getattr(m, "kind", None),
-                "data": str(getattr(m, "data", "")),
-                "pos": _pos_dict(pos),
-                "pos_end": _pos_dict(pos_end),
-            })
+            result.append(
+                {
+                    "severity": str(getattr(m, "severity", "error")),
+                    "kind": getattr(m, "kind", None),
+                    "data": str(getattr(m, "data", "")),
+                    "pos": _pos_dict(pos),
+                    "pos_end": _pos_dict(pos_end),
+                }
+            )
         except Exception:
             result.append({"data": str(m)})
     return result
@@ -224,29 +231,96 @@ def qualify_tactic(
     Local hypothesis names (short lowercase single-letter) are never touched.
     """
 
-    _LEAN_KEYWORDS = frozenset({
-        'by', 'at', 'with', 'using', 'fun', 'let', 'have', 'show', 'do',
-        'if', 'then', 'else', 'match', 'in', 'where', 'return', 'true',
-        'false', 'intro', 'intros', 'apply', 'exact', 'rw', 'simp',
-        'constructor', 'cases', 'induction', 'rfl', 'trivial', 'omega',
-        'decide', 'aesop', 'ring', 'linarith', 'norm_num', 'ext',
-        'congr', 'assumption', 'contradiction', 'exfalso', 'push_neg',
-        'dsimp', 'change', 'refine', 'use', 'obtain', 'rcases',
-        'specialize', 'revert', 'clear', 'rename_i', 'calc', 'conv',
-        'rwa', 'simpa', 'simp_all', 'tauto', 'Abel', 'field_simp',
-        'norm_cast', 'push_cast', 'positivity', 'gcongr', 'rel',
-        'nontriviality', 'continuity', 'measurability', 'polyrith',
-        'filter_upwards', 'all_goals', 'any_goals', 'focus', 'sorry',
-        'only', 'scoped',
-    })
+    _LEAN_KEYWORDS = frozenset(
+        {
+            "by",
+            "at",
+            "with",
+            "using",
+            "fun",
+            "let",
+            "have",
+            "show",
+            "do",
+            "if",
+            "then",
+            "else",
+            "match",
+            "in",
+            "where",
+            "return",
+            "true",
+            "false",
+            "intro",
+            "intros",
+            "apply",
+            "apply?",
+            "exact",
+            "exact?",
+            "rw",
+            "simp",
+            "constructor",
+            "cases",
+            "induction",
+            "rfl",
+            "trivial",
+            "omega",
+            "decide",
+            "aesop",
+            "solve_by_elim",
+            "ring",
+            "linarith",
+            "norm_num",
+            "ext",
+            "congr",
+            "assumption",
+            "contradiction",
+            "exfalso",
+            "push_neg",
+            "dsimp",
+            "change",
+            "refine",
+            "use",
+            "obtain",
+            "rcases",
+            "specialize",
+            "revert",
+            "clear",
+            "rename_i",
+            "calc",
+            "conv",
+            "rwa",
+            "simpa",
+            "simp_all",
+            "tauto",
+            "Abel",
+            "field_simp",
+            "norm_cast",
+            "push_cast",
+            "positivity",
+            "gcongr",
+            "rel",
+            "nontriviality",
+            "continuity",
+            "measurability",
+            "polyrith",
+            "filter_upwards",
+            "all_goals",
+            "any_goals",
+            "focus",
+            "sorry",
+            "only",
+            "scoped",
+        }
+    )
 
     def _qualify_token(token: str) -> str:
         # Skip keywords, numbers, operators, short locals
         if token in _LEAN_KEYWORDS:
             return token
-        if not token or not token[0].isalpha() and token[0] != '_':
+        if not token or not token[0].isalpha() and token[0] != "_":
             return token
-        if '.' in token:
+        if "." in token:
             return token  # already qualified
         # Don't touch very short lowercase names (likely local hyps)
         if len(token) <= 2 and token[0].islower():
@@ -272,29 +346,29 @@ def qualify_tactic(
     qualified = []
     for tok in tokens:
         # Handle [name] and [← name] patterns
-        if tok.startswith('[') or tok.startswith('←'):
+        if tok.startswith("[") or tok.startswith("←"):
             qualified.append(tok)
-        elif tok.endswith(']') or tok.endswith(','):
+        elif tok.endswith("]") or tok.endswith(","):
             # Strip trailing punctuation, qualify, re-attach
-            suffix = ''
+            suffix = ""
             core = tok
-            while core and core[-1] in '],':
+            while core and core[-1] in "],":
                 suffix = core[-1] + suffix
                 core = core[:-1]
             qualified.append(_qualify_token(core) + suffix)
         else:
             qualified.append(_qualify_token(tok))
 
-    return ' '.join(qualified)
+    return " ".join(qualified)
 
 
 def build_suffix_index(entity_names: list[str]) -> dict[str, list[str]]:
     """Build a suffix → full_name index for name qualification."""
     idx: dict[str, list[str]] = {}
     for name in entity_names:
-        parts = name.split('.')
+        parts = name.split(".")
         for i in range(len(parts)):
-            suffix = '.'.join(parts[i:])
+            suffix = ".".join(parts[i:])
             idx.setdefault(suffix, []).append(name)
     return idx
 
@@ -314,6 +388,7 @@ def build_local_alias_map(
 
     Returns: {expected_name: actual_name} for names that differ.
     """
+
     def _parse_locals(goal_str: str) -> list[tuple[str, str]]:
         """Extract (name, type_prefix) pairs from a goal state string."""
         locals_list = []
@@ -375,17 +450,18 @@ def rewrite_tactic_locals(
     if not alias_map:
         return tactic
     import re as _re
+
     result = tactic
     # Sort by length descending to replace longer names first
     for expected, actual in sorted(alias_map.items(), key=lambda x: -len(x[0])):
         # Whole-word replacement (with word boundary)
-        result = _re.sub(r'\b' + _re.escape(expected) + r'\b', actual, result)
+        result = _re.sub(r"\b" + _re.escape(expected) + r"\b", actual, result)
     return result
 
 
 def _strip_daggers(s: str) -> str:
     """Strip ✝ and trailing superscript digits for alpha comparison."""
-    return re.sub(r'✝[\d\u00b9\u00b2\u00b3\u2070-\u2079]*', '', s)
+    return re.sub(r"✝[\d\u00b9\u00b2\u00b3\u2070-\u2079]*", "", s)
 
 
 def _extract_local_names(goal_str: str) -> list[str]:
@@ -400,6 +476,91 @@ def _extract_local_names(goal_str: str) -> list[str]:
             if name:
                 names.append(name)
     return names
+
+
+def _is_instance_like_name(name: str) -> bool:
+    return name.startswith("inst") or "✝" in name
+
+
+def _sanitize_goal_binder_name(name: str) -> str:
+    cleaned = re.sub(r"✝[\d\u00b9\u00b2\u00b3\u2070-\u2079]*", "", name)
+    cleaned = cleaned.strip()
+    if not cleaned:
+        return "_wf"
+    return cleaned
+
+
+def theorem_type_from_goal_pp(goal_str: str) -> str:
+    """Synthesize a theorem type from a pretty-printed Lean goal state."""
+    if not goal_str or "⊢" not in goal_str:
+        return ""
+
+    binders: list[str] = []
+    target = ""
+    used_names: set[str] = set()
+
+    def _fresh_name(base: str) -> str:
+        candidate = base
+        idx = 1
+        while candidate in used_names:
+            idx += 1
+            candidate = f"{base}_{idx}"
+        used_names.add(candidate)
+        return candidate
+
+    for raw_line in goal_str.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("case "):
+            continue
+        if "⊢" in line:
+            target = line.split("⊢", 1)[1].strip()
+            continue
+        if ":" not in line:
+            continue
+        lhs, rhs = line.split(":", 1)
+        names = [part for part in lhs.strip().split() if part]
+        binder_type = rhs.strip()
+        if not names or not binder_type:
+            continue
+        if len(names) == 1 and _is_instance_like_name(names[0]):
+            binders.append(f"[{_fresh_name('_inst')} : {binder_type}]")
+        else:
+            safe_names = [_fresh_name(_sanitize_goal_binder_name(name)) for name in names]
+            binders.append(f"({' '.join(safe_names)} : {binder_type})")
+
+    if not target:
+        return ""
+    if not binders:
+        return target
+    return f"∀ {' '.join(binders)}, {target}"
+
+
+def _candidate_open_namespaces(theorem_name: str = "", file_path: str = "") -> list[str]:
+    """Build conservative namespace-open candidates for theorem-type fallback."""
+    candidates: list[str] = []
+
+    if theorem_name:
+        parts = [part for part in theorem_name.split(".") if part]
+        if len(parts) >= 2:
+            top = parts[0]
+            if top and top not in candidates:
+                candidates.append(top)
+
+    if file_path:
+        normalized = file_path.replace("\\", "/")
+        if "/Mathlib/" in normalized:
+            normalized = normalized.split("/Mathlib/", 1)[1]
+        elif normalized.startswith("Mathlib/"):
+            normalized = normalized[len("Mathlib/") :]
+        if normalized.endswith(".lean"):
+            normalized = normalized[:-5]
+        parts = [part for part in normalized.split("/") if part]
+        if parts:
+            top = parts[0]
+            if top and top not in candidates:
+                candidates.append(top)
+
+    return candidates
 
 
 def _stem(name: str) -> str:
@@ -452,12 +613,14 @@ def _normalize_namespaces(s: str) -> str:
     # Pattern: at word boundary, remove Foo.Bar. prefix before an identifier.
     # Conservative: only strip known-safe Lean/Mathlib prefixes.
     result = re.sub(
-        r'\b(?:Set|Filter|Polynomial|Module|LinearMap|Submodule|'
-        r'SimpleGraph|MeasureTheory|CategoryTheory|'
-        r'Function|Finset|Multiset|List|Order|Nat|Int|'
-        r'Real|Complex|ENNReal|NNReal|Metric|'
-        r'WittVector|AlgebraicGeometry)\.',
-        '', s)
+        r"\b(?:Set|Filter|Polynomial|Module|LinearMap|Submodule|"
+        r"SimpleGraph|MeasureTheory|CategoryTheory|"
+        r"Function|Finset|Multiset|List|Order|Nat|Int|"
+        r"Real|Complex|ENNReal|NNReal|Metric|"
+        r"WittVector|AlgebraicGeometry)\.",
+        "",
+        s,
+    )
     return result
 
 
@@ -516,7 +679,7 @@ def _match_goal(goals: list, expected_str: str) -> tuple[int, str]:
 
 def resolve_lean_path(file_path: str, project_root: str) -> str:
     """Resolve LeanDojo file_path to actual .lean file under project."""
-    return os.path.join(project_root, '.lake/packages/mathlib', file_path)
+    return os.path.join(project_root, ".lake/packages/mathlib", file_path)
 
 
 def extract_file_header(lean_path: str, theorem_line: int) -> str:
@@ -529,19 +692,20 @@ def extract_file_header(lean_path: str, theorem_line: int) -> str:
     with open(lean_path) as f:
         lines = f.readlines()
     header_lines = []
-    for line in lines[:theorem_line - 1]:
+    for line in lines[: theorem_line - 1]:
         stripped = line.strip()
-        _HDR_KWS = ('open', 'variable', 'namespace', 'section', 'end ')
+        _HDR_KWS = ("open", "variable", "namespace", "section", "end ")
         if any(stripped.startswith(kw) for kw in _HDR_KWS):
             header_lines.append(line.rstrip())
-    return '\n'.join(header_lines)
+    return "\n".join(header_lines)
 
 
 @dataclass
 class ActiveContext:
     """Reconstructed active context at a source location."""
-    prefix_lines: list[str]   # emit before the theorem wrapper
-    suffix_lines: list[str]   # emit after (closing ends, reversed)
+
+    prefix_lines: list[str]  # emit before the theorem wrapper
+    suffix_lines: list[str]  # emit after (closing ends, reversed)
     inline_lines: list[str] = field(default_factory=list)  # inline ... in before decl
 
 
@@ -563,17 +727,235 @@ def _extract_decl_head(thm_decl: str) -> str:
 
     Returns the declaration head suitable for appending tactic lines + sorry.
     """
-    match = re.search(r':=\s*by\b', thm_decl)
+    match = re.search(r":=\s*by\b", thm_decl)
     if match:
-        return thm_decl[:match.end()]
-    match = re.search(r'\bby\b', thm_decl)
+        return thm_decl[: match.end()]
+    match = re.search(r"\bby\b", thm_decl)
     if match:
-        return thm_decl[:match.end()]
+        return thm_decl[: match.end()]
     # Fallback: strip trailing sorry/proof and append := by
-    head = thm_decl.rstrip().rstrip('sorry').rstrip()
-    if not head.endswith('by'):
+    head = thm_decl.rstrip().rstrip("sorry").rstrip()
+    if not head.endswith("by"):
         head += " := by"
     return head
+
+
+def _resolve_source_file_path(
+    *,
+    project_root: str,
+    module: str = "",
+    file_path_hint: str = "",
+    theorem_full_name: str = "",
+) -> str:
+    """Resolve a Lean source path from metadata, hints, and local source search."""
+    candidates: list[str] = []
+    if module:
+        module_path = module.replace(".", "/") + ".lean"
+        candidates.extend(
+            [
+                os.path.join(project_root, ".lake", "packages", "mathlib", module_path),
+                os.path.join(project_root, module_path),
+            ]
+        )
+    if file_path_hint:
+        hint = file_path_hint
+        if os.path.isabs(hint):
+            candidates.append(hint)
+        else:
+            candidates.extend(
+                [
+                    os.path.join(project_root, hint),
+                    os.path.join(project_root, ".lake", "packages", "mathlib", hint),
+                ]
+            )
+    short_name = theorem_full_name.split(".")[-1] if theorem_full_name else ""
+
+    def _contains_decl(path: str) -> bool:
+        if not theorem_full_name:
+            return True
+        try:
+            with open(path) as handle:
+                lines = handle.readlines()
+        except OSError:
+            return False
+        start_line, _ = _find_decl_bounds_in_source(
+            lines,
+            short_name,
+            theorem_full_name=theorem_full_name,
+        )
+        return start_line > 0
+
+    seen: set[str] = set()
+    first_existing = ""
+    for candidate in candidates:
+        normalized = os.path.normpath(candidate)
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        if os.path.exists(normalized):
+            if not first_existing:
+                first_existing = normalized
+            if _contains_decl(normalized):
+                return normalized
+
+    search_roots: list[str] = []
+    for candidate in candidates:
+        normalized = os.path.normpath(candidate)
+        candidate_dir = os.path.dirname(normalized)
+        if candidate_dir and os.path.isdir(candidate_dir):
+            search_roots.append(candidate_dir)
+        stem_dir = os.path.splitext(normalized)[0]
+        if stem_dir and os.path.isdir(stem_dir):
+            search_roots.append(stem_dir)
+
+    if theorem_full_name:
+        global_roots = [
+            os.path.join(project_root, ".lake", "packages", "mathlib", "Mathlib"),
+            os.path.join(project_root, "Mathlib"),
+        ]
+        for root in global_roots:
+            if os.path.isdir(root):
+                search_roots.append(root)
+
+    seen_dirs: set[str] = set()
+    for root in search_roots:
+        normalized_root = os.path.normpath(root)
+        if normalized_root in seen_dirs:
+            continue
+        seen_dirs.add(normalized_root)
+        for dirpath, _dirnames, filenames in os.walk(normalized_root):
+            for filename in filenames:
+                if not filename.endswith(".lean"):
+                    continue
+                candidate = os.path.join(dirpath, filename)
+                if _contains_decl(candidate):
+                    return candidate
+
+    return first_existing
+
+
+def _find_decl_bounds_in_source(
+    all_lines: list[str],
+    short_name: str,
+    theorem_full_name: str = "",
+) -> tuple[int, int]:
+    """Best-effort source fallback when env_inspect cannot resolve a theorem.
+
+    Returns 1-based (start_line, end_line). `(0, 0)` means not found.
+    """
+    if not all_lines or not short_name:
+        return (0, 0)
+    candidate_names: list[str] = []
+    if theorem_full_name:
+        parts = [part for part in theorem_full_name.split(".") if part]
+        for i in range(len(parts)):
+            candidate = ".".join(parts[i:])
+            if candidate and candidate not in candidate_names:
+                candidate_names.append(candidate)
+    if short_name and short_name not in candidate_names:
+        candidate_names.append(short_name)
+    candidate_priority = {candidate: len(candidate) for candidate in candidate_names}
+    normalized_priority = {
+        re.sub(r"[^A-Za-z0-9]", "", candidate).lower(): len(candidate)
+        for candidate in candidate_names
+    }
+    decl_re = re.compile(
+        rf"^\s*(?:@\[[^\]]+\]\s*)*{_DECL_MODIFIERS}"
+        r"(?:theorem|lemma|def|instance|abbrev|alias)\s+([^\s\(:\[]+)"
+    )
+    top_re = re.compile(
+        rf"^\s*(?:@\[[^\]]+\]\s*)*{_DECL_MODIFIERS}"
+        r"(?:theorem|lemma|def|instance|class|structure|inductive|abbrev|example|alias)\b"
+    )
+    start_idx = -1
+    best_priority = -1
+    for idx, line in enumerate(all_lines):
+        match = decl_re.match(line)
+        if not match:
+            continue
+        decl_name = match.group(1)
+        normalized_decl_name = re.sub(r"[^A-Za-z0-9]", "", decl_name).lower()
+        priority = candidate_priority.get(decl_name)
+        if priority is None:
+            priority = normalized_priority.get(normalized_decl_name, -1)
+        if priority <= 0:
+            continue
+        if "." in decl_name and priority >= best_priority:
+            start_idx = idx
+            best_priority = priority
+            break
+        if priority > best_priority:
+            start_idx = idx
+            best_priority = priority
+    if start_idx < 0:
+        return (0, 0)
+    start_indent = len(all_lines[start_idx]) - len(all_lines[start_idx].lstrip())
+    end_idx = len(all_lines)
+    for idx in range(start_idx + 1, len(all_lines)):
+        line = all_lines[idx]
+        stripped = line.strip()
+        if not stripped:
+            continue
+        indent = len(line) - len(line.lstrip())
+        if indent <= start_indent and (
+            top_re.match(line) or stripped == "end" or stripped.startswith("end ")
+        ):
+            end_idx = idx
+            break
+    return (start_idx + 1, end_idx)
+
+
+def _resolve_alias_target_in_source(
+    all_lines: list[str],
+    short_name: str,
+    theorem_full_name: str = "",
+) -> str:
+    """Resolve a theorem alias to its target declaration from source text."""
+    if not all_lines or not short_name:
+        return ""
+    candidate_names: list[str] = []
+    if theorem_full_name:
+        parts = [part for part in theorem_full_name.split(".") if part]
+        for i in range(len(parts)):
+            candidate = ".".join(parts[i:])
+            if candidate and candidate not in candidate_names:
+                candidate_names.append(candidate)
+    if short_name and short_name not in candidate_names:
+        candidate_names.append(short_name)
+    normalized_candidates = {
+        re.sub(r"[^A-Za-z0-9]", "", candidate).lower() for candidate in candidate_names
+    }
+    alias_re = re.compile(r"\balias\s+([^\s:=]+)\s*:=\s*([^\s]+)")
+    for idx, line in enumerate(all_lines):
+        if "alias" not in line:
+            continue
+        block_parts = [line.strip()]
+        j = idx + 1
+        while j < len(all_lines) and ":=" in " ".join(block_parts) and block_parts[-1].endswith(":="):
+            nxt = all_lines[j].strip()
+            if not nxt:
+                break
+            if re.match(
+                r"^(?:theorem|lemma|def|instance|class|structure|inductive|abbrev|alias|example|section|namespace|end\b)",
+                nxt,
+            ):
+                break
+            block_parts.append(nxt)
+            j += 1
+        block = " ".join(block_parts)
+        match = alias_re.search(block)
+        if not match:
+            continue
+        alias_name = match.group(1)
+        normalized_alias = re.sub(r"[^A-Za-z0-9]", "", alias_name).lower()
+        if alias_name not in candidate_names and normalized_alias not in normalized_candidates:
+            continue
+        target = match.group(2).rstrip(",")
+        if theorem_full_name and "." not in target and "." in theorem_full_name:
+            prefix = theorem_full_name.rsplit(".", 1)[0]
+            return f"{prefix}.{target}"
+        return target
+    return ""
 
 
 class LeanKernel:
@@ -645,7 +1027,10 @@ class LeanKernel:
         self._replay_table[goal_state] = tactics
 
     def try_tactic(
-        self, goal_state: str, tactic: str, goal_id: int = 0,
+        self,
+        goal_state: str,
+        tactic: str,
+        goal_id: int = 0,
     ) -> TacticResult:
         """Send a tactic to the Lean kernel and get the result.
 
@@ -802,7 +1187,7 @@ class LeanKernel:
 
         server = self._ensure_server()
         try:
-            state = server.goal_start(goal_state)
+            state = self._quiet_goal_start(server, goal_state)
         except Exception as e:
             if self._is_crash_error(e):
                 self._restart_server()
@@ -814,52 +1199,96 @@ class LeanKernel:
         self._goal_states[cache_key] = state
         return state
 
+    @staticmethod
+    def _extract_universe_vars(text: str) -> list[str]:
+        """Extract universe variable names from a type expression."""
+        import re
+
+        # Match u_1, u_2, ..., u, v, w (common single-letter universe names)
+        uvars: set[str] = set()
+        # Numbered: u_1, u_2, ...
+        for m in re.finditer(r"\bu_(\d+)\b", text):
+            uvars.add(f"u_{m.group(1)}")
+        # Single-letter: Type u, Sort v (but not common identifiers)
+        for m in re.finditer(r"(?:Type|Sort)\s+([a-z])\b", text):
+            uvars.add(m.group(1))
+        # max u v patterns
+        for m in re.finditer(r"\bmax\s+([a-z](?:_\d+)?)\s+([a-z](?:_\d+)?)", text):
+            uvars.add(m.group(1))
+            uvars.add(m.group(2))
+        return sorted(uvars)
+
+    @staticmethod
+    def _build_universe_prelude(uvars: list[str]) -> str:
+        """Build a `universe u_1 u_2 ...` declaration."""
+        if not uvars:
+            return ""
+        return f"universe {' '.join(uvars)}\n"
+
     def _goal_via_sorry(
-        self, server: Any, goal_type: str, theorem_name: str = "",
+        self,
+        server: Any,
+        goal_type: str,
+        theorem_name: str = "",
         file_path: str = "",
     ) -> Any:
-        """Create a GoalState via load_sorry for universe-polymorphic types.
+        """Create a GoalState via load_sorry — deterministic compiler cascade.
 
-        Three-tier strategy:
-        Tier A variants: namespace-open from theorem name
-        Tier B: file-path-derived module opens (theorem-specific wrapper)
-        Fallback: generic open scoped / bare
+        Cascade (ordered by faithfulness):
+        B2: theorem-type shell + explicit universe prelude (preserves polymorphism)
+        B3: theorem-type shell + universe prelude + namespace opens
+        C:  universe-erased fallback (least faithful, salvage only)
         """
         import re
 
-        # Replace universe metavariables: Type u_1 → Type _, Sort u_2 → Sort _
-        cleaned = re.sub(r'\bu_\d+\b', '_', goal_type)
-        cleaned = re.sub(r'(?<=Type )\bu\b', '_', cleaned)
-        cleaned = re.sub(r'(?<=Sort )\bu\b', '_', cleaned)
-
         name = f"_wayfinder_goal_{len(self._goal_states)}"
 
-        # Build open prefix variants (ordered by specificity)
-        prefixes: list[str] = []
+        # Extract universe variables from the original type
+        uvars = self._extract_universe_vars(goal_type)
+        universe_prelude = self._build_universe_prelude(uvars)
 
-        # Tier A: namespace from theorem name
-        if theorem_name and "." in theorem_name:
-            ns = theorem_name.rsplit(".", 1)[0]
-            prefixes.append(f"open {ns} in\n")
+        # Build conservative namespace open variants. Aggressive namespace
+        # guesses from theorem ids can poison elaboration on stale metadata.
+        open_prefixes: list[str] = [""]
+        for namespace in _candidate_open_namespaces(theorem_name=theorem_name, file_path=file_path):
+            prefix = f"open {namespace} in\n"
+            if prefix not in open_prefixes:
+                open_prefixes.insert(0, prefix)
 
-        # Tier B: file-path-derived module opens
-        if file_path:
-            module = file_path.replace(".lean", "").replace("/", ".")
-            parts = module.split(".")
-            if parts[0] == "Mathlib" and len(parts) > 2:
-                # Open intermediate namespaces
-                intermediate = " ".join(parts[1:-1])
-                prefixes.append(f"open {intermediate} in\n")
-                # Also try the full module minus Mathlib prefix
-                full_ns = ".".join(parts[1:])
-                prefixes.append(f"open {full_ns} in\n")
+        # --- Tier B2: explicit universe prelude + original type ---
+        if uvars:
+            for open_prefix in open_prefixes:
+                src = (
+                    f"section _wayfinder_goalstart\n"
+                    f"{universe_prelude}"
+                    f"{open_prefix}"
+                    f"theorem {name} : {goal_type} := by\n  sorry\n"
+                    f"end _wayfinder_goalstart"
+                )
+                try:
+                    targets = server.load_sorry(src)
+                    self._server_contaminated = True
+                    if targets and targets[0].goal_state.goals:
+                        return targets[0].goal_state
+                except Exception as e:
+                    self._server_contaminated = True
+                    self._last_goal_feedback = _classify_compiler_feedback(
+                        e,
+                        stage="goal_creation",
+                        fallback_category="unbound_universe",
+                    )
+                    if self._is_crash_error(e):
+                        self._restart_server()
+                        server = self._ensure_server()
+                    continue
 
-        # Tier A fallback: generic scoped opens
-        prefixes.append("open scoped NNReal ENNReal in\n")
-        prefixes.append("")
-
-        for open_prefix in prefixes:
-            src = f"{open_prefix}theorem {name} : {cleaned} := by sorry"
+        # --- Tier B3: universe prelude + namespace opens (without section) ---
+        for open_prefix in open_prefixes:
+            src = (
+                f"{universe_prelude}"
+                f"{open_prefix}"
+                f"theorem {name} : {goal_type} := by sorry"
+            )
             try:
                 targets = server.load_sorry(src)
                 self._server_contaminated = True
@@ -872,14 +1301,39 @@ class LeanKernel:
                     stage="goal_creation",
                     fallback_category="goal_creation_fail",
                 )
+                if self._is_crash_error(e):
+                    self._restart_server()
+                    server = self._ensure_server()
                 continue
 
-        logger.debug("load_sorry fallback failed for %s", name)
-        return server.goal_start(goal_type)
+        # --- Tier C: universe-erased fallback (salvage only) ---
+        cleaned = re.sub(r"\bu_\d+\b", "_", goal_type)
+        cleaned = re.sub(r"(?<=Type )\bu\b", "_", cleaned)
+        cleaned = re.sub(r"(?<=Sort )\bu\b", "_", cleaned)
 
-    def goal_start(
-        self, theorem_type: str, theorem_name: str = "", file_path: str = ""
-    ) -> str:
+        for open_prefix in open_prefixes:
+            src = f"{open_prefix}theorem {name} : {cleaned} := by sorry"
+            try:
+                targets = server.load_sorry(src)
+                self._server_contaminated = True
+                if targets and targets[0].goal_state.goals:
+                    return targets[0].goal_state
+            except Exception as e:
+                self._server_contaminated = True
+                self._last_goal_feedback = _classify_compiler_feedback(
+                    e,
+                    stage="goal_creation",
+                    fallback_category="universe_compilation_fail",
+                )
+                if self._is_crash_error(e):
+                    self._restart_server()
+                    server = self._ensure_server()
+                continue
+
+        logger.debug("load_sorry cascade failed for %s", name)
+        return self._quiet_goal_start(server, goal_type)
+
+    def goal_start(self, theorem_type: str, theorem_name: str = "", file_path: str = "") -> str:
         """Initialize a goal from a theorem type expression.
 
         Returns the goal state string for the initial goal.
@@ -887,7 +1341,7 @@ class LeanKernel:
         """
         server = self._ensure_server()
         try:
-            state = server.goal_start(theorem_type)
+            state = self._quiet_goal_start(server, theorem_type)
         except Exception as e:
             self._last_goal_feedback = _classify_compiler_feedback(
                 e,
@@ -900,8 +1354,28 @@ class LeanKernel:
         self._goal_states[(self._current_env_key, goal_str)] = state
         return goal_str
 
+    def goal_start_from_pp(
+        self,
+        goal_state_pp: str,
+        theorem_name: str = "",
+        file_path: str = "",
+    ) -> str:
+        """Initialize a goal from a pretty-printed local-context goal state."""
+        theorem_type = theorem_type_from_goal_pp(goal_state_pp)
+        if not theorem_type:
+            raise ValueError("could not synthesize theorem type from pretty goal state")
+        return self.goal_start(theorem_type, theorem_name=theorem_name, file_path=file_path)
+
+    @staticmethod
+    def _quiet_goal_start(server: Any, expr: str) -> Any:
+        with contextlib.redirect_stdout(io.StringIO()):
+            return server.goal_start(expr)
+
     def _pantograph_try_tactic(
-        self, goal_state: str, tactic: str, goal_id: int = 0,
+        self,
+        goal_state: str,
+        tactic: str,
+        goal_id: int = 0,
     ) -> TacticResult:
         """Apply a tactic via Pantograph and return the result.
 
@@ -1016,11 +1490,26 @@ class LeanKernel:
         )
 
     def _is_crash_error(self, e: Exception) -> bool:
-        """Check if an exception indicates a Pantograph server crash."""
-        if isinstance(e, (BrokenPipeError, ConnectionResetError, ProcessLookupError)):
+        """Check if an exception indicates a Pantograph server crash or corruption.
+
+        Heartbeat timeouts at ``whnf`` leave the server in a corrupted state
+        where subsequent ``load_sorry`` calls fail silently.  Treating these
+        as crash errors forces an immediate restart rather than waiting for
+        the periodic restart interval.
+
+        KeyError from PyPantograph (e.g. ``'targets'``, ``'stateId'``) means
+        the server returned a malformed response — the process is alive but
+        state is corrupt.  Restart immediately rather than failing every
+        subsequent theorem until the periodic restart interval.
+        """
+        if isinstance(e, (BrokenPipeError, ConnectionResetError, ProcessLookupError,
+                          KeyError)):
             return True
         msg = str(e).lower()
-        _CRASH_STRINGS = ("pipe closed", "broken pipe", "connection reset", "connection lost")
+        _CRASH_STRINGS = (
+            "pipe closed", "broken pipe", "connection reset", "connection lost",
+            "deterministic) timeout", "maximum number of heartbeats",
+        )
         return any(s in msg for s in _CRASH_STRINGS)
 
     def _restart_server(self) -> None:
@@ -1037,12 +1526,210 @@ class LeanKernel:
         self._server_contaminated = False
         self._ensure_server()
 
+    @staticmethod
+    def _extract_support_slice(
+        all_lines: list[str],
+        theorem_line: int,
+        theorem_end_line: int,
+        theorem_short_name: str,
+    ) -> list[str]:
+        """Extract supporting declarations needed for theorem elaboration.
+
+        Scans upward from the theorem within the enclosing section/namespace,
+        collecting: instance declarations, local instances, defs/abbrevs,
+        scoped notation, local attributes, and include/omit directives.
+
+        Returns renamed declarations (prefixed with _wf_support_) to avoid
+        collision with already-imported Mathlib names.
+        """
+        import re
+
+        pre_lines = all_lines[: theorem_line - 1]
+        support: list[str] = []
+
+        # Patterns to capture
+        _SUPPORT_RE = re.compile(
+            r"^\s*(?:"
+            + _DECL_MODIFIERS + r"(?:def|abbrev|instance)\b"
+            r"|"
+            + _DECL_MODIFIERS + r"(?:theorem|lemma)\b"
+            r"|local\s+instance\b"
+            r"|local\s+macro(?::[A-Za-z_][A-Za-z0-9_]*)?\b"
+            r"|local\s+notation\b"
+            r"|scoped\s+(?:notation|prefix|infix|postfix|macro)\b"
+            r"|attribute\s+\[.*?(?:local|instance).*?\]"
+            r"|local\s+attribute\b"
+            r"|include\s+"
+            r"|omit\s+"
+            r"|(?:letI|haveI)\b"
+            r")"
+        )
+
+        # Find enclosing section/namespace boundary
+        section_start = 0
+        for i in range(len(pre_lines) - 1, -1, -1):
+            stripped = pre_lines[i].strip()
+            if stripped.startswith("section ") or stripped.startswith("namespace "):
+                section_start = i
+                break
+
+        # Collect support declarations from section_start to theorem_line
+        i = section_start
+        while i < len(pre_lines):
+            line = pre_lines[i]
+            if _SUPPORT_RE.match(line):
+                # Collect the full declaration (may span multiple lines)
+                decl_lines = [line]
+                # Declarations end at the next same-or-lesser-indent top-level
+                # keyword. We must NOT cut on blank lines inside `where` blocks
+                # or `⟨...⟩` expressions.
+                indent = len(line) - len(line.lstrip())
+                j = i + 1
+                in_block = "where" in line or line.rstrip().endswith("⟨") or ":=" in line
+                while j < len(pre_lines):
+                    next_line = pre_lines[j]
+                    next_stripped = next_line.strip()
+                    next_indent = len(next_line) - len(next_line.lstrip())
+
+                    # Blank line ends only if we're not in a block
+                    if not next_stripped:
+                        if not in_block:
+                            break
+                        # In a block: blank line is OK, but two consecutive blanks end it
+                        if j + 1 < len(pre_lines) and not pre_lines[j + 1].strip():
+                            break
+                        decl_lines.append(next_line)
+                        j += 1
+                        continue
+
+                    # Continuation lines inside the block
+                    if next_indent > indent:
+                        decl_lines.append(next_line)
+                        in_block = in_block or "where" in next_line
+                        j += 1
+                        continue
+
+                    # Same indent: new declaration or keyword → stop
+                    if _SUPPORT_RE.match(next_line) or re.match(
+                        r"\s*(?:theorem|lemma|section|namespace|end |set_option\b|open\b|alias\b|/--|--)",
+                        next_line,
+                    ):
+                        break
+                    if re.match(
+                        r"\s*(?:attribute\b|local\s+attribute\b|scoped\b|notation\b|local\s+macro\b)",
+                        next_line,
+                    ):
+                        break
+                    # Same indent continuation (e.g., `| ...` patterns)
+                    decl_lines.append(next_line)
+                    j += 1
+
+                decl_text = "".join(decl_lines)
+
+                # Do NOT rename support declarations — instances need their
+                # original names for typeclass resolution. Collisions with
+                # imported Mathlib are handled by Lean's shadowing rules.
+                support.append(decl_text.rstrip())
+                i = j
+            else:
+                i += 1
+
+        return support
+
+    @staticmethod
+    def _decl_name_from_text(text: str) -> str:
+        match = re.search(
+            rf"^\s*(?:@\[[^\]]+\]\s*)*{_DECL_MODIFIERS}"
+            r"(?:theorem|lemma|def|instance|abbrev|alias)\s+([^\s\(:\[]+)",
+            text,
+            flags=re.MULTILINE,
+        )
+        return match.group(1) if match else ""
+
+    @staticmethod
+    def _rewrite_identifier(text: str, old: str, new: str) -> str:
+        ident_chars = r"[A-Za-z0-9_']"
+        return re.sub(
+            rf"(?<!{ident_chars}){re.escape(old)}(?!{ident_chars})",
+            new,
+            text,
+        )
+
+    @classmethod
+    def _rename_support_declarations(
+        cls,
+        support_lines: list[str],
+        theorem_decl: str,
+    ) -> tuple[list[str], str]:
+        """Rename local support declarations to avoid collision with imports."""
+        mapping: dict[str, str] = {}
+        for idx, support_decl in enumerate(support_lines):
+            decl_name = cls._decl_name_from_text(support_decl)
+            if not decl_name:
+                continue
+            sanitized = re.sub(r"[^A-Za-z0-9_']+", "_", decl_name).strip("_") or "decl"
+            mapping[decl_name] = f"_wf_support_{idx}_{sanitized}"
+
+        if not mapping:
+            return support_lines, theorem_decl
+
+        ordered_mapping = sorted(mapping.items(), key=lambda item: len(item[0]), reverse=True)
+
+        def _apply(text: str) -> str:
+            rewritten = text
+            for old, new in ordered_mapping:
+                rewritten = cls._rewrite_identifier(rewritten, old, new)
+            return rewritten
+
+        return [_apply(support_decl) for support_decl in support_lines], _apply(theorem_decl)
+
+    @staticmethod
+    def _wrap_replay_namespace(source: str, seed: str) -> str:
+        """Wrap replay source in a fresh namespace after header commands.
+
+        This avoids collisions when replaying local support declarations that
+        share names with already-imported Mathlib declarations.
+        """
+        lines = source.splitlines()
+        if not lines:
+            return source
+
+        header: list[str] = []
+        body_start = 0
+        for idx, line in enumerate(lines):
+            stripped = line.strip()
+            if (
+                not stripped
+                or stripped.startswith("--")
+                or stripped.startswith("/-")
+                or stripped == "-/"
+                or stripped.startswith("module")
+                or stripped.startswith("import ")
+            ):
+                header.append(line)
+                body_start = idx + 1
+                continue
+            body_start = idx
+            break
+        body = lines[body_start:]
+        if not body:
+            return source
+
+        ns = f"_wayfinder_replay_{seed}"
+        wrapped = header + [f"namespace {ns}"] + body + [f"end {ns}"]
+        result = "\n".join(wrapped)
+        if source.endswith("\n"):
+            result += "\n"
+        return result
+
     def _tier_b_file_wrapper(
         self,
         theorem_full_name: str,
         file_path: str,
+        module_hint: str,
         thm_type: str | None,
         project_root: str,
+        alias_depth: int = 0,
     ) -> Any | None:
         """Tier B: declaration-faithful start state via source + load_sorry.
 
@@ -1054,9 +1741,12 @@ class LeanKernel:
         This produces the same post-`by` tactic state that LeanDojo traces
         start from — with binders introduced and local names preserved.
         """
+        info: dict[str, Any] | None = None
         try:
             server = self._ensure_server()
-            info = server.env_inspect(name=theorem_full_name)
+            inspected = server.env_inspect(name=theorem_full_name)
+            if isinstance(inspected, dict):
+                info = inspected
         except Exception as e:
             if self._is_crash_error(e):
                 self._restart_server()
@@ -1065,32 +1755,54 @@ class LeanKernel:
                 stage="goal_creation",
                 fallback_category="goal_creation_fail",
             )
+
+        module = info.get("module", "") if isinstance(info, dict) else ""
+        if not module and module_hint:
+            module = module_hint
+        src_start = info.get("sourceStart") if isinstance(info, dict) else None
+        src_end = info.get("sourceEnd") if isinstance(info, dict) else None
+        lean_path = _resolve_source_file_path(
+            project_root=project_root,
+            module=module,
+            file_path_hint=file_path,
+            theorem_full_name=theorem_full_name,
+        )
+        if not lean_path:
             return None
 
-        if not isinstance(info, dict):
-            return None
-
-        # Resolve source file via env_inspect module field
-        module = info.get("module", "")
-        src_start = info.get("sourceStart")
-        src_end = info.get("sourceEnd")
-        if not module or not isinstance(src_start, dict) or not isinstance(src_end, dict):
-            return None
-
-        module_path = module.replace(".", "/") + ".lean"
-        lean_path = os.path.join(project_root, ".lake/packages/mathlib", module_path)
-        if not os.path.exists(lean_path):
-            return None
-
-        start_line = src_start.get("line", 0)
-        end_line = src_end.get("line", 0)
-        if start_line <= 0 or end_line <= 0:
-            return None
+        start_line = src_start.get("line", 0) if isinstance(src_start, dict) else 0
+        end_line = src_end.get("line", 0) if isinstance(src_end, dict) else 0
 
         try:
             with open(lean_path) as f:
                 all_lines = f.readlines()
         except Exception:
+            return None
+
+        short_name = theorem_full_name.split(".")[-1]
+        alias_target = _resolve_alias_target_in_source(
+            all_lines,
+            short_name,
+            theorem_full_name=theorem_full_name,
+        )
+        if alias_target and alias_target != theorem_full_name and alias_depth < 4:
+            logger.debug("Tier B alias redirect %s -> %s", theorem_full_name, alias_target)
+            return self._tier_b_file_wrapper(
+                alias_target,
+                file_path,
+                module_hint,
+                thm_type,
+                project_root,
+                alias_depth=alias_depth + 1,
+            )
+
+        if start_line <= 0 or end_line <= 0:
+            start_line, end_line = _find_decl_bounds_in_source(
+                all_lines,
+                short_name,
+                theorem_full_name=theorem_full_name,
+            )
+        if start_line <= 0 or end_line <= 0 or end_line < start_line:
             return None
 
         # Extract the original declaration text
@@ -1099,24 +1811,31 @@ class LeanKernel:
             return None
 
         # Rename declaration to avoid "already declared"
-        short_name = theorem_full_name.split(".")[-1]
         fresh_name = f"_wayfinder_decl_{len(self._goal_states)}"
         renamed = decl_text
-        for kw in ("theorem ", "lemma ", "def ", "instance "):
-            if kw + short_name in renamed:
-                renamed = renamed.replace(kw + short_name, kw + fresh_name, 1)
-                break
+        decl_name_match = re.search(
+            rf"^(\s*(?:@\[[^\]]+\]\s*)*{_DECL_MODIFIERS}"
+            r"(?:theorem|lemma|def|instance)\s+)([^\s\(:\[]+)",
+            renamed,
+            flags=re.MULTILINE,
+        )
+        if decl_name_match:
+            renamed = (
+                renamed[: decl_name_match.start(2)]
+                + fresh_name
+                + renamed[decl_name_match.end(2) :]
+            )
 
         # Replace proof body with `by sorry`
         # Find `:= by` or `:= by\n` and truncate
-        by_match = re.search(r':=\s*by\b', renamed)
+        by_match = re.search(r":=\s*by\b", renamed)
         if by_match:
-            decl_head = renamed[:by_match.end()]
+            decl_head = renamed[: by_match.end()]
         else:
             # Non-tactic proof or where clause — try `:=` then append `by`
-            eq_match = re.search(r':=', renamed)
+            eq_match = re.search(r":=", renamed)
             if eq_match:
-                decl_head = renamed[:eq_match.end()] + " by"
+                decl_head = renamed[: eq_match.end()] + " by"
             else:
                 # No `:=` found — append
                 decl_head = renamed.rstrip() + " := by"
@@ -1124,22 +1843,23 @@ class LeanKernel:
 
         # Strip docstrings/attributes from the declaration head
         # (they appear before the keyword and can cause parse issues)
-        sorry_decl = re.sub(
-            r'/--.*?-/\s*', '', sorry_decl, flags=re.DOTALL
-        )
-        sorry_decl = re.sub(r'@\[.*?\]\s*', '', sorry_decl)
+        sorry_decl = re.sub(r"/--.*?-/\s*", "", sorry_decl, flags=re.DOTALL)
+        sorry_decl = re.sub(r"@\[.*?\]\s*", "", sorry_decl)
 
         # Reconstruct active scope context at declaration site
         ctx = extract_active_context(lean_path, start_line)
 
-        # Build wrapper: prefix + inline ... in + sorry'd decl + suffix
-        parts = (
-            list(ctx.prefix_lines) + list(ctx.inline_lines)
-            + [sorry_decl] + list(ctx.suffix_lines)
+        # Build wrapper: prefix + inline modifiers + sorry'd decl + suffix.
+        # Avoid a synthetic replay namespace here: it shadows real Mathlib names
+        # like `WeierstrassCurve.Jacobian` and `QuadraticMap.polarBilin`, which
+        # turns theorem-start into a self-inflicted elaboration failure.
+        parts = list(ctx.prefix_lines) + list(ctx.inline_lines) + [sorry_decl] + list(
+            ctx.suffix_lines
         )
         wrapper = "\n".join(parts)
 
         try:
+            server = self._ensure_server()
             targets = server.load_sorry(wrapper)
             self._server_contaminated = True
             if targets and targets[0].goal_state.goals:
@@ -1154,8 +1874,120 @@ class LeanKernel:
             if self._is_crash_error(e):
                 self._restart_server()
                 self._server_contaminated = False
-            logger.debug("Tier B decl wrapper failed for %s: %s",
-                         theorem_full_name, e)
+            logger.debug("Tier B decl wrapper failed for %s: %s", theorem_full_name, e)
+
+        # --- Tier B1.5: support-slice replay ---
+        # Instead of replaying the whole file, extract only the supporting
+        # declarations (instances, defs, abbrevs, scoped notation) from the
+        # same section/namespace that the theorem needs for elaboration.
+        try:
+            server = self._ensure_server()
+            support_lines = self._extract_support_slice(
+                all_lines, start_line, end_line, short_name
+            )
+            if support_lines:
+                renamed_support_lines, renamed_sorry_decl = self._rename_support_declarations(
+                    support_lines,
+                    sorry_decl,
+                )
+                ctx = extract_active_context(lean_path, start_line)
+                parts = (
+                    list(ctx.prefix_lines)
+                    + renamed_support_lines
+                    + list(ctx.inline_lines)
+                    + [renamed_sorry_decl]
+                    + list(ctx.suffix_lines)
+                )
+                direct_wrapper = "\n".join(parts)
+                try:
+                    targets = server.load_sorry(direct_wrapper)
+                    self._server_contaminated = True
+                    if targets and targets[0].goal_state.goals:
+                        logger.debug(
+                            "Tier B1.5 direct support-slice succeeded for %s",
+                            theorem_full_name,
+                        )
+                        return targets[0].goal_state
+                except Exception as direct_err:
+                    self._server_contaminated = True
+                    if self._is_crash_error(direct_err):
+                        self._restart_server()
+                        self._server_contaminated = False
+                        raise
+                    logger.debug(
+                        "Tier B1.5 direct support-slice failed for %s: %s",
+                        theorem_full_name,
+                        direct_err,
+                    )
+
+                wrapper = self._wrap_replay_namespace(direct_wrapper, fresh_name)
+                targets = server.load_sorry(wrapper)
+                self._server_contaminated = True
+                if targets and targets[0].goal_state.goals:
+                    logger.debug(
+                        "Tier B1.5 wrapped support-slice succeeded for %s",
+                        theorem_full_name,
+                    )
+                    return targets[0].goal_state
+        except Exception as e_b15:
+            self._server_contaminated = True
+            if self._is_crash_error(e_b15):
+                self._restart_server()
+                self._server_contaminated = False
+            logger.debug(
+                "Tier B1.5 support-slice failed for %s: %s", theorem_full_name, e_b15
+            )
+
+        # --- Tier B4: bounded source replay ---
+        # Replay the actual source from file start through the theorem,
+        # renaming the theorem and replacing its proof with sorry.
+        # This is the most faithful local fallback.
+        try:
+            server = self._ensure_server()
+            # Find the source slice: everything from line 1 to end of theorem
+            source_slice = "".join(all_lines[:end_line])
+
+            # Rename the theorem to avoid "already declared"
+            # Replace the LAST occurrence of the theorem keyword + short_name
+            # (the declaration itself, not references in earlier code)
+            rename_pattern = re.compile(
+                rf"(theorem|lemma|def)\s+{re.escape(short_name)}\b",
+            )
+            matches = list(rename_pattern.finditer(source_slice))
+            if matches:
+                last_match = matches[-1]
+                source_slice = (
+                    source_slice[:last_match.start()]
+                    + source_slice[last_match.start():last_match.end()].replace(
+                        short_name, fresh_name
+                    )
+                    + source_slice[last_match.end():]
+                )
+
+            # Replace proof body with sorry
+            by_match = re.search(r":=\s*by\b", source_slice[start_line - 1:])
+            if by_match:
+                # Count characters, not line offset
+                char_offset = sum(len(line_text) for line_text in all_lines[:start_line - 1])
+                by_match_full = re.search(r":=\s*by\b", source_slice[char_offset:])
+                if by_match_full:
+                    cut_char = char_offset + by_match_full.end()
+                    source_slice = source_slice[:cut_char] + "\n  sorry"
+
+            # Strip docstrings/attributes from the theorem declaration only
+            # (keep file-level ones intact)
+            source_slice = self._wrap_replay_namespace(source_slice, fresh_name)
+            targets = server.load_sorry(source_slice)
+            self._server_contaminated = True
+            if targets and targets[0].goal_state.goals:
+                logger.debug("Tier B4 source replay succeeded for %s", theorem_full_name)
+                return targets[0].goal_state
+        except Exception as e_b4:
+            self._server_contaminated = True
+            if self._is_crash_error(e_b4):
+                self._restart_server()
+                self._server_contaminated = False
+            logger.debug("Tier B4 source replay failed for %s: %s", theorem_full_name, e_b4)
 
         return None
 
@@ -1166,6 +1998,8 @@ class LeanKernel:
         prefix_tactics: list[str],
         expected_goal: str = "",
         project_root: str = "",
+        module_hint: str = "",
+        fallback_goal_pp: str = "",
         accessible_names: set[str] | None = None,
         prefix_goal_states: list[str] | None = None,
     ) -> ReplayResult:
@@ -1188,9 +2022,7 @@ class LeanKernel:
             project_root: Root of Lean project (for file resolution).
         """
         crash_retries = 0
-        prefix_hash = hashlib.md5(
-            "|".join(prefix_tactics).encode()
-        ).hexdigest()[:8]
+        prefix_hash = hashlib.md5("|".join(prefix_tactics).encode()).hexdigest()[:8]
         env_key = f"{file_path}:{theorem_full_name}:{prefix_hash}"
         self._current_env_key = env_key
         self._last_goal_feedback = None
@@ -1208,9 +2040,13 @@ class LeanKernel:
         # ----------------------------------------------------------
         base_state = None
         tier_used = ""
+        last_attempted_tier = "B"
 
         state = self._tier_b_file_wrapper(
-            theorem_full_name, file_path, None,
+            theorem_full_name,
+            file_path,
+            module_hint,
+            None,
             project_root or self.config.project_root,
         )
         if state is not None:
@@ -1223,18 +2059,21 @@ class LeanKernel:
         # not the post-`by` state — less faithful but broader coverage.
         # ----------------------------------------------------------
         if base_state is None:
+            last_attempted_tier = "A"
             try:
                 server = self._ensure_server()
                 info = server.env_inspect(name=theorem_full_name)
                 thm_type_obj = info.get("type") if isinstance(info, dict) else None
-                thm_type = (thm_type_obj.get("pp")
-                            if isinstance(thm_type_obj, dict)
-                            else str(thm_type_obj) if thm_type_obj else None)
+                thm_type = (
+                    thm_type_obj.get("pp")
+                    if isinstance(thm_type_obj, dict)
+                    else str(thm_type_obj)
+                    if thm_type_obj
+                    else None
+                )
                 if thm_type:
-                    goal_str = self.goal_start(
-                        thm_type, theorem_full_name, file_path)
-                    base_state = self._goal_states.get(
-                        (self._current_env_key, goal_str))
+                    goal_str = self.goal_start(thm_type, theorem_full_name, file_path)
+                    base_state = self._goal_states.get((self._current_env_key, goal_str))
                     if base_state is not None:
                         tier_used = "A"
             except Exception as e:
@@ -1242,6 +2081,27 @@ class LeanKernel:
                     crash_retries += 1
                     self._restart_server()
                 logger.debug("Tier A failed for %s: %s", theorem_full_name, e)
+
+        # ----------------------------------------------------------
+        # Tier A2 (metadata fallback): synthesize theorem type from a
+        # pretty-printed goal state when declaration metadata is stale.
+        # ----------------------------------------------------------
+        if base_state is None and fallback_goal_pp and "⊢" in fallback_goal_pp:
+            last_attempted_tier = "A2"
+            try:
+                goal_str = self.goal_start_from_pp(
+                    fallback_goal_pp,
+                    theorem_name=theorem_full_name,
+                    file_path=file_path,
+                )
+                base_state = self._goal_states.get((self._current_env_key, goal_str))
+                if base_state is not None:
+                    tier_used = "A2"
+            except Exception as e:
+                if self._is_crash_error(e):
+                    crash_retries += 1
+                    self._restart_server()
+                logger.debug("Tier A2 failed for %s: %s", theorem_full_name, e)
 
         # Step-0: return base state directly.
         if not prefix_tactics:
@@ -1266,11 +2126,16 @@ class LeanKernel:
                     ),
                 )
             return ReplayResult(
-                success=False, goal_state="", goal_state_obj=None,
-                tier_used="B", failure_category="goal_creation_fail",
-                failing_prefix_idx=-1, crash_retries=crash_retries,
+                success=False,
+                goal_state="",
+                goal_state_obj=None,
+                tier_used=tier_used or last_attempted_tier,
+                failure_category="goal_creation_fail",
+                failing_prefix_idx=-1,
+                crash_retries=crash_retries,
                 env_key=env_key,
-                feedback=self._last_goal_feedback or LeanFeedback(
+                feedback=self._last_goal_feedback
+                or LeanFeedback(
                     stage="goal_creation",
                     category="goal_creation_fail",
                     messages=[],
@@ -1286,11 +2151,16 @@ class LeanKernel:
         # ----------------------------------------------------------
         if base_state is None:
             return ReplayResult(
-                success=False, goal_state="", goal_state_obj=None,
-                tier_used="C", failure_category="goal_creation_fail",
-                failing_prefix_idx=-1, crash_retries=crash_retries,
+                success=False,
+                goal_state="",
+                goal_state_obj=None,
+                tier_used="C",
+                failure_category="goal_creation_fail",
+                failing_prefix_idx=-1,
+                crash_retries=crash_retries,
                 env_key=env_key,
-                feedback=self._last_goal_feedback or LeanFeedback(
+                feedback=self._last_goal_feedback
+                or LeanFeedback(
                     stage="goal_creation",
                     category="goal_creation_fail",
                     messages=[],
@@ -1311,9 +2181,13 @@ class LeanKernel:
         for i, tac in enumerate(prefix_tactics):
             if not current_state.goals:
                 return ReplayResult(
-                    success=False, goal_state="", goal_state_obj=None,
-                    tier_used="C", failure_category="prefix_replay_fail",
-                    failing_prefix_idx=i, crash_retries=crash_retries,
+                    success=False,
+                    goal_state="",
+                    goal_state_obj=None,
+                    tier_used="C",
+                    failure_category="prefix_replay_fail",
+                    failing_prefix_idx=i,
+                    crash_retries=crash_retries,
                     env_key=env_key,
                     feedback=LeanFeedback(
                         stage="tactic_exec",
@@ -1328,8 +2202,7 @@ class LeanKernel:
 
             # Structural prelude: intro missing binders for this step
             if step_expected and current_state.goals:
-                current_state = _intro_missing_locals(
-                    server, current_state, step_expected)
+                current_state = _intro_missing_locals(server, current_state, step_expected)
 
             # Build alias map for this step's local context
             actual_str = str(current_state.goals[0]) if current_state.goals else ""
@@ -1344,17 +2217,22 @@ class LeanKernel:
 
             # Apply the tactic
             try:
-                current_state = server.goal_tactic(
-                    current_state, tactic=prepared_tac)
+                current_state = server.goal_tactic(current_state, tactic=prepared_tac)
             except _TF as e:
                 logger.debug(
                     "Tier C prefix[%d] TacticFailure for %s: %s",
-                    i, theorem_full_name, e,
+                    i,
+                    theorem_full_name,
+                    e,
                 )
                 return ReplayResult(
-                    success=False, goal_state="", goal_state_obj=None,
-                    tier_used="C", failure_category="prefix_replay_fail",
-                    failing_prefix_idx=i, crash_retries=crash_retries,
+                    success=False,
+                    goal_state="",
+                    goal_state_obj=None,
+                    tier_used="C",
+                    failure_category="prefix_replay_fail",
+                    failing_prefix_idx=i,
+                    crash_retries=crash_retries,
                     env_key=env_key,
                     feedback=replace(
                         _classify_tactic_failure(e),
@@ -1366,9 +2244,13 @@ class LeanKernel:
                     crash_retries += 1
                     self._restart_server()
                 return ReplayResult(
-                    success=False, goal_state="", goal_state_obj=None,
-                    tier_used="C", failure_category="prefix_replay_fail",
-                    failing_prefix_idx=i, crash_retries=crash_retries,
+                    success=False,
+                    goal_state="",
+                    goal_state_obj=None,
+                    tier_used="C",
+                    failure_category="prefix_replay_fail",
+                    failing_prefix_idx=i,
+                    crash_retries=crash_retries,
                     env_key=env_key,
                     feedback=_classify_compiler_feedback(
                         e,
@@ -1394,8 +2276,11 @@ class LeanKernel:
         # Final state: match against expected_goal
         if not current_state.goals:
             return ReplayResult(
-                success=False, goal_state="", goal_state_obj=None,
-                tier_used="C", failure_category="prefix_replay_fail",
+                success=False,
+                goal_state="",
+                goal_state_obj=None,
+                tier_used="C",
+                failure_category="prefix_replay_fail",
                 failing_prefix_idx=len(prefix_tactics) - 1,
                 crash_retries=crash_retries,
                 env_key=env_key,
@@ -1407,14 +2292,17 @@ class LeanKernel:
                 ),
             )
 
-        matched_idx, matched_goal_str = _match_goal(
-            current_state.goals, expected_goal)
+        matched_idx, matched_goal_str = _match_goal(current_state.goals, expected_goal)
 
         if matched_idx < 0 and expected_goal:
             return ReplayResult(
-                success=False, goal_state="", goal_state_obj=None,
-                tier_used="C", failure_category="goal_match_fail",
-                failing_prefix_idx=-1, crash_retries=crash_retries,
+                success=False,
+                goal_state="",
+                goal_state_obj=None,
+                tier_used="C",
+                failure_category="goal_match_fail",
+                failing_prefix_idx=-1,
+                crash_retries=crash_retries,
                 env_key=env_key,
                 feedback=LeanFeedback(
                     stage="tactic_exec",
@@ -1463,6 +2351,7 @@ def _build_hammer_tactics(premises: list[str]) -> list[str]:
         premise_list = ", ".join(premises[:16])
         tactics.append(f"aesop (add safe [{premise_list}])")
 
+    tactics.append("solve_by_elim")
     tactics.append("aesop")
     tactics.append("omega")
     tactics.append("decide")
@@ -1471,5 +2360,6 @@ def _build_hammer_tactics(premises: list[str]) -> list[str]:
         premise_list = ", ".join(premises[:16])
         tactics.append(f"simp [{premise_list}]")
     tactics.append("simp")
+    tactics.append("apply?")
 
     return tactics

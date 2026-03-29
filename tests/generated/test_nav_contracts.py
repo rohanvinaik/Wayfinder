@@ -23,7 +23,6 @@ class Test_NavExampleCoreConfig:
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
 
 
-
 class TestNavigationalExampleConfig:
     """Configuration tests for NavigationalExample."""
 
@@ -32,7 +31,6 @@ class TestNavigationalExampleConfig:
         obj = NavigationalExample()
         # TODO: Assert specific field values, not just existence
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
-
 
 
 class TestStructuredQueryConfig:
@@ -45,7 +43,6 @@ class TestStructuredQueryConfig:
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
 
 
-
 class TestScoredEntityConfig:
     """Configuration tests for ScoredEntity."""
 
@@ -54,7 +51,6 @@ class TestScoredEntityConfig:
         obj = ScoredEntity()
         # TODO: Assert specific field values, not just existence
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
-
 
 
 class TestNavOutputConfig:
@@ -67,7 +63,6 @@ class TestNavOutputConfig:
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
 
 
-
 class TestTacticResultConfig:
     """Configuration tests for TacticResult."""
 
@@ -76,6 +71,3 @@ class TestTacticResultConfig:
         obj = TacticResult()
         # TODO: Assert specific field values, not just existence
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
-
-
-

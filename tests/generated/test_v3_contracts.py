@@ -23,7 +23,6 @@ class TestGoalContextConfig:
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
 
 
-
 class TestActionCandidateConfig:
     """Configuration tests for ActionCandidate."""
 
@@ -32,7 +31,6 @@ class TestActionCandidateConfig:
         obj = ActionCandidate()
         # TODO: Assert specific field values, not just existence
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
-
 
 
 class TestNegativeExampleConfig:
@@ -45,7 +43,6 @@ class TestNegativeExampleConfig:
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
 
 
-
 class TestConstraintReportConfig:
     """Configuration tests for ConstraintReport."""
 
@@ -54,7 +51,6 @@ class TestConstraintReportConfig:
         obj = ConstraintReport()
         # TODO: Assert specific field values, not just existence
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
-
 
 
 class TestSketchProposalConfig:
@@ -67,7 +63,6 @@ class TestSketchProposalConfig:
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
 
 
-
 class TestSearchTraceConfig:
     """Configuration tests for SearchTrace."""
 
@@ -76,6 +71,3 @@ class TestSearchTraceConfig:
         obj = SearchTrace()
         # TODO: Assert specific field values, not just existence
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
-
-
-

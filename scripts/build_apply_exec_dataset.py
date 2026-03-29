@@ -102,6 +102,7 @@ def outcome_class(probe: dict[str, Any]) -> str:
 # Build dataset
 # ---------------------------------------------------------------------------
 
+
 def load_goal_map(eval_path: str) -> dict[str, str]:
     """Map theorem_full_name -> goal_state_before (step-0 apply examples)."""
     goal_map: dict[str, str] = {}
@@ -158,12 +159,8 @@ def build_dataset(
 
             # Build cosine rank lookup from raw probes (order = cosine rank)
             raw_probes = result.get("raw_top5_probes") or []
-            cosine_rank: dict[str, int] = {
-                p["candidate"]: i for i, p in enumerate(raw_probes)
-            }
-            filtered_set = {
-                p["candidate"] for p in (result.get("filtered_top5_probes") or [])
-            }
+            cosine_rank: dict[str, int] = {p["candidate"]: i for i, p in enumerate(raw_probes)}
+            filtered_set = {p["candidate"] for p in (result.get("filtered_top5_probes") or [])}
 
             for probe in probes:
                 cand = probe["candidate"]
@@ -171,9 +168,7 @@ def build_dataset(
                 error_text = fb.get("raw_error", "")
                 messages = fb.get("messages") or []
                 # Prefer message data for conclusion extraction
-                msg_text = " ".join(
-                    m.get("data", "") for m in messages if isinstance(m, dict)
-                )
+                msg_text = " ".join(m.get("data", "") for m in messages if isinstance(m, dict))
                 concl_shape = extract_candidate_conclusion(msg_text or error_text)
 
                 oc = outcome_class(probe)
@@ -205,35 +200,42 @@ def build_dataset(
                 rows_written += 1
 
     print(f"Written {rows_written} rows to {output_path}", file=sys.stderr)
-    print(f"Skipped: {skipped_no_goal} no goal text, {skipped_no_probes} no probes",
-          file=sys.stderr)
+    print(
+        f"Skipped: {skipped_no_goal} no goal text, {skipped_no_probes} no probes", file=sys.stderr
+    )
     print("Outcome class distribution:", file=sys.stderr)
     total = max(rows_written, 1)
     for cls, count in sorted(class_counts.items(), key=lambda x: -x[1]):
         if count:
-            print(f"  {cls:<25} {count:4d}  ({100*count/total:.1f}%)", file=sys.stderr)
+            print(f"  {cls:<25} {count:4d}  ({100 * count / total:.1f}%)", file=sys.stderr)
 
 
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--probes", default="runs/apply047_results.jsonl",
+        "--probes",
+        default="runs/apply047_results.jsonl",
         help="JSONL output from run_apply047_compat_filter",
     )
     parser.add_argument(
-        "--eval", default="data/canonical/canonical_residual_eval.jsonl",
+        "--eval",
+        default="data/canonical/canonical_residual_eval.jsonl",
         help="Canonical residual eval JSONL (for goal text)",
     )
     parser.add_argument(
-        "--output", default="data/apply_exec_dataset.jsonl",
+        "--output",
+        default="data/apply_exec_dataset.jsonl",
         help="Output per-candidate dataset",
     )
     parser.add_argument(
-        "--probe-set", choices=["filtered", "raw"], default="filtered",
+        "--probe-set",
+        choices=["filtered", "raw"],
+        default="filtered",
         help="Which probe set to flatten (default: filtered)",
     )
     args = parser.parse_args()

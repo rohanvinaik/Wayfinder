@@ -208,9 +208,7 @@ class TestSearch(unittest.TestCase):
 
     @patch("src.proof_search._try_structural_fallback", return_value=False)
     @patch("src.proof_search.resolve")
-    def test_accessible_premises_disabled_clears_theorem_id(
-        self, mock_resolve, _mock_structural
-    ):
+    def test_accessible_premises_disabled_clears_theorem_id(self, mock_resolve, _mock_structural):
         """accessible_premises=False means context.accessible_theorem_id is None."""
         mock_resolve.return_value = [_make_candidate(tactic="rfl")]
 

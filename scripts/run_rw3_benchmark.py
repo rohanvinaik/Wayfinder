@@ -16,6 +16,7 @@ Post-first-step metric (EXP-RW-034b):
 
 Parallel mode: --parallel N shards across N worker subprocesses.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -115,7 +116,13 @@ def load_rw3_bare_examples(path: str, step0_only: bool = True, limit: int = 0) -
             if step0_only and ex.get("step_index", 0) != 0:
                 continue
             examples.append(ex)
-    examples.sort(key=lambda x: (x.get("file_path", ""), x.get("theorem_full_name", ""), x.get("step_index", 0)))
+    examples.sort(
+        key=lambda x: (
+            x.get("file_path", ""),
+            x.get("theorem_full_name", ""),
+            x.get("step_index", 0),
+        )
+    )
     if limit > 0:
         examples = examples[:limit]
     return examples
@@ -198,11 +205,17 @@ def try_tactic_safe(
         result = kernel.try_tactic(goal_state, tactic, goal_id=goal_id)
         new_goal = ""
         if result.success and result.new_goals:
-            new_goal = result.new_goals[0] if isinstance(result.new_goals[0], str) else str(result.new_goals[0])
+            new_goal = (
+                result.new_goals[0]
+                if isinstance(result.new_goals[0], str)
+                else str(result.new_goals[0])
+            )
         return result.success, new_goal, result.error_message, False
     except Exception as e:
         msg = str(e)
-        is_crash = any(kw in msg.lower() for kw in ("broken pipe", "connection reset", "process", "crash"))
+        is_crash = any(
+            kw in msg.lower() for kw in ("broken pipe", "connection reset", "process", "crash")
+        )
         return False, "", msg, is_crash
 
 
@@ -456,7 +469,7 @@ def print_report(results: list[Rw3FirstAtomResult], total: int) -> None:
     print("rw3 First-Atom Benchmark (EXP-RW-034a + 034b)")
     print("=" * 60)
     print(f"\nExamples (all-bare rw3, step-0): {total}")
-    print(f"GoalStart@rw3_bare: {n}/{total} ({100*n/max(total,1):.1f}%)")
+    print(f"GoalStart@rw3_bare: {n}/{total} ({100 * n / max(total, 1):.1f}%)")
     if fail_cats:
         for cat, cnt in fail_cats.most_common():
             print(f"  {cat}: {cnt}")
@@ -467,30 +480,41 @@ def print_report(results: list[Rw3FirstAtomResult], total: int) -> None:
     print(f"\n{'--- EXP-RW-034a: First-Atom Acceptance ---'}")
     print(f"\n{'Condition':<40} {'|started':>10} {'Rate':>7} {'|gold_in_scope':>16} {'Rate':>7}")
     print("-" * 82)
+
     def row(label, ok_s, ok_gs):
         r1 = f"{ok_s}/{n}"
-        r2 = f"{100*ok_s/max(n,1):.1f}%"
+        r2 = f"{100 * ok_s / max(n, 1):.1f}%"
         r3 = f"{ok_gs}/{m}"
-        r4 = f"{100*ok_gs/max(m,1):.1f}%"
+        r4 = f"{100 * ok_gs / max(m, 1):.1f}%"
         print(f"{label:<40} {r1:>10} {r2:>7} {r3:>16} {r4:>7}")
 
     row("Oracle first atom (exact dir)", oracle_ok, oracle_gs)
     row("Cosine top-1 (both dirs)", c1_ok, sum(r.cosine_top1_success for r in gold_scope))
     row("Cosine top-5 (both dirs)", c5_ok, c5_gs)
 
-    print(f"\nGold first atom in scope: {len(gold_scope)}/{n} ({100*len(gold_scope)/max(n,1):.1f}%)")
+    print(
+        f"\nGold first atom in scope: {len(gold_scope)}/{n} ({100 * len(gold_scope) / max(n, 1):.1f}%)"
+    )
     ranks = [r.gold_first_rank for r in started if r.gold_first_rank >= 0]
     if ranks:
-        print(f"Gold rank (when in scope): mean={np.mean(ranks):.1f}, median={np.median(ranks):.1f}")
-        print(f"  rank-0: {sum(1 for r in ranks if r == 0)}, rank<=2: {sum(1 for r in ranks if r <= 2)}")
+        print(
+            f"Gold rank (when in scope): mean={np.mean(ranks):.1f}, median={np.median(ranks):.1f}"
+        )
+        print(
+            f"  rank-0: {sum(1 for r in ranks if r == 0)}, rank<=2: {sum(1 for r in ranks if r <= 2)}"
+        )
     scope_sizes = [r.n_scope_premises for r in started if r.n_scope_premises > 0]
     if scope_sizes:
         print(f"Mean scope size: {np.mean(scope_sizes):.1f}")
 
     # Error taxonomy for oracle failures
-    err_cats = Counter(r.oracle_first_error_category for r in started if not r.oracle_first_success and r.oracle_first_error_category)
+    err_cats = Counter(
+        r.oracle_first_error_category
+        for r in started
+        if not r.oracle_first_success and r.oracle_first_error_category
+    )
     if err_cats:
-        print(f"\nOracle first-atom failure taxonomy:")
+        print("\nOracle first-atom failure taxonomy:")
         for cat, cnt in err_cats.most_common():
             print(f"  {cat}: {cnt}")
 
@@ -504,32 +528,42 @@ def print_report(results: list[Rw3FirstAtomResult], total: int) -> None:
         if oracle_fired_second:
             viab_oracle = sum(r.second_in_scope_after_oracle for r in oracle_fired_second)
             print(f"After oracle first-step ({len(oracle_fired_second)} fired):")
-            print(f"  Second gold atom in scope: {viab_oracle}/{len(oracle_fired_second)} ({100*viab_oracle/max(len(oracle_fired_second),1):.1f}%)")
+            print(
+                f"  Second gold atom in scope: {viab_oracle}/{len(oracle_fired_second)} ({100 * viab_oracle / max(len(oracle_fired_second), 1):.1f}%)"
+            )
 
         if c5_fired_second:
             viab_c5 = sum(r.second_in_scope_after_cosine5 for r in c5_fired_second)
             print(f"After cosine-5 first-step ({len(c5_fired_second)} fired):")
-            print(f"  Second gold atom in scope: {viab_c5}/{len(c5_fired_second)} ({100*viab_c5/max(len(c5_fired_second),1):.1f}%)")
+            print(
+                f"  Second gold atom in scope: {viab_c5}/{len(c5_fired_second)} ({100 * viab_c5 / max(len(c5_fired_second), 1):.1f}%)"
+            )
 
         # Composition gap proxy
         # Cases where oracle fires but second atom NOT in scope = composition break
         comp_breaks = sum(1 for r in oracle_fired_second if not r.second_in_scope_after_oracle)
-        print(f"\nComposition breaks (oracle fires, second atom lost): {comp_breaks}/{len(oracle_fired_second)}")
+        print(
+            f"\nComposition breaks (oracle fires, second atom lost): {comp_breaks}/{len(oracle_fired_second)}"
+        )
     else:
         print("  (No second-atom data)")
 
     # Atom count breakdown
     atom_counts = Counter(r.n_atoms for r in started)
-    print(f"\nAtom count (started):")
+    print("\nAtom count (started):")
     for k in sorted(atom_counts):
         v = atom_counts[k]
         oracle_k = sum(r.oracle_first_success for r in started if r.n_atoms == k)
-        print(f"  {k} atoms: {v} examples, oracle={oracle_k}/{v} ({100*oracle_k/max(v,1):.0f}%)")
+        print(
+            f"  {k} atoms: {v} examples, oracle={oracle_k}/{v} ({100 * oracle_k / max(v, 1):.0f}%)"
+        )
 
     # Lean call budget
     c1_calls = sum(r.cosine_top1_calls for r in started)
     c5_calls = sum(r.cosine_top5_calls for r in started)
-    print(f"\nLean call budget: cosine-1={c1_calls/max(n,1):.1f}/ex, cosine-5={c5_calls/max(n,1):.1f}/ex")
+    print(
+        f"\nLean call budget: cosine-1={c1_calls / max(n, 1):.1f}/ex, cosine-5={c5_calls / max(n, 1):.1f}/ex"
+    )
 
     elapsed = [r.elapsed_s for r in results if r.elapsed_s > 0]
     if elapsed:
@@ -542,16 +576,32 @@ def print_report(results: list[Rw3FirstAtomResult], total: int) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _worker_cmd(args: argparse.Namespace, shard_index: int, num_shards: int, shard_out: str) -> list[str]:
+def _worker_cmd(
+    args: argparse.Namespace, shard_index: int, num_shards: int, shard_out: str
+) -> list[str]:
     cmd = [
-        sys.executable, "-m", "scripts.run_rw3_benchmark",
-        "--worker", "--shard-index", str(shard_index), "--num-shards", str(num_shards),
-        "--output", shard_out,
-        "--data", args.data, "--db", args.db,
-        "--lean-project", args.lean_project,
-        "--cosine-topk", str(args.cosine_topk),
-        "--max-scope-premises", str(args.max_scope_premises),
-        "--restart-every", str(args.restart_every),
+        sys.executable,
+        "-m",
+        "scripts.run_rw3_benchmark",
+        "--worker",
+        "--shard-index",
+        str(shard_index),
+        "--num-shards",
+        str(num_shards),
+        "--output",
+        shard_out,
+        "--data",
+        args.data,
+        "--db",
+        args.db,
+        "--lean-project",
+        args.lean_project,
+        "--cosine-topk",
+        str(args.cosine_topk),
+        "--max-scope-premises",
+        str(args.max_scope_premises),
+        "--restart-every",
+        str(args.restart_every),
     ]
     if args.limit > 0:
         cmd += ["--limit", str(args.limit)]
@@ -589,24 +639,41 @@ def run_parallel(args: argparse.Namespace) -> None:
                 for line in f:
                     if line.strip():
                         merged.append(json.loads(line))
-    merged.sort(key=lambda d: (d.get("file_path", ""), d.get("theorem_full_name", ""), d.get("step_index", 0)))
+    merged.sort(
+        key=lambda d: (
+            d.get("file_path", ""),
+            d.get("theorem_full_name", ""),
+            d.get("step_index", 0),
+        )
+    )
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "w") as f:
         for row in merged:
             f.write(json.dumps(row) + "\n")
 
-    results = [Rw3FirstAtomResult(**{k: v for k, v in row.items() if k in Rw3FirstAtomResult.__dataclass_fields__})
-               for row in merged]
+    results = [
+        Rw3FirstAtomResult(
+            **{k: v for k, v in row.items() if k in Rw3FirstAtomResult.__dataclass_fields__}
+        )
+        for row in merged
+    ]
     print_report(results, len(results))
 
 
 def run_worker(args: argparse.Namespace) -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
-    examples = load_rw3_bare_examples(args.data, step0_only=not args.include_step_gt0, limit=args.limit)
+    examples = load_rw3_bare_examples(
+        args.data, step0_only=not args.include_step_gt0, limit=args.limit
+    )
     if args.num_shards > 1:
         examples = [ex for i, ex in enumerate(examples) if i % args.num_shards == args.shard_index]
-    logger.info("Worker shard %d/%d: %d all-bare rw3 examples", args.shard_index + 1, args.num_shards, len(examples))
+    logger.info(
+        "Worker shard %d/%d: %d all-bare rw3 examples",
+        args.shard_index + 1,
+        args.num_shards,
+        len(examples),
+    )
 
     conn = sqlite3.connect(args.db)
     id_to_name, name_to_id = load_entity_maps(conn)
@@ -614,15 +681,20 @@ def run_worker(args: argparse.Namespace) -> None:
     encoder = None
     try:
         from sentence_transformers import SentenceTransformer
+
         encoder = SentenceTransformer("all-MiniLM-L6-v2")
         logger.info("Loaded MiniLM encoder")
     except ImportError:
         logger.warning("sentence-transformers not available")
 
-    kernel = LeanKernel(LeanConfig(
-        backend="pantograph", timeout=120,
-        project_root=args.lean_project, imports=["Mathlib"],
-    ))
+    kernel = LeanKernel(
+        LeanConfig(
+            backend="pantograph",
+            timeout=120,
+            project_root=args.lean_project,
+            imports=["Mathlib"],
+        )
+    )
     logger.info("Initializing Pantograph with Mathlib")
 
     results: list[Rw3FirstAtomResult] = []
@@ -643,9 +715,13 @@ def run_worker(args: argparse.Namespace) -> None:
 
             try:
                 res = run_one_example(
-                    example=ex, kernel=kernel, conn=conn,
-                    id_to_name=id_to_name, name_to_id=name_to_id,
-                    encoder=encoder, project_root=args.lean_project,
+                    example=ex,
+                    kernel=kernel,
+                    conn=conn,
+                    id_to_name=id_to_name,
+                    name_to_id=name_to_id,
+                    encoder=encoder,
+                    project_root=args.lean_project,
                     max_scope_premises=args.max_scope_premises,
                     cosine_topk=args.cosine_topk,
                 )

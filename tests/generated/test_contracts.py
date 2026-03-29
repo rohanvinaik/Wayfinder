@@ -24,7 +24,6 @@ class TestTier2BlockConfig:
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
 
 
-
 class TestTier3SlotConfig:
     """Configuration tests for Tier3Slot."""
 
@@ -33,7 +32,6 @@ class TestTier3SlotConfig:
         obj = Tier3Slot()
         # TODO: Assert specific field values, not just existence
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
-
 
 
 class TestProofExampleConfig:
@@ -46,7 +44,6 @@ class TestProofExampleConfig:
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
 
 
-
 class TestNegativeBankEntryConfig:
     """Configuration tests for NegativeBankEntry."""
 
@@ -55,7 +52,6 @@ class TestNegativeBankEntryConfig:
         obj = NegativeBankEntry()
         # TODO: Assert specific field values, not just existence
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
-
 
 
 class TestOODPromptConfig:
@@ -68,7 +64,6 @@ class TestOODPromptConfig:
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
 
 
-
 class TestVerificationResultConfig:
     """Configuration tests for VerificationResult."""
 
@@ -79,7 +74,6 @@ class TestVerificationResultConfig:
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
 
 
-
 class TestCoverageReportConfig:
     """Configuration tests for CoverageReport."""
 
@@ -88,6 +82,3 @@ class TestCoverageReportConfig:
         obj = CoverageReport()
         # TODO: Assert specific field values, not just existence
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
-
-
-

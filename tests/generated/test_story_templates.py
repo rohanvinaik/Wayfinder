@@ -17,6 +17,7 @@ def test_classify_tactic_sequence_returns_expected_output() -> None:
     result = classify_tactic_sequence(...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
 
+
 def test_classify_tactic_sequence_boundary_values() -> None:
     """Test classify_tactic_sequence with edge cases that mutation testing targets."""
     # Boundary: tactics
@@ -25,11 +26,11 @@ def test_classify_tactic_sequence_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_compute_bank_signature_returns_expected_output() -> None:
     """Test compute_bank_signature with valid input."""
     result = compute_bank_signature(...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_compute_bank_signature_boundary_values() -> None:
     """Test compute_bank_signature with edge cases that mutation testing targets."""
@@ -39,11 +40,11 @@ def test_compute_bank_signature_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_get_template_index_returns_expected_output() -> None:
     """Test get_template_index with valid input."""
     result = get_template_index(...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_get_template_index_boundary_values() -> None:
     """Test get_template_index with edge cases that mutation testing targets."""
@@ -53,11 +54,11 @@ def test_get_template_index_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_get_template_name_returns_expected_output() -> None:
     """Test get_template_name with valid input."""
     result = get_template_name(...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_get_template_name_boundary_values() -> None:
     """Test get_template_name with edge cases that mutation testing targets."""
@@ -67,11 +68,7 @@ def test_get_template_name_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_get_num_templates_returns_expected_output() -> None:
     """Test get_num_templates with valid input."""
     result = get_num_templates()
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
-
-
-

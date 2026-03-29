@@ -18,11 +18,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 import time
-from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
-import sys
 
 import numpy as np
 import torch

@@ -5,12 +5,14 @@ from __future__ import annotations
 
 # Source module: src.trainer_constants
 
+
 # from src.trainer_constants import infer_domain
 def test_infer_domain_returns_str() -> None:
     """Contract: infer_domain returns str."""
     # TODO: Provide valid arguments
     # result = infer_domain(...)
     # assert isinstance(result, str)
+
 
 # from src.trainer_constants import infer_domain
 def test_infer_domain_http() -> None:
@@ -23,4 +25,3 @@ def test_infer_domain_http() -> None:
     mock_resp.text = ""
     with patch("requests.get", return_value=mock_resp):
         pass  # TODO: call infer_domain with valid args and assert result
-

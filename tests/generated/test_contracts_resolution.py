@@ -5,10 +5,10 @@ from __future__ import annotations
 
 # Source module: src.resolution
 
+
 # from src.resolution import resolve
 def test_resolve_returns_list_candidate() -> None:
     """Contract: resolve returns list[Candidate]."""
     # TODO: Provide valid arguments
     # result = resolve(..., ..., ..., ..., ..., ..., ...)
     # assert isinstance(result, list)
-

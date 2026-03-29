@@ -5,12 +5,14 @@ from __future__ import annotations
 
 # Source module: scripts.benchmark_lane_b
 
+
 # from scripts.benchmark_lane_b import run_lane_b
 def test_run_lane_b_returns_dict() -> None:
     """Contract: run_lane_b returns dict."""
     # TODO: Provide valid arguments
     # result = run_lane_b(..., ...)
     # assert isinstance(result, dict)
+
 
 # from scripts.benchmark_lane_b import run_lane_b
 def test_run_lane_b_http() -> None:
@@ -23,4 +25,3 @@ def test_run_lane_b_http() -> None:
     mock_resp.text = ""
     with patch("requests.get", return_value=mock_resp):
         pass  # TODO: call run_lane_b with valid args and assert result
-

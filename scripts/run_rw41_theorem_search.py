@@ -42,7 +42,6 @@ from scripts.run_benchmark import (
 )
 from src.proof_search import SearchConfig, SearchResult, search
 
-
 # ---------------------------------------------------------------------------
 # Per-theorem result
 # ---------------------------------------------------------------------------
@@ -74,9 +73,17 @@ def _dominant_lane(result: SearchResult) -> str:
     prov = result.close_provenance
     if not result.success:
         return "failed"
-    for label in ("learned", "cosine_apply", "cosine_simp", "cosine_rw_seq",
-                  "cosine_rw", "interleaved_bootstrap", "solver_bootstrap",
-                  "structural_core", "automation"):
+    for label in (
+        "learned",
+        "cosine_apply",
+        "cosine_simp",
+        "cosine_rw_seq",
+        "cosine_rw",
+        "interleaved_bootstrap",
+        "solver_bootstrap",
+        "structural_core",
+        "automation",
+    ):
         if any(p == label or p.startswith(label) for p in prov):
             return label
     return prov[0] if prov else "unknown"
@@ -154,7 +161,9 @@ def _run_condition(
     return results
 
 
-def _merge(combined: list[TheoremResult], cond_results: list[TheoremResult], condition: str) -> None:
+def _merge(
+    combined: list[TheoremResult], cond_results: list[TheoremResult], condition: str
+) -> None:
     by_id = {r.theorem_id: r for r in cond_results}
     for res in combined:
         cr = by_id.get(res.theorem_id)
@@ -185,23 +194,23 @@ def _merge(combined: list[TheoremResult], cond_results: list[TheoremResult], con
 
 def print_report(results: list[TheoremResult]) -> None:
     n = len(results)
-    base_ok     = sum(r.baseline_success for r in results)
-    rw_ok       = sum(r.rw_success for r in results)
+    base_ok = sum(r.baseline_success for r in results)
+    rw_ok = sum(r.rw_success for r in results)
     rw_apply_ok = sum(r.rw_apply_success for r in results)
 
-    rw_apply_lost  = [r for r in results if r.baseline_success and not r.rw_apply_success]
-    rw_apply_won   = [r for r in results if not r.baseline_success and r.rw_apply_success]
+    rw_apply_lost = [r for r in results if r.baseline_success and not r.rw_apply_success]
+    rw_apply_won = [r for r in results if not r.baseline_success and r.rw_apply_success]
 
-    rw_apply_touched   = sum(1 for r in results if r.rw_apply_subgoal_closes > 0)
-    rw_apply_closes    = sum(r.rw_apply_subgoal_closes for r in results)
+    rw_apply_touched = sum(1 for r in results if r.rw_apply_subgoal_closes > 0)
+    rw_apply_closes = sum(r.rw_apply_subgoal_closes for r in results)
 
-    c_base    = sum(r.baseline_attempts for r in results)
-    c_rw      = sum(r.rw_attempts for r in results)
-    c_rw_app  = sum(r.rw_apply_attempts for r in results)
+    c_base = sum(r.baseline_attempts for r in results)
+    c_rw = sum(r.rw_attempts for r in results)
+    c_rw_app = sum(r.rw_apply_attempts for r in results)
 
-    t_base   = sum(r.baseline_time_s for r in results)
-    t_rw     = sum(r.rw_time_s for r in results)
-    t_rwapp  = sum(r.rw_apply_time_s for r in results)
+    t_base = sum(r.baseline_time_s for r in results)
+    t_rw = sum(r.rw_time_s for r in results)
+    t_rwapp = sum(r.rw_apply_time_s for r in results)
 
     print("\n" + "=" * 72)
     print("EXP-APPLY-041: Theorem-Search Integration (cosine_apply)")
@@ -209,30 +218,40 @@ def print_report(results: list[TheoremResult]) -> None:
     print(f"\nTheorems: {n}")
     print(f"\n{'Condition':<45} {'Proved':>7} {'Rate':>7} {'Delta':>7}")
     print("-" * 68)
-    print(f"{'baseline (+interleaved_bootstrap)':<45} {base_ok:>7} {100*base_ok/max(n,1):>6.1f}%       —")
-    print(f"{'+ cosine_rw':<45} {rw_ok:>7} {100*rw_ok/max(n,1):>6.1f}%  {rw_ok-base_ok:>+6}")
-    print(f"{'+ cosine_rw + cosine_apply':<45} {rw_apply_ok:>7} {100*rw_apply_ok/max(n,1):>6.1f}%  {rw_apply_ok-base_ok:>+6}")
+    print(
+        f"{'baseline (+interleaved_bootstrap)':<45} {base_ok:>7} {100 * base_ok / max(n, 1):>6.1f}%       —"
+    )
+    print(f"{'+ cosine_rw':<45} {rw_ok:>7} {100 * rw_ok / max(n, 1):>6.1f}%  {rw_ok - base_ok:>+6}")
+    print(
+        f"{'+ cosine_rw + cosine_apply':<45} {rw_apply_ok:>7} {100 * rw_apply_ok / max(n, 1):>6.1f}%  {rw_apply_ok - base_ok:>+6}"
+    )
 
-    print(f"\nNo-regression check:")
+    print("\nNo-regression check:")
     print(f"  baseline proved, +rw+apply lost:     {len(rw_apply_lost)}")
 
-    print(f"\ncosine_apply lane activity (+rw+apply condition):")
+    print("\ncosine_apply lane activity (+rw+apply condition):")
     print(f"  theorems touched:                    {rw_apply_touched}")
     print(f"  total apply subgoal closes:          {rw_apply_closes}")
     if rw_apply_won:
-        print(f"\n  Theorems won by +rw+apply (vs baseline):")
+        print("\n  Theorems won by +rw+apply (vs baseline):")
         for r in rw_apply_won:
-            print(f"    {r.theorem_id}  (lane={r.rw_apply_close_lane}, apply_closes={r.rw_apply_subgoal_closes})")
+            print(
+                f"    {r.theorem_id}  (lane={r.rw_apply_close_lane}, apply_closes={r.rw_apply_subgoal_closes})"
+            )
 
-    print(f"\nLean calls / theorem:")
-    print(f"  baseline:              {c_base/max(n,1):.1f}  (total {c_base})")
-    print(f"  +cosine_rw:            {c_rw/max(n,1):.1f}  (+{(c_rw-c_base)/max(n,1):.1f}/thm)")
-    print(f"  +cosine_rw+apply:      {c_rw_app/max(n,1):.1f}  (+{(c_rw_app-c_base)/max(n,1):.1f}/thm)")
+    print("\nLean calls / theorem:")
+    print(f"  baseline:              {c_base / max(n, 1):.1f}  (total {c_base})")
+    print(
+        f"  +cosine_rw:            {c_rw / max(n, 1):.1f}  (+{(c_rw - c_base) / max(n, 1):.1f}/thm)"
+    )
+    print(
+        f"  +cosine_rw+apply:      {c_rw_app / max(n, 1):.1f}  (+{(c_rw_app - c_base) / max(n, 1):.1f}/thm)"
+    )
 
-    print(f"\nTime / theorem:")
-    print(f"  baseline:              {t_base/max(n,1):.1f}s")
-    print(f"  +cosine_rw:            {t_rw/max(n,1):.1f}s")
-    print(f"  +cosine_rw+apply:      {t_rwapp/max(n,1):.1f}s")
+    print("\nTime / theorem:")
+    print(f"  baseline:              {t_base / max(n, 1):.1f}s")
+    print(f"  +cosine_rw:            {t_rw / max(n, 1):.1f}s")
+    print(f"  +cosine_rw+apply:      {t_rwapp / max(n, 1):.1f}s")
     print("=" * 72)
 
 
@@ -242,7 +261,9 @@ def print_report(results: list[TheoremResult]) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="EXP-APPLY-041: apply lane theorem-search benchmark")
+    parser = argparse.ArgumentParser(
+        description="EXP-APPLY-041: apply lane theorem-search benchmark"
+    )
     parser.add_argument("--config", default="configs/wayfinder.yaml")
     parser.add_argument("--checkpoint", default="models/NAV-004_step5000.pt")
     parser.add_argument("--theorems", default="data/mathlib_benchmark_50.jsonl")
@@ -277,6 +298,7 @@ def main() -> None:
     encoder = None
     try:
         from sentence_transformers import SentenceTransformer
+
         encoder = SentenceTransformer("all-MiniLM-L6-v2")
         logger.info("Loaded MiniLM encoder")
     except ImportError:
@@ -313,15 +335,15 @@ def main() -> None:
     #   rw_apply:  IB + cosine_rw + cosine_apply (encoder present)
     # Note: cosine_rw fires automatically whenever encoder is present,
     # so "apply" condition = rw+apply; there is no apply-only isolation.
-    cfg_baseline  = _base(ib=True, apply=False)
-    cfg_rw        = _base(ib=True, apply=False)
-    cfg_rw_apply  = _base(ib=True, apply=True)
+    cfg_baseline = _base(ib=True, apply=False)
+    cfg_rw = _base(ib=True, apply=False)
+    cfg_rw_apply = _base(ib=True, apply=True)
 
     combined = [TheoremResult(theorem_id=t["theorem_id"], source=t["source"]) for t in theorems]
 
     for condition, cfg, enc, label in [
-        ("baseline", cfg_baseline, None,    "baseline (+IB, no cosine)"),
-        ("rw",       cfg_rw,       encoder, "+cosine_rw"),
+        ("baseline", cfg_baseline, None, "baseline (+IB, no cosine)"),
+        ("rw", cfg_rw, encoder, "+cosine_rw"),
         ("rw_apply", cfg_rw_apply, encoder, "+cosine_rw +cosine_apply"),
     ]:
         logger.info("Condition: %s (%d theorems)", label, len(theorems))
@@ -329,9 +351,11 @@ def main() -> None:
         cond_results = _run_condition(condition, theorems, cfg, pipeline, lean, conn, enc)
         elapsed = time.time() - t0
         proved = sum(
-            r.baseline_success if condition == "baseline" else
-            r.rw_success if condition == "rw" else
-            r.rw_apply_success
+            r.baseline_success
+            if condition == "baseline"
+            else r.rw_success
+            if condition == "rw"
+            else r.rw_apply_success
             for r in cond_results
         )
         logger.info("  %d/%d proved in %.0fs", proved, len(theorems), elapsed)
@@ -343,14 +367,18 @@ def main() -> None:
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w") as f:
-        json.dump({
-            "experiment": "EXP-APPLY-041",
-            "apply_beam": args.apply_beam,
-            "ib_max_depth": args.ib_max_depth,
-            "ib_max_calls": args.ib_max_calls,
-            "n_theorems": len(combined),
-            "results": [asdict(r) for r in combined],
-        }, f, indent=2)
+        json.dump(
+            {
+                "experiment": "EXP-APPLY-041",
+                "apply_beam": args.apply_beam,
+                "ib_max_depth": args.ib_max_depth,
+                "ib_max_calls": args.ib_max_calls,
+                "n_theorems": len(combined),
+                "results": [asdict(r) for r in combined],
+            },
+            f,
+            indent=2,
+        )
     logger.info("Written to %s", output_path)
 
     print_report(combined)

@@ -20,7 +20,6 @@ from pathlib import Path
 
 from src.subtask_ir import derive_move_metadata
 
-
 REQUIRED_TOP_LEVEL = {"family", "goal_state_before", "tactic_text", "step_index"}
 
 

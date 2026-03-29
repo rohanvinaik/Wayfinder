@@ -22,7 +22,9 @@ class TestComputeBankScore(unittest.TestCase):
         return StructuredQuery(
             bank_directions=directions,
             bank_confidences=confidences or {b: 1.0 for b in directions},
-            prefer_anchors=[], prefer_weights=[], avoid_anchors=[],
+            prefer_anchors=[],
+            prefer_weights=[],
+            avoid_anchors=[],
         )
 
     def test_exact_perfect_alignment(self):
@@ -82,8 +84,10 @@ class TestComputeAnchorScore(unittest.TestCase):
 
     def _query(self, prefer, weights, avoid=None):
         return StructuredQuery(
-            bank_directions={}, bank_confidences={},
-            prefer_anchors=prefer, prefer_weights=weights,
+            bank_directions={},
+            bank_confidences={},
+            prefer_anchors=prefer,
+            prefer_weights=weights,
             avoid_anchors=avoid or [],
         )
 
@@ -142,8 +146,8 @@ class TestComputeSeedScore(unittest.TestCase):
     def test_swap_entity_seed_asymmetric_idf(self):
         """SWAP: asymmetric IDF weights break Jaccard symmetry."""
         idf = {1: 1.0, 2: 5.0}  # anchor 2 is much rarer
-        s1 = _compute_seed_score({1}, {1, 2}, idf)     # shared=1.0, union=6.0
-        s2 = _compute_seed_score({1, 2}, {1}, idf)     # shared=1.0, union=6.0
+        s1 = _compute_seed_score({1}, {1, 2}, idf)  # shared=1.0, union=6.0
+        s2 = _compute_seed_score({1, 2}, {1}, idf)  # shared=1.0, union=6.0
         # With equal-weight anchors Jaccard IS symmetric — but verify values
         self.assertAlmostEqual(s1, 1.0 / 6.0, places=4)
         self.assertAlmostEqual(s2, 1.0 / 6.0, places=4)
@@ -162,12 +166,8 @@ class TestComputeObservabilitySwap(unittest.TestCase):
 
     def test_swap_positions_anchors(self):
         """More banks vs more anchors produce different observability profiles."""
-        many_banks = compute_observability_score(
-            {"s": 1, "d": -1, "dp": 1, "a": -1}, {1}, "traced"
-        )
-        many_anchors = compute_observability_score(
-            {"s": 1}, set(range(15)), "traced"
-        )
+        many_banks = compute_observability_score({"s": 1, "d": -1, "dp": 1, "a": -1}, {1}, "traced")
+        many_anchors = compute_observability_score({"s": 1}, set(range(15)), "traced")
         # Both should be positive but different
         self.assertGreater(many_banks, 0)
         self.assertGreater(many_anchors, 0)
@@ -351,9 +351,7 @@ class TestComputeObservabilityChannelCoverage(unittest.TestCase):
         """Premise-only has 4 channels, no proof → lower than traced with 5."""
         pos = {"structure": 1, "domain": -1}
         cats = {1: "semantic", 2: "structural", 3: "lexical", 4: "locality"}
-        traced = compute_observability_score(
-            pos, {1, 2, 3, 4, 5}, "traced", {**cats, 5: "proof"}
-        )
+        traced = compute_observability_score(pos, {1, 2, 3, 4, 5}, "traced", {**cats, 5: "proof"})
         premise = compute_observability_score(pos, {1, 2, 3, 4}, "premise_only", cats)
         self.assertGreater(traced, premise)
 

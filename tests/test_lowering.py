@@ -258,9 +258,7 @@ class TestLowerInnerFunctionsValue(unittest.TestCase):
         self.assertEqual(_lower_induction(self._block(["n"]), {}, 0), "induction n")
 
     def test_lower_induction_with_names_exact(self):
-        self.assertEqual(
-            _lower_induction(self._block(["n", "ih"]), {}, 0), "induction n with ih"
-        )
+        self.assertEqual(_lower_induction(self._block(["n", "ih"]), {}, 0), "induction n with ih")
 
     def test_lower_induction_bare_exact(self):
         self.assertEqual(_lower_induction(None, {}, 0), "induction _")
@@ -284,9 +282,7 @@ class TestLowerInnerFunctionsValue(unittest.TestCase):
 
     def test_lower_have_with_type_exact(self):
         term_map = {"have_5_type": "Nat"}
-        self.assertEqual(
-            _lower_have(self._block(["h"]), term_map, 5), "have h : Nat := by"
-        )
+        self.assertEqual(_lower_have(self._block(["h"]), term_map, 5), "have h : Nat := by")
 
     def test_lower_have_without_type_exact(self):
         self.assertEqual(_lower_have(self._block(["h"]), {}, 0), "have h := by")

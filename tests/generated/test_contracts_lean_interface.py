@@ -5,10 +5,10 @@ from __future__ import annotations
 
 # Source module: src.lean_interface
 
+
 # from src.lean_interface import goal_start
 def test_goal_start_returns_str() -> None:
     """Contract: goal_start returns str."""
     # TODO: Provide valid arguments
     # result = goal_start(...)
     # assert isinstance(result, str)
-

@@ -1,7 +1,49 @@
 # Formal Local-Execution Buildout Plan
 
 ## Summary
-Rebuild the local-execution stack around one canonical source of truth, then deploy verifier-backed cosine local lanes and expand family coverage.
+Rebuild the local-execution stack around one canonical source of truth, then promote Dr. Ducky into the canonical symbolic proof-local execution VM:
+
+- typed `GoalSpecification`
+- `ProofShadowLedger`
+- bank filtering and prescriptions
+- proof-bearing `MathEngine` portfolio
+- `ProofProjector`
+- Lean-backed replay / compile / progress / closure accounting
+
+This file is the local-execution implementation companion to
+[WAYFINDER_PLAN.md](/Users/rohanvinaik/Projects/Wayfinder/docs/Research_Paper/WAYFINDER_PLAN.md).
+If terminology diverges, the canonical object model is:
+
+`GoalSpecification -> ProofShadowLedger -> BankPrior / GoalPrescription -> ProofSkeleton -> MathEngine -> EngineCertificate -> ProofProjector -> Lean verifier`
+
+## Current Architecture Orientation (2026-03-25)
+
+The active project shape is now:
+
+1. **Main theorem-search stack**
+   - `EXP-058` remains the publishable theorem-search baseline.
+   - the validated `norm_cast` / 2-step residual path remains the strongest cheap post-main extension.
+2. **Original / first-order SoM**
+   - deterministically tuned orchestration substrate over the main solver
+   - includes the multistep specialist router from `EXP-SOM-010` and `models/som_torch_v1/best.pt`
+   - provides real controller features and component evidence, but is not by itself the settled replacement for the `EXP-058` runtime
+3. **Dr. Ducky (1.5th-order executor)**
+   - deterministic residual capsules
+   - typed proof skeletons
+   - theorem-faithful replay into Lean
+   - cached-state local fact synthesis
+   - local symbolic progress on hard residuals
+4. **Second-order SoM**
+   - not yet the canonical runtime controller
+   - the current hard benchmark is the data-generation pass that will train it
+   - it should learn routing, budgeting, escalation, and specialist invocation over symbolic packets, including first-order SoM telemetry and Dr. Ducky telemetry
+
+So the current order of work is:
+- keep the main solver stable,
+- preserve the tuned first-order SoM as the current controller substrate and feature source,
+- finish the long-running hard benchmark,
+- materialize residual/gap/capsule/executor data products,
+- then train the second-order SoM on that corpus.
 
 Order of work:
 1. **rebuild canonical data** from raw LeanDojo traces — ✅ DONE (`data/canonical/`)
@@ -13,8 +55,13 @@ Order of work:
 7. **source-context compiler (`ContextIR`)** — IN PROGRESS (parallel infra track for replay coverage + future families)
 8. **step>0 replay hardening** — USABLE (26% gate cleared; continue only if it raises denominator or unlocks families)
 9. **motivated move layer (`SubtaskIR` + trigger profiles)** — NEW (controller-facing move typing + schema mining)
-10. **multi-family expansion** — IN PROGRESS (global lane expansion paused; next target is executable action selection for `apply` / `refine`)
-11. only then re-evaluate temporal-controller gains in `local_close`
+10. **multi-family expansion** — IN PROGRESS (global lane expansion paused; apply executor validated, trigger is bottleneck)
+11. **apply trigger + orchestration** — IN PROGRESS (EXP-050 collecting 29K-theorem trigger dataset; EXP-051 trigger classifier pending)
+12. **narrative / temporal teacher track** — IMPLEMENTED (temporal traces, template narratives, strategy memory scripts built)
+13. **Dr. Ducky deterministic residual executor** — IMPLEMENTED (typed capsules, proof skeletons, Lean-side replay/progress validation)
+14. **integrated hard-tail bridge** — IMPLEMENTED (`Ducky1 -> first-order closure + symbolic closer layer -> second-order controller -> Ducky2 -> second symbolic closer layer -> rarified-gap packet`)
+15. **second-order SoM training on hard residual corpus** — IMPLEMENTED as runnable infrastructure (frozen packet features + guarded trainer + learned bridge rerun), active as the next measured experiment stage
+16. only then re-evaluate temporal-controller gains in theorem search with Dr. Ducky and compiler/startability tracks in the loop
 
 ### Key result update (2026-03-17)
 **rw0 is solved by cosine geometry.** Cosine top-5 recovers 98% of oracle ceiling (61.5% vs 62.8%) on the same-denominator overlap set. The learned decoder (RW-001) does not beat cosine at matched Lean-call budget (38.5% vs 61.5% top-5). Cosine_rw beam=1 deployed in theorem search: +1/50 theorem, zero regressions, 4 Lean calls/thm overhead.
@@ -25,6 +72,7 @@ The open frontier for learning is now:
 - **Residual-conditioned orchestration** (when to invoke helper/specialist lanes after `rw` / bootstrap)
 - **Executable action selection** over cosine shortlists where scoped retrieval already puts a plausible candidate in top-5
 - **Controller-visible move selection** via `SubtaskIR` / trigger profiles
+- **Narrative / temporal teacher distillation** above the compiler boundary
 - **Family-specific decoders** only for families that still fail after scoping plus reranking
 
 This keeps the plan aligned with the theory:
@@ -364,12 +412,24 @@ gain beyond `cosine_rw`. The nearest candidate is no longer a new global lane; i
 ### 9. Learned decoder repositioning
 
 Learning's value is no longer on rw0 symbol selection or standalone rw1 direction. Reposition to:
-- **Executable selection**: unification-aware / elaboration-aware selection for `apply`, structured action selection for `refine`
+- **Executable selection**: ExecSelector v1 validated (EXP-048: 38.5% LeanAccepted, +133% vs cosine). Checkpoint: `models/apply_exec_selector_v1.pt`.
+- **Trigger / orchestration**: Apply gate fired 0 times on 50-theorem benchmark (EXP-049). Bottleneck is triggering, not candidate selection. EXP-050 collecting 29K-theorem trigger dataset with live Lean labels (`can_apply` + `selector_top1_accepted`). EXP-051 trigger classifier pending.
 - **Controller-visible move selection**: choose among `SubtaskIR`-typed local transformations
 - **Residual-conditioned orchestration**: route among finisher, scaffold, helper, and future specialist lanes
 - **Family-specific decoders**: only where scoping plus reranking still fails
 
 Hard bar: no learned decoder work unless it beats cosine at matched Lean-call budget.
+
+### 10. Narrative / temporal teacher track — IMPLEMENTED
+
+Sprint 2 scripts built and tested on real data:
+- `scripts/build_temporal_dataset.py` — stepwise supervised temporal examples from enriched search traces (343 rows from 32 traced theorems in smoke test)
+- `scripts/build_template_narrative_dataset.py` — 78,414 theorem-level narratives with template, subtask sequence, family histogram, and trigger signatures
+- `scripts/mine_strategy_memory.py` — k-line symbolic orchestration prior from successful traces (needs more data for min_support entries)
+
+Sprint 3: `scripts/run_enhanced_controller_pipeline.sh` extended from 6 to 9 steps (added narrative, temporal, strategy memory).
+
+Enriched step_trace in `proof_search.py` now includes: `attempted_goal`, `closing_family`, `closed_goals_count`, `phase`, `lane_order`, `family_prior`, `escalation_level`, `replan`.
 
 ## Assumptions and Defaults
 - Canonical source: raw LeanDojo traces
@@ -378,3 +438,4 @@ Hard bar: no learned decoder work unless it beats cosine at matched Lean-call bu
 - theorem-level retrieval is temporal orchestration, not local step resolution
 - temporal-controller benefit is deferred until local executor coverage broadens
 - learning targets what cosine still does not do: residual-conditioned orchestration, planner-visible move selection, and executable action selection
+- story/reasoning models are teacher models for theorem-level narratives and temporal control, not default runtime executors below the compiler boundary

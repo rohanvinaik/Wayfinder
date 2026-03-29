@@ -21,6 +21,7 @@ class TestTemplateClassifierConfig:
         obj = TemplateClassifier()
         assert obj == EXPECTED  # TODO: Replace with expected instance
 
+
 class TestTemplateClassifierState:
     """State invariant tests for TemplateClassifier."""
 
@@ -41,6 +42,3 @@ class TestTemplateClassifierState:
         obj = TemplateClassifier()
         obj.predict()  # TODO: Provide arguments
         # TODO: Assert state changed correctly
-
-
-

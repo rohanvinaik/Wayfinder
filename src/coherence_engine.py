@@ -132,9 +132,7 @@ def build_resolution_decision(
 
     # Measure committee informativeness: fraction of non-abstain votes
     total_votes = sum(len(s.votes) for s in committee_states)
-    active_votes = sum(
-        1 for s in committee_states for v in s.votes if v.vote != 0
-    )
+    active_votes = sum(1 for s in committee_states for v in s.votes if v.vote != 0)
     informativeness = active_votes / max(total_votes, 1)
 
     # Modulation strength: scale with informativeness (0 when all abstain)

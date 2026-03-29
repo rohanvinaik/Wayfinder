@@ -26,15 +26,25 @@ build-backend = "setuptools.build_meta"
 
 [tool.ruff]
 target-version = "py311"
-line-length = 100
+line-length = 120
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]
+ignore = ["E741"]  # ambiguous variable names (l, I, O) common in math code
 
 [tool.ruff.lint.per-file-ignores]
-"scripts/tactic_maps.py" = ["E501"]  # data table with aligned columns
+"scripts/*.py" = ["E402", "E501"]  # scripts: late imports after logging setup, long data lines
+"src/dr_ducky.py" = ["E501"]  # symbolic VM: long tactic templates and match arms
+"src/dr_ducky_executor.py" = ["E501"]  # executor: long tactic strings and program builders
+"src/hard_resolution_layer.py" = ["E501"]  # data-heavy resolution logic
+"src/hardtail_bridge.py" = ["E501"]  # bridge: long tactic/premise strings
+"src/proof_search.py" = ["E501"]  # search: long config/tactic lines
+"src/strategy_arbiter.py" = ["E501"]  # arbiter: long match arms
+"src/second_order_*.py" = ["E501"]  # second-order modules: long feature lines
+"src/hard_data_tags.py" = ["E501"]  # data tags
 "notebooks/*.ipynb" = ["E402", "F811"]  # late imports; re-imports across cells
 "tests/generated/**" = ["F821", "F811", "E501"]  # stubs: EXPECTED placeholder, duplicate names, long imports
+"tests/*.py" = ["E501"]  # test assertions with long strings
 
 [tool.ty]
 # Third-party deps not installed in lint environment

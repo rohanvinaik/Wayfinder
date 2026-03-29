@@ -35,7 +35,7 @@ from dataclasses import asdict, dataclass
 
 import numpy as np
 
-from src.apply_scoper import ApplyScope, gold_in_scope, scope_for_apply
+from src.apply_scoper import gold_in_scope, scope_for_apply
 from src.lean_interface import LeanConfig, LeanKernel, ReplayResult, ServerCrashError
 from src.proof_network import get_accessible_premises
 
@@ -46,6 +46,7 @@ logger = logging.getLogger(__name__)
 # Result dataclass
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class ApplyExampleResult:
     theorem_full_name: str = ""
@@ -54,7 +55,7 @@ class ApplyExampleResult:
     goal_state_before: str = ""
     canonical_action_ir: str = ""
     annotated_premise: str = ""
-    subset: str = ""   # "apply_pure" | "refine_pure" | "exact_pure"
+    subset: str = ""  # "apply_pure" | "refine_pure" | "exact_pure"
 
     # Goal creation
     goal_started: bool = False
@@ -68,7 +69,7 @@ class ApplyExampleResult:
     goal_head: str = ""
     goal_shape: str = ""
     gold_in_scope: bool = False
-    gold_scope_tier: str = ""        # "local_hyp" | "head_match" | "shape_match" | "premise" | ""
+    gold_scope_tier: str = ""  # "local_hyp" | "head_match" | "shape_match" | "premise" | ""
     n_head_matches: int = 0
     n_shape_matches: int = 0
 
@@ -102,6 +103,7 @@ class ApplyExampleResult:
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def classify_subset(example: dict) -> str:
     base = example.get("tactic_base", "")
     if base == "apply":
@@ -122,6 +124,7 @@ def extract_apply_target(canonical_ir: str) -> str:
 # ---------------------------------------------------------------------------
 # Premise lookup
 # ---------------------------------------------------------------------------
+
 
 def load_entity_maps(conn: sqlite3.Connection) -> tuple[dict[int, str], dict[str, int]]:
     rows = conn.execute("SELECT id, name FROM entities").fetchall()
@@ -147,6 +150,7 @@ def get_premise_names(
 # Cosine ranking
 # ---------------------------------------------------------------------------
 
+
 def cosine_rank_symbols(
     goal_text: str,
     symbols: list[str],
@@ -156,6 +160,7 @@ def cosine_rank_symbols(
         return [(0.0, s) for s in symbols]
     try:
         from sentence_transformers import SentenceTransformer
+
         model: SentenceTransformer = encoder  # type: ignore[assignment]
         goal_emb = model.encode([goal_text], normalize_embeddings=True)
         sym_embs = model.encode(symbols, normalize_embeddings=True)
@@ -169,6 +174,7 @@ def cosine_rank_symbols(
 # ---------------------------------------------------------------------------
 # Tactic execution
 # ---------------------------------------------------------------------------
+
 
 def try_tactic_safe(
     kernel: LeanKernel,
@@ -190,6 +196,7 @@ def try_tactic_safe(
 # ---------------------------------------------------------------------------
 # Per-example runner
 # ---------------------------------------------------------------------------
+
 
 def run_one_example(
     example: dict,
@@ -334,8 +341,9 @@ def run_one_example(
 # Reporting
 # ---------------------------------------------------------------------------
 
+
 def _pct(num: int, den: int) -> str:
-    return f"{100*num/den:.1f}%" if den > 0 else "N/A"
+    return f"{100 * num / den:.1f}%" if den > 0 else "N/A"
 
 
 def print_report(results: list[ApplyExampleResult], total: int) -> None:
@@ -361,9 +369,9 @@ def print_report(results: list[ApplyExampleResult], total: int) -> None:
     print("=" * 64)
 
     print(f"\nGoalStart@apply0: {n}/{total} ({_pct(n, total)})")
-    print(f"  apply_pure:  {len(apply_s)}/{sum(1 for r in results if r.subset=='apply_pure')}")
-    print(f"  refine_pure: {len(refine_s)}/{sum(1 for r in results if r.subset=='refine_pure')}")
-    print(f"  exact_pure:  {len(exact_s)}/{sum(1 for r in results if r.subset=='exact_pure')}")
+    print(f"  apply_pure:  {len(apply_s)}/{sum(1 for r in results if r.subset == 'apply_pure')}")
+    print(f"  refine_pure: {len(refine_s)}/{sum(1 for r in results if r.subset == 'refine_pure')}")
+    print(f"  exact_pure:  {len(exact_s)}/{sum(1 for r in results if r.subset == 'exact_pure')}")
     print(f"  Server crashes: {crashes}")
     if fail_cats:
         print("\n  Failure breakdown:")
@@ -416,13 +424,13 @@ def print_report(results: list[ApplyExampleResult], total: int) -> None:
     scope_sizes = [r.n_scope_symbols for r in started if r.n_scope_symbols > 0]
     head_sizes = [r.n_head_matches for r in started]
 
-    print(f"\nScope stats:")
+    print("\nScope stats:")
     if scope_sizes:
         print(f"  Mean scope size: {np.mean(scope_sizes):.1f}")
         print(f"  Mean head_matches: {np.mean(head_sizes):.1f}")
     print(f"  Gold in scope: {len(in_scope)}/{len(gold_s)} ({_pct(len(in_scope), len(gold_s))})")
     if in_scope:
-        print(f"  Gold tier breakdown:")
+        print("  Gold tier breakdown:")
         for tier in ["local_hyp", "head_match", "shape_match", "premise"]:
             cnt = tier_counts.get(tier, 0)
             print(f"    {tier:<15} {cnt:>4} ({_pct(cnt, len(in_scope))})")
@@ -437,14 +445,16 @@ def print_report(results: list[ApplyExampleResult], total: int) -> None:
 # Main
 # ---------------------------------------------------------------------------
 
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="apply0 benchmark runner")
     parser.add_argument("--db", default="data/proof_network_v3.db")
     parser.add_argument("--apply0", default="data/canonical/canonical_residual_eval.jsonl")
     parser.add_argument("--lean-project", default="data/lean_project/")
     parser.add_argument("--output", default="runs/apply0_results.jsonl")
-    parser.add_argument("--subset", choices=["apply_pure", "refine_pure", "exact_pure", "all"],
-                        default="all")
+    parser.add_argument(
+        "--subset", choices=["apply_pure", "refine_pure", "exact_pure", "all"], default="all"
+    )
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--skip-cosine", action="store_true")
     parser.add_argument("--resume", action="store_true")
@@ -460,7 +470,11 @@ def main() -> None:
         for line in f:
             if line.strip():
                 e = json.loads(line)
-                if e.get("step_index", 0) == 0 and e.get("tactic_base", "") in ("apply", "refine", "exact"):
+                if e.get("step_index", 0) == 0 and e.get("tactic_base", "") in (
+                    "apply",
+                    "refine",
+                    "exact",
+                ):
                     examples.append(e)
     logger.info("Loaded %d apply-family step-0 examples", len(examples))
 
@@ -469,9 +483,15 @@ def main() -> None:
         logger.info("Filtered to %d examples (subset=%s)", len(examples), args.subset)
 
     if args.limit > 0:
-        examples = examples[:args.limit]
+        examples = examples[: args.limit]
 
-    examples.sort(key=lambda x: (x.get("file_path", ""), x.get("theorem_full_name", ""), x.get("step_index", 0)))
+    examples.sort(
+        key=lambda x: (
+            x.get("file_path", ""),
+            x.get("theorem_full_name", ""),
+            x.get("step_index", 0),
+        )
+    )
     total = len(examples)
 
     # Resume
@@ -484,10 +504,15 @@ def main() -> None:
                     d = json.loads(line)
                     key = (d["theorem_full_name"], d["step_index"])
                     done_keys.add(key)
-                    prior_results.append(ApplyExampleResult(**{
-                        k: v for k, v in d.items()
-                        if k in ApplyExampleResult.__dataclass_fields__
-                    }))
+                    prior_results.append(
+                        ApplyExampleResult(
+                            **{
+                                k: v
+                                for k, v in d.items()
+                                if k in ApplyExampleResult.__dataclass_fields__
+                            }
+                        )
+                    )
         logger.info("Resuming: %d examples already done", len(done_keys))
 
     conn = sqlite3.connect(args.db)
@@ -498,18 +523,21 @@ def main() -> None:
     if not args.skip_cosine:
         try:
             from sentence_transformers import SentenceTransformer
+
             encoder = SentenceTransformer("all-MiniLM-L6-v2")
             logger.info("Loaded MiniLM encoder")
         except ImportError:
             logger.warning("sentence-transformers not installed, skipping cosine")
             args.skip_cosine = True
 
-    kernel = LeanKernel(LeanConfig(
-        backend="pantograph",
-        timeout=120,
-        project_root=args.lean_project,
-        imports=["Mathlib"],
-    ))
+    kernel = LeanKernel(
+        LeanConfig(
+            backend="pantograph",
+            timeout=120,
+            project_root=args.lean_project,
+            imports=["Mathlib"],
+        )
+    )
     logger.info("Initializing Pantograph with Mathlib (~40s)...")
 
     results = list(prior_results)
@@ -537,8 +565,11 @@ def main() -> None:
                 oracle_so_far = sum(1 for r in results if r.oracle_accepted)
                 logger.info(
                     "Progress: %d/%d (%.0f%%) — started: %d, oracle_accepted: %d",
-                    n_done, total, 100 * n_done / max(total, 1),
-                    started_so_far, oracle_so_far,
+                    n_done,
+                    total,
+                    100 * n_done / max(total, 1),
+                    started_so_far,
+                    oracle_so_far,
                 )
 
             try:

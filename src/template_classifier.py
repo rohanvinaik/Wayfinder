@@ -82,9 +82,7 @@ class TemplateClassifier(nn.Module):
     ) -> tuple[torch.Tensor, torch.Tensor, dict[str, torch.Tensor]]:
         """Forward pass with optional auxiliary move supervision heads."""
         logits, template_features = self.forward(features)
-        aux_logits = {
-            name: head(template_features) for name, head in self.auxiliary_heads.items()
-        }
+        aux_logits = {name: head(template_features) for name, head in self.auxiliary_heads.items()}
         return logits, template_features, aux_logits
 
     def predict(self, features: torch.Tensor) -> RecognitionOutput:

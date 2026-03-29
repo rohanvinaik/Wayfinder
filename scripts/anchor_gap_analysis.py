@@ -61,9 +61,7 @@ class GapRecord:
         return result
 
 
-def load_proof_steps(
-    db_path: str, sample_size: int, seed: int | None = None
-) -> list[dict]:
+def load_proof_steps(db_path: str, sample_size: int, seed: int | None = None) -> list[dict]:
     """Load proof steps with ground-truth premises from the DB.
 
     When seed is provided, uses deterministic Python-side sampling
@@ -78,9 +76,7 @@ def load_proof_steps(
         rng = _random.Random(seed)
         all_ids = [
             r[0]
-            for r in conn.execute(
-                "SELECT id FROM entities WHERE entity_type = 'lemma'"
-            ).fetchall()
+            for r in conn.execute("SELECT id FROM entities WHERE entity_type = 'lemma'").fetchall()
         ]
         selected_ids = rng.sample(all_ids, min(sample_size, len(all_ids)))
         ph = ",".join("?" * len(selected_ids))
@@ -243,9 +239,7 @@ def find_gap_anchors_from_conn(
     return sorted(gap_flat), gap_by_cat
 
 
-def analyze_step(
-    conn: sqlite3.Connection, step: dict, strategy: str = "flat"
-) -> GapRecord:
+def analyze_step(conn: sqlite3.Connection, step: dict, strategy: str = "flat") -> GapRecord:
     """Run gap analysis on a single proof step."""
     query = build_perfect_query(conn, step)
     retrieved = navigate_with_query(conn, query, limit=16, strategy=strategy)
@@ -318,10 +312,14 @@ def _summarize_records(records: list[GapRecord], output_path: str) -> dict:
     for anchor, count in top_gaps:
         print(f"    {anchor}: {count} misses")
 
-    cat_summary = {
-        cat: {"count": len(labels), "top": Counter(labels).most_common(5)}
-        for cat, labels in cat_gaps.items()
-    } if cat_gaps else {}
+    cat_summary = (
+        {
+            cat: {"count": len(labels), "top": Counter(labels).most_common(5)}
+            for cat, labels in cat_gaps.items()
+        }
+        if cat_gaps
+        else {}
+    )
 
     gap_by_cat = {}
     for cat, info in cat_summary.items():
@@ -386,9 +384,7 @@ def main() -> None:
     parser.add_argument("--samples", type=int, default=500)
     parser.add_argument("--output", type=str, default="data/gap_analysis.jsonl")
     parser.add_argument("--resume", action="store_true")
-    parser.add_argument(
-        "--seed", type=int, default=None, help="Deterministic seed for paired eval"
-    )
+    parser.add_argument("--seed", type=int, default=None, help="Deterministic seed for paired eval")
     parser.add_argument(
         "--strategy",
         type=str,

@@ -11,6 +11,7 @@ def test_train_template_classifier_returns_expected_output() -> None:
     result = train_template_classifier(..., ..., ..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
 
+
 def test_train_template_classifier_boundary_values() -> None:
     """Test train_template_classifier with edge cases that mutation testing targets."""
     # Boundary: config
@@ -21,12 +22,10 @@ def test_train_template_classifier_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_main_returns_expected_output() -> None:
     """Test main with valid input."""
     result = main()
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
-
 
 
 class TestTemplateDatasetConfig:
@@ -38,6 +37,7 @@ class TestTemplateDatasetConfig:
         # TODO: Assert specific field values, not just existence
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
 
+
 class TestTemplateDatasetState:
     """State invariant tests for TemplateDataset."""
 
@@ -46,6 +46,3 @@ class TestTemplateDatasetState:
         obj = TemplateDataset()
         # TODO: Assert exact initial field values
         assert obj.field == EXPECTED  # TODO: Replace with actual field checks
-
-
-

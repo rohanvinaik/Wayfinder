@@ -5,12 +5,14 @@ from __future__ import annotations
 
 # Source module: scripts.anchor_gap_analysis
 
+
 # from scripts.anchor_gap_analysis import load_proof_steps
 def test_load_proof_steps_returns_list_dict() -> None:
     """Contract: load_proof_steps returns list[dict]."""
     # TODO: Provide valid arguments
     # result = load_proof_steps(..., ...)
     # assert isinstance(result, list)
+
 
 def test_load_proof_steps_preserves_length() -> None:
     """Contract: load_proof_steps output length matches input length (map pattern)."""
@@ -19,9 +21,11 @@ def test_load_proof_steps_preserves_length() -> None:
     # result = load_proof_steps(input_data)
     # assert len(result) == len(input_data)
 
+
 # TODO: Mock-based contract for load_proof_steps
 # Detected I/O: sqlite3.connect
 # Suggested: mock sqlite3.connect and assert return handling
+
 
 # from scripts.anchor_gap_analysis import navigate_with_query
 def test_navigate_with_query_returns_list_str() -> None:
@@ -30,12 +34,14 @@ def test_navigate_with_query_returns_list_str() -> None:
     # result = navigate_with_query(..., ..., ...)
     # assert isinstance(result, list)
 
+
 # from scripts.anchor_gap_analysis import find_gap_anchors_from_conn
 def test_find_gap_anchors_from_conn_returns_tuple_list_str_dict_str_list_str() -> None:
     """Contract: find_gap_anchors_from_conn returns tuple[list[str], dict[str, list[str]]]."""
     # TODO: Provide valid arguments
     # result = find_gap_anchors_from_conn(..., ..., ...)
     # assert isinstance(result, tuple)
+
 
 # from scripts.anchor_gap_analysis import analyze_step
 def test_analyze_step_http() -> None:
@@ -49,12 +55,14 @@ def test_analyze_step_http() -> None:
     with patch("requests.get", return_value=mock_resp):
         pass  # TODO: call analyze_step with valid args and assert result
 
+
 # from scripts.anchor_gap_analysis import run_analysis
 def test_run_analysis_returns_dict() -> None:
     """Contract: run_analysis returns dict."""
     # TODO: Provide valid arguments
     # result = run_analysis(..., ..., ...)
     # assert isinstance(result, dict)
+
 
 # from scripts.anchor_gap_analysis import run_analysis
 def test_run_analysis_file_io(tmp_path) -> None:
@@ -64,6 +72,7 @@ def test_run_analysis_file_io(tmp_path) -> None:
     # TODO: call run_analysis(str(test_file)) and assert result
     pass
 
+
 # from scripts.anchor_gap_analysis import main
 def test_main_file_io(tmp_path) -> None:
     """Contract: main handles file I/O."""
@@ -72,10 +81,10 @@ def test_main_file_io(tmp_path) -> None:
     # TODO: call main(str(test_file)) and assert result
     pass
 
+
 # from scripts.anchor_gap_analysis import to_dict
 def test_to_dict_returns_dict() -> None:
     """Contract: to_dict returns dict."""
     # TODO: Provide valid arguments
     # result = to_dict()
     # assert isinstance(result, dict)
-

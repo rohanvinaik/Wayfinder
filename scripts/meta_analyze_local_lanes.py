@@ -3,11 +3,10 @@ from __future__ import annotations
 
 import argparse
 import json
-from collections import Counter, defaultdict
+from collections import Counter
 from pathlib import Path
 from statistics import mean
 from typing import Any
-
 
 DEFAULT_THEOREM_RUNS = [
     "rw37_results.json",
@@ -118,7 +117,9 @@ def _classify_condition(
     return "inactive"
 
 
-def analyze_theorem_runs(run_paths: list[Path]) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+def analyze_theorem_runs(
+    run_paths: list[Path],
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     lane_summary: dict[str, Any] = {"experiments": []}
     theorem_overlap: dict[str, Any] = {}
     transition_graph: dict[str, Any] = {"edges": []}
@@ -134,7 +135,9 @@ def analyze_theorem_runs(run_paths: list[Path]) -> tuple[dict[str, Any], dict[st
         total_theorems = len(rows)
         baseline_prefix = "baseline" if "baseline" in prefixes else prefixes[0]
         baseline_successes = {
-            _theorem_key(row) for row in rows if bool(row.get(f"{baseline_prefix}{SUCCESS_SUFFIX}", False))
+            _theorem_key(row)
+            for row in rows
+            if bool(row.get(f"{baseline_prefix}{SUCCESS_SUFFIX}", False))
         }
 
         experiment_summary: dict[str, Any] = {
@@ -216,9 +219,7 @@ def analyze_theorem_runs(run_paths: list[Path]) -> tuple[dict[str, Any], dict[st
         lane_summary["experiments"].append(experiment_summary)
 
     for (src, dst, kind), weight in sorted(edge_weights.items()):
-        transition_graph["edges"].append(
-            {"from": src, "to": dst, "kind": kind, "weight": weight}
-        )
+        transition_graph["edges"].append({"from": src, "to": dst, "kind": kind, "weight": weight})
 
     return lane_summary, theorem_overlap, transition_graph
 
@@ -258,7 +259,9 @@ def analyze_component_runs(run_paths: list[Path]) -> dict[str, Any]:
                 "start_rate": round(started_n / len(subset_rows), 4) if subset_rows else 0.0,
             }
             if any("gold_in_scope" in row for row in subset_rows):
-                gold_vals = [bool(row.get("gold_in_scope")) for row in started if "gold_in_scope" in row]
+                gold_vals = [
+                    bool(row.get("gold_in_scope")) for row in started if "gold_in_scope" in row
+                ]
                 subset_summary["gold_in_scope_rate"] = (
                     round(sum(gold_vals) / len(gold_vals), 4) if gold_vals else None
                 )
@@ -287,7 +290,9 @@ def analyze_component_runs(run_paths: list[Path]) -> dict[str, Any]:
             }
             if closed is not None:
                 summary_row["closed_started"] = closed
-                summary_row["closed_rate"] = round(closed / len(accepted_rows), 4) if accepted_rows else 0.0
+                summary_row["closed_rate"] = (
+                    round(closed / len(accepted_rows), 4) if accepted_rows else 0.0
+                )
             benchmark["conditions"].append(summary_row)
 
         summary["benchmarks"].append(benchmark)
@@ -370,15 +375,21 @@ def build_findings(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Cross-run meta-analysis for local family experiments.")
+    parser = argparse.ArgumentParser(
+        description="Cross-run meta-analysis for local family experiments."
+    )
     parser.add_argument("--runs-dir", type=Path, default=Path("runs"))
     parser.add_argument("--output-prefix", type=Path, default=Path("runs/meta"))
     parser.add_argument("--theorem-runs", nargs="*", default=DEFAULT_THEOREM_RUNS)
     parser.add_argument("--component-runs", nargs="*", default=DEFAULT_COMPONENT_RUNS)
     args = parser.parse_args()
 
-    theorem_paths = [args.runs_dir / name for name in args.theorem_runs if (args.runs_dir / name).exists()]
-    component_paths = [args.runs_dir / name for name in args.component_runs if (args.runs_dir / name).exists()]
+    theorem_paths = [
+        args.runs_dir / name for name in args.theorem_runs if (args.runs_dir / name).exists()
+    ]
+    component_paths = [
+        args.runs_dir / name for name in args.component_runs if (args.runs_dir / name).exists()
+    ]
 
     lane_summary, theorem_overlap, transition_graph = analyze_theorem_runs(theorem_paths)
     component_summary = analyze_component_runs(component_paths)
@@ -386,9 +397,15 @@ def main() -> None:
 
     outputs = {
         args.output_prefix.with_name(args.output_prefix.name + "_lane_summary.json"): lane_summary,
-        args.output_prefix.with_name(args.output_prefix.name + "_component_summary.json"): component_summary,
-        args.output_prefix.with_name(args.output_prefix.name + "_theorem_overlap.json"): theorem_overlap,
-        args.output_prefix.with_name(args.output_prefix.name + "_transition_graph.json"): transition_graph,
+        args.output_prefix.with_name(
+            args.output_prefix.name + "_component_summary.json"
+        ): component_summary,
+        args.output_prefix.with_name(
+            args.output_prefix.name + "_theorem_overlap.json"
+        ): theorem_overlap,
+        args.output_prefix.with_name(
+            args.output_prefix.name + "_transition_graph.json"
+        ): transition_graph,
     }
     for path, payload in outputs.items():
         path.write_text(json.dumps(payload, indent=2, sort_keys=True))

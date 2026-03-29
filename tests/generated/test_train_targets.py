@@ -20,6 +20,7 @@ def test_build_direction_targets_returns_expected_output() -> None:
     result = build_direction_targets(..., ..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
 
+
 def test_build_direction_targets_boundary_values() -> None:
     """Test build_direction_targets with edge cases that mutation testing targets."""
     # Boundary: examples
@@ -30,11 +31,11 @@ def test_build_direction_targets_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_build_anchor_targets_returns_expected_output() -> None:
     """Test build_anchor_targets with valid input."""
     result = build_anchor_targets(..., ..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_build_anchor_targets_boundary_values() -> None:
     """Test build_anchor_targets with edge cases that mutation testing targets."""
@@ -46,11 +47,11 @@ def test_build_anchor_targets_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_build_progress_targets_returns_expected_output() -> None:
     """Test build_progress_targets with valid input."""
     result = build_progress_targets(..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_build_progress_targets_boundary_values() -> None:
     """Test build_progress_targets with edge cases that mutation testing targets."""
@@ -61,11 +62,11 @@ def test_build_progress_targets_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_build_critic_targets_returns_expected_output() -> None:
     """Test build_critic_targets with valid input."""
     result = build_critic_targets(..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_build_critic_targets_boundary_values() -> None:
     """Test build_critic_targets with edge cases that mutation testing targets."""
@@ -76,11 +77,11 @@ def test_build_critic_targets_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_compute_val_loss_returns_expected_output() -> None:
     """Test compute_val_loss with valid input."""
     result = compute_val_loss(..., ..., ..., ..., ..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_compute_val_loss_boundary_values() -> None:
     """Test compute_val_loss with edge cases that mutation testing targets."""
@@ -92,11 +93,11 @@ def test_compute_val_loss_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_capture_bridge_embeddings_returns_expected_output() -> None:
     """Test capture_bridge_embeddings with valid input."""
     result = capture_bridge_embeddings(..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_capture_bridge_embeddings_boundary_values() -> None:
     """Test capture_bridge_embeddings with edge cases that mutation testing targets."""
@@ -107,11 +108,11 @@ def test_capture_bridge_embeddings_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_extract_decoder_weight_signs_returns_expected_output() -> None:
     """Test extract_decoder_weight_signs with valid input."""
     result = extract_decoder_weight_signs(...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_extract_decoder_weight_signs_boundary_values() -> None:
     """Test extract_decoder_weight_signs with edge cases that mutation testing targets."""
@@ -121,11 +122,11 @@ def test_extract_decoder_weight_signs_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_compute_nav_accuracy_returns_expected_output() -> None:
     """Test compute_nav_accuracy with valid input."""
     result = compute_nav_accuracy(..., ..., ..., ..., ..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_compute_nav_accuracy_boundary_values() -> None:
     """Test compute_nav_accuracy with edge cases that mutation testing targets."""
@@ -135,6 +136,3 @@ def test_compute_nav_accuracy_boundary_values() -> None:
     # TODO: Test with boundary inputs (0, -1, empty string, None)
     result = compute_nav_accuracy(..., ..., ..., ..., ..., ...)
     assert result == EXPECTED  # TODO: Replace with actual expected value
-
-
-

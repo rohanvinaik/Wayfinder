@@ -5,12 +5,14 @@ from __future__ import annotations
 
 # Source module: src.evaluate
 
+
 # from src.evaluate import evaluate_checkpoint
 def test_evaluate_checkpoint_returns_dict() -> None:
     """Contract: evaluate_checkpoint returns dict."""
     # TODO: Provide valid arguments
     # result = evaluate_checkpoint(..., ..., ..., ...)
     # assert isinstance(result, dict)
+
 
 # from src.evaluate import evaluate_checkpoint
 def test_evaluate_checkpoint_http() -> None:
@@ -24,6 +26,7 @@ def test_evaluate_checkpoint_http() -> None:
     with patch("requests.get", return_value=mock_resp):
         pass  # TODO: call evaluate_checkpoint with valid args and assert result
 
+
 # from src.evaluate import main
 def test_main_file_io(tmp_path) -> None:
     """Contract: main handles file I/O."""
@@ -31,4 +34,3 @@ def test_main_file_io(tmp_path) -> None:
     test_file.write_text("test content")
     # TODO: call main(str(test_file)) and assert result
     pass
-

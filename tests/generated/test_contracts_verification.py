@@ -5,10 +5,10 @@ from __future__ import annotations
 
 # Source module: src.verification
 
+
 # from src.verification import check_proof_structural
 def test_check_proof_structural_returns_dict_str_any() -> None:
     """Contract: check_proof_structural returns dict[str, Any]."""
     # TODO: Provide valid arguments
     # result = check_proof_structural(...)
     # assert isinstance(result, dict)
-

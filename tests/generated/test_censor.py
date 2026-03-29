@@ -11,6 +11,7 @@ def test_asymmetric_bce_loss_returns_expected_output() -> None:
     result = asymmetric_bce_loss(..., ..., ..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
 
+
 def test_asymmetric_bce_loss_boundary_values() -> None:
     """Test asymmetric_bce_loss with edge cases that mutation testing targets."""
     # Boundary: predictions
@@ -21,11 +22,11 @@ def test_asymmetric_bce_loss_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_compute_false_prune_rate_returns_expected_output() -> None:
     """Test compute_false_prune_rate with valid input."""
     result = compute_false_prune_rate(..., ..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_compute_false_prune_rate_boundary_values() -> None:
     """Test compute_false_prune_rate with edge cases that mutation testing targets."""
@@ -35,7 +36,6 @@ def test_compute_false_prune_rate_boundary_values() -> None:
     # TODO: Test with boundary inputs (0, -1, empty string, None)
     result = compute_false_prune_rate(..., ..., ...)
     assert result == EXPECTED  # TODO: Replace with actual expected value
-
 
 
 class TestCensorNetworkConfig:
@@ -52,6 +52,7 @@ class TestCensorNetworkConfig:
         # TODO: Provide override values and assert exact field values
         obj = CensorNetwork()
         assert obj == EXPECTED  # TODO: Replace with expected instance
+
 
 class TestCensorNetworkState:
     """State invariant tests for CensorNetwork."""
@@ -79,6 +80,3 @@ class TestCensorNetworkState:
         obj = CensorNetwork()
         obj.should_prune()  # TODO: Provide arguments
         # TODO: Assert state changed correctly
-
-
-

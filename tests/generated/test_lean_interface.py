@@ -16,7 +16,6 @@ class TestLeanConfigConfig:
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
 
 
-
 class TestLeanKernelConfig:
     """Configuration tests for LeanKernel."""
 
@@ -31,6 +30,7 @@ class TestLeanKernelConfig:
         # TODO: Provide override values and assert exact field values
         obj = LeanKernel()
         assert obj == EXPECTED  # TODO: Replace with expected instance
+
 
 class TestLeanKernelState:
     """State invariant tests for LeanKernel."""
@@ -76,6 +76,3 @@ class TestLeanKernelState:
         obj = LeanKernel()
         obj.gc()  # TODO: Provide arguments
         # TODO: Assert state changed correctly
-
-
-

@@ -21,6 +21,7 @@ class TestGoalEncoderConfig:
         obj = GoalEncoder()
         assert obj == EXPECTED  # TODO: Replace with expected instance
 
+
 class TestGoalEncoderState:
     """State invariant tests for GoalEncoder."""
 
@@ -83,6 +84,3 @@ class TestGoalEncoderState:
         obj = GoalEncoder()
         obj.forward()  # TODO: Provide arguments
         # TODO: Assert state changed correctly
-
-
-

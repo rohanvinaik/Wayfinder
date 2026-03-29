@@ -19,6 +19,7 @@ def test_bank_score_returns_expected_output() -> None:
     result = bank_score(..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
 
+
 def test_bank_score_boundary_values() -> None:
     """Test bank_score with edge cases that mutation testing targets."""
     # Boundary: entity_signed_pos
@@ -28,11 +29,11 @@ def test_bank_score_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_compose_bank_scores_returns_expected_output() -> None:
     """Test compose_bank_scores with valid input."""
     result = compose_bank_scores(..., ..., ..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_compose_bank_scores_boundary_values() -> None:
     """Test compose_bank_scores with edge cases that mutation testing targets."""
@@ -43,10 +44,12 @@ def test_compose_bank_scores_boundary_values() -> None:
     result = compose_bank_scores(..., ..., ..., ...)
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
+
 def test_compose_bank_scores_raises_valueerror_on_invalid_input() -> None:
     """Test compose_bank_scores raises ValueError on invalid input."""
     with pytest.raises(ValueError):
         compose_bank_scores(None)
+
 
 def test_compose_bank_scores_handles_errors_gracefully() -> None:
     """Test compose_bank_scores error handling."""
@@ -54,11 +57,11 @@ def test_compose_bank_scores_handles_errors_gracefully() -> None:
     pass
 
 
-
 def test_compute_observability_score_returns_expected_output() -> None:
     """Test compute_observability_score with valid input."""
     result = compute_observability_score(..., ..., ..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_compute_observability_score_boundary_values() -> None:
     """Test compute_observability_score with edge cases that mutation testing targets."""
@@ -70,11 +73,11 @@ def test_compute_observability_score_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_compute_lens_scores_returns_expected_output() -> None:
     """Test compute_lens_scores with valid input."""
     result = compute_lens_scores(..., ..., ..., ..., ..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_compute_lens_scores_boundary_values() -> None:
     """Test compute_lens_scores with edge cases that mutation testing targets."""
@@ -86,11 +89,11 @@ def test_compute_lens_scores_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_compute_lens_coherence_returns_expected_output() -> None:
     """Test compute_lens_coherence with valid input."""
     result = compute_lens_coherence(..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_compute_lens_coherence_boundary_values() -> None:
     """Test compute_lens_coherence with edge cases that mutation testing targets."""
@@ -99,6 +102,3 @@ def test_compute_lens_coherence_boundary_values() -> None:
     # TODO: Test with boundary inputs (0, -1, empty string, None)
     result = compute_lens_coherence(..., ...)
     assert result == EXPECTED  # TODO: Replace with actual expected value
-
-
-

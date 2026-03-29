@@ -19,11 +19,11 @@ def test_clear_caches_returns_expected_output() -> None:
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
 
 
-
 def test_init_db_returns_expected_output() -> None:
     """Test init_db with valid input."""
     result = init_db(...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_init_db_boundary_values() -> None:
     """Test init_db with edge cases that mutation testing targets."""
@@ -33,11 +33,11 @@ def test_init_db_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_navigate_returns_expected_output() -> None:
     """Test navigate with valid input."""
     result = navigate(..., ..., ..., ..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_navigate_boundary_values() -> None:
     """Test navigate with edge cases that mutation testing targets."""
@@ -49,11 +49,11 @@ def test_navigate_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_get_accessible_premises_returns_expected_output() -> None:
     """Test get_accessible_premises with valid input."""
     result = get_accessible_premises(..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_get_accessible_premises_boundary_values() -> None:
     """Test get_accessible_premises with edge cases that mutation testing targets."""
@@ -64,11 +64,11 @@ def test_get_accessible_premises_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_recompute_idf_returns_expected_output() -> None:
     """Test recompute_idf with valid input."""
     result = recompute_idf(...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_recompute_idf_boundary_values() -> None:
     """Test recompute_idf with edge cases that mutation testing targets."""
@@ -76,7 +76,6 @@ def test_recompute_idf_boundary_values() -> None:
     # TODO: Test with boundary inputs (0, -1, empty string, None)
     result = recompute_idf(...)
     assert result == EXPECTED  # TODO: Replace with actual expected value
-
 
 
 class Test_DataCacheConfig:
@@ -94,6 +93,7 @@ class Test_DataCacheConfig:
         obj = _DataCache()
         assert obj == EXPECTED  # TODO: Replace with expected instance
 
+
 class Test_DataCacheState:
     """State invariant tests for _DataCache."""
 
@@ -102,6 +102,3 @@ class Test_DataCacheState:
         obj = _DataCache()
         # TODO: Assert exact initial field values
         assert obj.field == EXPECTED  # TODO: Replace with actual field checks
-
-
-

@@ -83,8 +83,7 @@ def run(dataset: Path, project_root: Path, limit: int | None = None) -> dict:
         "examples_with_feature": dict(feature_examples.most_common()),
         "unsupported_kinds": dict(unsupported_kinds.most_common()),
         "top_unsupported_texts": [
-            {"text": text, "count": count}
-            for text, count in unsupported_texts.most_common(15)
+            {"text": text, "count": count} for text, count in unsupported_texts.most_common(15)
         ],
     }
     return report

@@ -17,6 +17,7 @@ def test_collect_weak_negatives_returns_expected_output() -> None:
     result = collect_weak_negatives(..., ..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
 
+
 def test_collect_weak_negatives_boundary_values() -> None:
     """Test collect_weak_negatives with edge cases that mutation testing targets."""
     # Boundary: train_data_path
@@ -27,11 +28,11 @@ def test_collect_weak_negatives_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_write_negatives_returns_expected_output() -> None:
     """Test write_negatives with valid input."""
     result = write_negatives(..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_write_negatives_boundary_values() -> None:
     """Test write_negatives with edge cases that mutation testing targets."""
@@ -42,12 +43,10 @@ def test_write_negatives_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_main_returns_expected_output() -> None:
     """Test main with valid input."""
     result = main()
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
-
 
 
 class TestSorryHoleCollectorConfig:
@@ -65,6 +64,7 @@ class TestSorryHoleCollectorConfig:
         obj = SorryHoleCollector()
         assert obj == EXPECTED  # TODO: Replace with expected instance
 
+
 class TestSorryHoleCollectorState:
     """State invariant tests for SorryHoleCollector."""
 
@@ -79,7 +79,6 @@ class TestSorryHoleCollectorState:
         obj = SorryHoleCollector()
         obj.collect()  # TODO: Provide arguments
         # TODO: Assert state changed correctly
-
 
 
 class TestPerturbationCollectorConfig:
@@ -97,6 +96,7 @@ class TestPerturbationCollectorConfig:
         obj = PerturbationCollector()
         assert obj == EXPECTED  # TODO: Replace with expected instance
 
+
 class TestPerturbationCollectorState:
     """State invariant tests for PerturbationCollector."""
 
@@ -111,6 +111,3 @@ class TestPerturbationCollectorState:
         obj = PerturbationCollector()
         obj.collect()  # TODO: Provide arguments
         # TODO: Assert state changed correctly
-
-
-

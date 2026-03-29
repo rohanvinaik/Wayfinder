@@ -30,12 +30,7 @@ def _project_record(record: dict) -> dict:
     goal_shape = record.get("goal_shape_ir")
     trigger = record.get("trigger_profile_ir")
     subtask = record.get("subtask_ir")
-    if (
-        goal_shape is None
-        or trigger is None
-        or subtask is None
-        or not trigger.get("features")
-    ):
+    if goal_shape is None or trigger is None or subtask is None or not trigger.get("features"):
         goal_shape_obj, trigger_obj, subtask_obj = derive_move_metadata(
             goal_state=record.get("goal_state_before", ""),
             tactic_text=record.get("tactic_text", ""),

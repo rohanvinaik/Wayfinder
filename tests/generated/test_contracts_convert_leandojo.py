@@ -5,6 +5,7 @@ from __future__ import annotations
 
 # Source module: scripts.convert_leandojo
 
+
 # from scripts.convert_leandojo import convert_theorem
 def test_convert_theorem_http() -> None:
     """Contract: convert_theorem handles HTTP response."""
@@ -17,6 +18,7 @@ def test_convert_theorem_http() -> None:
     with patch("requests.get", return_value=mock_resp):
         pass  # TODO: call convert_theorem with valid args and assert result
 
+
 # from scripts.convert_leandojo import main
 def test_main_file_io(tmp_path) -> None:
     """Contract: main handles file I/O."""
@@ -24,4 +26,3 @@ def test_main_file_io(tmp_path) -> None:
     test_file.write_text("test content")
     # TODO: call main(str(test_file)) and assert result
     pass
-

@@ -16,7 +16,6 @@ class TestAuditResultConfig:
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
 
 
-
 class TestAuditorConfigConfig:
     """Configuration tests for AuditorConfig."""
 
@@ -25,7 +24,6 @@ class TestAuditorConfigConfig:
         obj = AuditorConfig()
         # TODO: Assert specific field values, not just existence
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
-
 
 
 class TestProofAuditorConfig:
@@ -42,6 +40,7 @@ class TestProofAuditorConfig:
         # TODO: Provide override values and assert exact field values
         obj = ProofAuditor()
         assert obj == EXPECTED  # TODO: Replace with expected instance
+
 
 class TestProofAuditorState:
     """State invariant tests for ProofAuditor."""
@@ -69,6 +68,3 @@ class TestProofAuditorState:
         obj = ProofAuditor()
         obj.cache_clear()  # TODO: Provide arguments
         # TODO: Assert state changed correctly
-
-
-

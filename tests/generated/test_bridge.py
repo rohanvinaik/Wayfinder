@@ -21,6 +21,7 @@ class TestInformationBridgeConfig:
         obj = InformationBridge()
         assert obj == EXPECTED  # TODO: Replace with expected instance
 
+
 class TestInformationBridgeState:
     """State invariant tests for InformationBridge."""
 
@@ -35,6 +36,3 @@ class TestInformationBridgeState:
         obj = InformationBridge()
         obj.forward()  # TODO: Provide arguments
         # TODO: Assert state changed correctly
-
-
-

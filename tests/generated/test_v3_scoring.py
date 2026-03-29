@@ -17,6 +17,7 @@ def test_compute_bank_idf_returns_expected_output() -> None:
     result = compute_bank_idf(...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
 
+
 def test_compute_bank_idf_boundary_values() -> None:
     """Test compute_bank_idf with edge cases that mutation testing targets."""
     # Boundary: conn
@@ -25,11 +26,11 @@ def test_compute_bank_idf_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_apply_bank_idf_returns_expected_output() -> None:
     """Test apply_bank_idf with valid input."""
     result = apply_bank_idf(..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_apply_bank_idf_boundary_values() -> None:
     """Test apply_bank_idf with edge cases that mutation testing targets."""
@@ -40,11 +41,11 @@ def test_apply_bank_idf_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_compute_otp_dimensionality_returns_expected_output() -> None:
     """Test compute_otp_dimensionality with valid input."""
     result = compute_otp_dimensionality(...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_compute_otp_dimensionality_boundary_values() -> None:
     """Test compute_otp_dimensionality with edge cases that mutation testing targets."""
@@ -54,11 +55,11 @@ def test_compute_otp_dimensionality_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_build_constraint_report_returns_expected_output() -> None:
     """Test build_constraint_report with valid input."""
     result = build_constraint_report(..., ..., ..., ..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_build_constraint_report_boundary_values() -> None:
     """Test build_constraint_report with edge cases that mutation testing targets."""
@@ -70,11 +71,11 @@ def test_build_constraint_report_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_nav_output_to_candidates_returns_expected_output() -> None:
     """Test nav_output_to_candidates with valid input."""
     result = nav_output_to_candidates(..., ..., ..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_nav_output_to_candidates_boundary_values() -> None:
     """Test nav_output_to_candidates with edge cases that mutation testing targets."""
@@ -84,6 +85,3 @@ def test_nav_output_to_candidates_boundary_values() -> None:
     # TODO: Test with boundary inputs (0, -1, empty string, None)
     result = nav_output_to_candidates(..., ..., ..., ...)
     assert result == EXPECTED  # TODO: Replace with actual expected value
-
-
-

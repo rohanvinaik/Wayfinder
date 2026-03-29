@@ -5,6 +5,7 @@ from __future__ import annotations
 
 # Source module: src.proof_scoring
 
+
 # from src.proof_scoring import bank_score
 def test_bank_score_returns_float() -> None:
     """Contract: bank_score returns float."""
@@ -12,12 +13,14 @@ def test_bank_score_returns_float() -> None:
     # result = bank_score(..., ...)
     # assert isinstance(result, (int, float))
 
+
 # from src.proof_scoring import compose_bank_scores
 def test_compose_bank_scores_returns_float() -> None:
     """Contract: compose_bank_scores returns float."""
     # TODO: Provide valid arguments
     # result = compose_bank_scores(..., ..., ..., ...)
     # assert isinstance(result, (int, float))
+
 
 # from src.proof_scoring import compose_bank_scores
 def test_compose_bank_scores_http() -> None:
@@ -31,12 +34,14 @@ def test_compose_bank_scores_http() -> None:
     with patch("requests.get", return_value=mock_resp):
         pass  # TODO: call compose_bank_scores with valid args and assert result
 
+
 # from src.proof_scoring import compute_observability_score
 def test_compute_observability_score_returns_float() -> None:
     """Contract: compute_observability_score returns float."""
     # TODO: Provide valid arguments
     # result = compute_observability_score(..., ..., ..., ...)
     # assert isinstance(result, (int, float))
+
 
 # from src.proof_scoring import compute_observability_score
 def test_compute_observability_score_http() -> None:
@@ -50,12 +55,14 @@ def test_compute_observability_score_http() -> None:
     with patch("requests.get", return_value=mock_resp):
         pass  # TODO: call compute_observability_score with valid args and assert result
 
+
 # from src.proof_scoring import compute_lens_scores
 def test_compute_lens_scores_returns_dict_str_float() -> None:
     """Contract: compute_lens_scores returns dict[str, float]."""
     # TODO: Provide valid arguments
     # result = compute_lens_scores(..., ..., ..., ..., ..., ...)
     # assert isinstance(result, dict)
+
 
 # from src.proof_scoring import compute_lens_scores
 def test_compute_lens_scores_http() -> None:
@@ -69,10 +76,10 @@ def test_compute_lens_scores_http() -> None:
     with patch("requests.get", return_value=mock_resp):
         pass  # TODO: call compute_lens_scores with valid args and assert result
 
+
 # from src.proof_scoring import compute_lens_coherence
 def test_compute_lens_coherence_returns_float() -> None:
     """Contract: compute_lens_coherence returns float."""
     # TODO: Provide valid arguments
     # result = compute_lens_coherence(..., ...)
     # assert isinstance(result, (int, float))
-

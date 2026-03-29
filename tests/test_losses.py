@@ -235,6 +235,7 @@ class TestNavigationalLoss(unittest.TestCase):
             + result["w_anchor"].item()
             + result["w_progress"].item()
             + result["w_critic"].item()
+            + result["w_move"].item()
         )
         self.assertAlmostEqual(w_sum, 1.0, places=4)
 
@@ -279,10 +280,10 @@ class TestNavigationalLoss(unittest.TestCase):
         loss_fn_1 = NavigationalLoss(initial_log_sigma=1.0)
         r0 = loss_fn_0(logits, targets)
         r1 = loss_fn_1(logits, targets)
-        # Same weights (all equal) but different precision values
+        # Same weights (all equal across 5 tasks) but different precision values
         # Both should still have equal weights since all sigmas are the same
-        self.assertAlmostEqual(r0["w_nav"].item(), 0.25, places=3)
-        self.assertAlmostEqual(r1["w_nav"].item(), 0.25, places=3)
+        self.assertAlmostEqual(r0["w_nav"].item(), 0.2, places=3)
+        self.assertAlmostEqual(r1["w_nav"].item(), 0.2, places=3)
 
     def test_full_pipeline_all_components(self):
         """All loss components active simultaneously."""

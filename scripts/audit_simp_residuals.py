@@ -14,17 +14,18 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import json
 import logging
-from copy import deepcopy
 from pathlib import Path
 
 import yaml
 
 logger = logging.getLogger(__name__)
 
-from scripts.run_benchmark import _build_search_components, _resolve_initial_goal, load_benchmark_theorems
-from src.proof_search import SearchConfig
+from scripts.run_benchmark import (
+    _build_search_components,
+    _resolve_initial_goal,
+    load_benchmark_theorems,
+)
 
 TOUCHED_THEOREMS = {
     "update_le_update_iff",
@@ -37,26 +38,26 @@ TOUCHED_THEOREMS = {
 # Probe tactics grouped by family — ordered cheap to expensive
 PROBES: list[tuple[str, str]] = [
     # family,         tactic
-    ("automation",    "rfl"),
-    ("automation",    "decide"),
-    ("automation",    "omega"),
-    ("automation",    "ring"),
-    ("automation",    "norm_num"),
-    ("automation",    "simp"),
-    ("automation",    "aesop"),
-    ("rw",            "rw [mul_comm]"),       # dummy — just checks rw receptivity
-    ("apply",         "exact?"),              # skipped if too slow
+    ("automation", "rfl"),
+    ("automation", "decide"),
+    ("automation", "omega"),
+    ("automation", "ring"),
+    ("automation", "norm_num"),
+    ("automation", "simp"),
+    ("automation", "aesop"),
+    ("rw", "rw [mul_comm]"),  # dummy — just checks rw receptivity
+    ("apply", "exact?"),  # skipped if too slow
 ]
 
 # Cheap probes only (no exact? — too slow per goal)
 FAST_PROBES: list[tuple[str, str]] = [
-    ("automation",    "rfl"),
-    ("automation",    "decide"),
-    ("automation",    "omega"),
-    ("automation",    "ring"),
-    ("automation",    "norm_num"),
-    ("automation",    "simp"),
-    ("automation",    "aesop"),
+    ("automation", "rfl"),
+    ("automation", "decide"),
+    ("automation", "omega"),
+    ("automation", "ring"),
+    ("automation", "norm_num"),
+    ("automation", "simp"),
+    ("automation", "aesop"),
 ]
 
 
@@ -134,7 +135,7 @@ def main() -> None:
 
     for thm in touched:
         tid = thm["theorem_id"]
-        print(f"\n{'─'*60}")
+        print(f"\n{'─' * 60}")
         print(f"Theorem: {tid}")
 
         initial_goal = _resolve_initial_goal(thm, lean)
@@ -147,13 +148,15 @@ def main() -> None:
         # Try bare simp
         try:
             r = lean.try_tactic(initial_goal, "simp")
-            print(f"\nsimp result: success={r.success}, error={r.error_message[:80] if r.error_message else ''}")
+            print(
+                f"\nsimp result: success={r.success}, error={r.error_message[:80] if r.error_message else ''}"
+            )
             if r.success:
                 remaining = r.new_goals
                 print(f"  Remaining goals after simp: {len(remaining)}")
                 for i, g in enumerate(remaining):
                     gstr = str(g)
-                    print(f"\n  Goal {i+1}:")
+                    print(f"\n  Goal {i + 1}:")
                     print(f"    {gstr[:300]}")
                     shape = classify_goal_shape(gstr)
                     print(f"    Shape heuristic: {shape}")
@@ -164,7 +167,7 @@ def main() -> None:
                     if closers:
                         print(f"    Fast closers found: {closers}")
                     else:
-                        print(f"    No fast closer found → needs apply/rw/learned")
+                        print("    No fast closer found → needs apply/rw/learned")
             else:
                 print("  simp did not succeed on initial goal directly")
                 print("  (simp may have fired mid-search on a subgoal after other tactics)")

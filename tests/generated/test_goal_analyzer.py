@@ -16,7 +16,6 @@ class TestGoalAnalysisConfig:
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
 
 
-
 class TestGoalAnalyzerConfig:
     """Configuration tests for GoalAnalyzer."""
 
@@ -31,6 +30,7 @@ class TestGoalAnalyzerConfig:
         # TODO: Provide override values and assert exact field values
         obj = GoalAnalyzer()
         assert obj == EXPECTED  # TODO: Replace with expected instance
+
 
 class TestGoalAnalyzerState:
     """State invariant tests for GoalAnalyzer."""
@@ -52,6 +52,3 @@ class TestGoalAnalyzerState:
         obj = GoalAnalyzer()
         obj.analyze()  # TODO: Provide arguments
         # TODO: Assert state changed correctly
-
-
-

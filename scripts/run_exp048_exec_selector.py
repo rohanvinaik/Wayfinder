@@ -47,12 +47,14 @@ logging.basicConfig(
 try:
     from src.lean_interface import ServerCrashError  # type: ignore[attr-defined]
 except ImportError:
+
     class ServerCrashError(Exception):  # type: ignore[no-redef]
         pass
 
 # ---------------------------------------------------------------------------
 # ExecSelector (must match train_apply_exec_selector.py architecture)
 # ---------------------------------------------------------------------------
+
 
 class ExecSelector(nn.Module):
     def __init__(self, emb_dim: int = 384, hidden: int = 256) -> None:
@@ -76,7 +78,7 @@ def load_selector(
 ) -> tuple[ExecSelector, SentenceTransformer, int]:
     ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
     emb_dim = ckpt.get("emb_dim", 384)
-    hidden  = ckpt.get("hidden", 256)
+    hidden = ckpt.get("hidden", 256)
     encoder_name = ckpt.get("encoder", "all-MiniLM-L6-v2")
     model = ExecSelector(emb_dim=emb_dim, hidden=hidden).to(device)
     model.load_state_dict(ckpt["model_state_dict"])
@@ -84,7 +86,10 @@ def load_selector(
     encoder = SentenceTransformer(encoder_name)
     logger.info(
         "Loaded ExecSelector (emb=%d, hidden=%d, PR-AUC=%.4f) from %s",
-        emb_dim, hidden, ckpt.get("best_val_pr_auc", 0.0), ckpt_path,
+        emb_dim,
+        hidden,
+        ckpt.get("best_val_pr_auc", 0.0),
+        ckpt_path,
     )
     return model, encoder, emb_dim
 
@@ -94,26 +99,26 @@ def load_selector(
 # ---------------------------------------------------------------------------
 
 _SHAPE_COMPAT: dict[str, set[str]] = {
-    "eq":     {"eq", "iff", "le", "ge", "dvd", "imp", "prop"},
-    "iff":    {"iff", "eq", "imp", "prop"},
-    "le":     {"le", "lt", "eq", "prop"},
-    "lt":     {"le", "lt", "prop"},
-    "ge":     {"ge", "gt", "eq", "prop"},
-    "gt":     {"ge", "gt", "prop"},
-    "mem":    {"mem", "subset", "prop"},
+    "eq": {"eq", "iff", "le", "ge", "dvd", "imp", "prop"},
+    "iff": {"iff", "eq", "imp", "prop"},
+    "le": {"le", "lt", "eq", "prop"},
+    "lt": {"le", "lt", "prop"},
+    "ge": {"ge", "gt", "eq", "prop"},
+    "gt": {"ge", "gt", "prop"},
+    "mem": {"mem", "subset", "prop"},
     "subset": {"subset", "mem", "prop"},
-    "dvd":    {"dvd", "eq", "prop"},
-    "and":    {"and", "prop"},
-    "or":     {"or", "prop"},
-    "not":    {"not", "prop"},
-    "imp":    set(),  # permissive
-    "prop":   set(),
-    "other":  set(),
+    "dvd": {"dvd", "eq", "prop"},
+    "and": {"and", "prop"},
+    "or": {"or", "prop"},
+    "not": {"not", "prop"},
+    "imp": set(),  # permissive
+    "prop": set(),
+    "other": set(),
 }
 
 _AUTO_HEADS = {"True", "False", "trivial"}
-_BINDER_RE  = re.compile(r"^(∀\s*[\{\[\(].*?[\}\]\)],?\s*)+")
-_HEAD_RE    = re.compile(r"⊢\s*(\S+)")
+_BINDER_RE = re.compile(r"^(∀\s*[\{\[\(].*?[\}\]\)],?\s*)+")
+_HEAD_RE = re.compile(r"⊢\s*(\S+)")
 
 
 def _strip_binders(pp: str) -> str:
@@ -132,9 +137,18 @@ def _prop_shape(conclusion: str) -> str:
     if " → " in c:
         return "imp"
     for sym, shape in [
-        ("=", "eq"), ("↔", "iff"), ("≤", "le"), ("≥", "ge"),
-        ("<", "lt"), (">", "gt"), ("∈", "mem"), ("⊆", "subset"),
-        ("∣", "dvd"), ("∧", "and"), ("∨", "or"), ("¬", "not"),
+        ("=", "eq"),
+        ("↔", "iff"),
+        ("≤", "le"),
+        ("≥", "ge"),
+        ("<", "lt"),
+        (">", "gt"),
+        ("∈", "mem"),
+        ("⊆", "subset"),
+        ("∣", "dvd"),
+        ("∧", "and"),
+        ("∨", "or"),
+        ("¬", "not"),
     ]:
         if sym in c:
             return shape
@@ -150,7 +164,7 @@ def _goal_shape(goal_str: str) -> str:
     m = _HEAD_RE.search(goal_str)
     if not m:
         return "other"
-    return _prop_shape(goal_str[m.end():].strip())
+    return _prop_shape(goal_str[m.end() :].strip())
 
 
 def _is_compatible(g_head: str, g_shape: str, cand_pp: str) -> bool:
@@ -180,9 +194,7 @@ def _get_decl_type(kernel: LeanKernel, name: str) -> str | None:
         _type_cache[name] = None
         return None
     try:
-        info = kernel._server.env_inspect(
-            name=name, print_value=False, print_dependency=False
-        )
+        info = kernel._server.env_inspect(name=name, print_value=False, print_dependency=False)
         pp = getattr(info, "type", None)
         if pp is None and isinstance(info, dict):
             pp = info.get("type")
@@ -196,6 +208,7 @@ def _get_decl_type(kernel: LeanKernel, name: str) -> str | None:
 # ---------------------------------------------------------------------------
 # Tactic helpers (from apply047)
 # ---------------------------------------------------------------------------
+
 
 def try_apply(
     kernel: LeanKernel,
@@ -215,6 +228,7 @@ def try_apply(
 # ---------------------------------------------------------------------------
 # Per-example result
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class ExampleResult:
@@ -277,6 +291,7 @@ class ExampleResult:
 # Selector scoring
 # ---------------------------------------------------------------------------
 
+
 def selector_rank(
     model: ExecSelector,
     encoder: SentenceTransformer,
@@ -312,6 +327,7 @@ def selector_rank(
 # Main per-example processing
 # ---------------------------------------------------------------------------
 
+
 def run_one(
     ex: dict[str, Any],
     kernel: LeanKernel,
@@ -346,9 +362,9 @@ def run_one(
 
     res.goal_started = True
     goal_str = replay.goal_state
-    goal_id  = replay.goal_id
-    g_head   = _goal_head(goal_str)
-    g_shape  = _goal_shape(goal_str)
+    goal_id = replay.goal_id
+    g_head = _goal_head(goal_str)
+    g_shape = _goal_shape(goal_str)
 
     # 2. Accessible premises
     theorem_id = name_to_id.get(name)
@@ -371,29 +387,37 @@ def run_one(
         [goal_str], show_progress_bar=False, normalize_embeddings=True
     )[0]
     cand_embs = encoder_retrieval.encode(
-        premise_names, show_progress_bar=False,
-        batch_size=256, normalize_embeddings=True,
+        premise_names,
+        show_progress_bar=False,
+        batch_size=256,
+        normalize_embeddings=True,
     )
     cosine_raw = (cand_embs @ goal_emb).tolist()
     ranked_idx = sorted(range(len(premise_names)), key=lambda i: -cosine_raw[i])
-    top_names  = [premise_names[i] for i in ranked_idx[:top_k]]
-    top_scores = [cosine_raw[i]    for i in ranked_idx[:top_k]]
+    top_names = [premise_names[i] for i in ranked_idx[:top_k]]
+    top_scores = [cosine_raw[i] for i in ranked_idx[:top_k]]
 
     # 4. Static filter
-    top_pp     = [_get_decl_type(kernel, c) or "" for c in top_names]
+    top_pp = [_get_decl_type(kernel, c) or "" for c in top_names]
     top_passed = [_is_compatible(g_head, g_shape, pp) for pp in top_pp]
-    filtered   = [(c, s, pp) for c, s, pp, p in zip(top_names, top_scores, top_pp, top_passed) if p]
+    filtered = [(c, s, pp) for c, s, pp, p in zip(top_names, top_scores, top_pp, top_passed) if p]
     if not filtered:
         filtered = list(zip(top_names, top_scores, top_pp))  # fallback
 
     # 5. Selector scoring over filtered candidates
-    f_names  = [c for c, _, _ in filtered]
+    f_names = [c for c, _, _ in filtered]
     f_scores = [s for _, s, _ in filtered]
     f_passed = [True] * len(f_names)
 
     sel_scores = selector_rank(
-        selector_model, selector_encoder, selector_emb_dim,
-        goal_str, f_names, f_scores, f_passed, device,
+        selector_model,
+        selector_encoder,
+        selector_emb_dim,
+        goal_str,
+        f_names,
+        f_scores,
+        f_passed,
+        device,
     )
 
     # 6. Pick top-1 per condition
@@ -408,9 +432,9 @@ def run_one(
 
     # 7. Lean verify each condition
     _conditions = [
-        (res.cosine_candidate,        "cosine_feedback_category",        "cosine_accepted"),
+        (res.cosine_candidate, "cosine_feedback_category", "cosine_accepted"),
         (res.filter_cosine_candidate, "filter_cosine_feedback_category", "filter_cosine_accepted"),
-        (res.selector_candidate,      "selector_feedback_category",      "selector_accepted"),
+        (res.selector_candidate, "selector_feedback_category", "selector_accepted"),
     ]
     for cand, fb_attr, acc_attr in _conditions:
         try:
@@ -446,6 +470,7 @@ def run_one(
 # Data loading
 # ---------------------------------------------------------------------------
 
+
 def load_apply_step0(eval_path: str) -> list[dict[str, Any]]:
     rows = []
     with open(eval_path) as f:
@@ -463,6 +488,7 @@ def load_apply_step0(eval_path: str) -> list[dict[str, Any]]:
 # Report
 # ---------------------------------------------------------------------------
 
+
 def print_report(results: list[ExampleResult]) -> None:
     n = len(results)
     started = [r for r in results if r.goal_started]
@@ -472,10 +498,12 @@ def print_report(results: list[ExampleResult]) -> None:
 
     def _acc(attr: str, pool: list[ExampleResult]) -> str:
         k = sum(getattr(r, attr) for r in pool)
-        return f"{k}/{len(pool)}  ({100*k/max(len(pool),1):.1f}%)"
+        return f"{k}/{len(pool)}  ({100 * k / max(len(pool), 1):.1f}%)"
 
     fb_counts: dict[str, dict[str, int]] = {
-        "cosine": {}, "filter_cosine": {}, "selector": {},
+        "cosine": {},
+        "filter_cosine": {},
+        "selector": {},
     }
     for r in started:
         for cond in ("cosine", "filter_cosine", "selector"):
@@ -486,33 +514,33 @@ def print_report(results: list[ExampleResult]) -> None:
     print("=" * 72)
     print("EXP-048: ExecSelector v1 — Live Pantograph benchmark")
     print("=" * 72)
-    print(f"  n={n}, started={ns}/{n} ({100*ns/max(n,1):.1f}%)")
-    print(f"  gold_in_scope={ni}/{ns} ({100*ni/max(ns,1):.1f}%)")
+    print(f"  n={n}, started={ns}/{n} ({100 * ns / max(n, 1):.1f}%)")
+    print(f"  gold_in_scope={ni}/{ns} ({100 * ni / max(ns, 1):.1f}%)")
     print()
     print(f"  LeanAccepted|started ({ns} started):")
     print()
     print(f"    {'Condition':<28} {'Acc|started':<22} {'Acc|gold_in_scope'}")
-    print(f"    {'-'*28} {'-'*22} {'-'*20}")
+    print(f"    {'-' * 28} {'-' * 22} {'-' * 20}")
     for cond, label in [
-        ("cosine_accepted",        "cosine_top1"),
+        ("cosine_accepted", "cosine_top1"),
         ("filter_cosine_accepted", "filter_cosine_top1"),
-        ("selector_accepted",      "selector_top1"),
+        ("selector_accepted", "selector_top1"),
         ("best_filtered_accepted", "best_filtered_top5"),
     ]:
-        a_s  = _acc(cond, started)
-        a_i  = _acc(cond, in_scope)
+        a_s = _acc(cond, started)
+        a_i = _acc(cond, in_scope)
         print(f"    {label:<28} {a_s:<22} {a_i}")
     print()
     print("  Selector vs cosine lift:")
-    sel_k  = sum(r.selector_accepted for r in started)
-    cos_k  = sum(r.cosine_accepted   for r in started)
+    sel_k = sum(r.selector_accepted for r in started)
+    cos_k = sum(r.cosine_accepted for r in started)
     fcos_k = sum(r.filter_cosine_accepted for r in started)
     print(f"    cosine_top1        : {cos_k}/{ns}")
     print(f"    filter_cosine_top1 : {fcos_k}/{ns}")
     print(
         f"    selector_top1      : {sel_k}/{ns}"
-        f"  (Δ={sel_k-cos_k:+d} vs cosine,"
-        f" Δ={sel_k-fcos_k:+d} vs filter+cosine)"
+        f"  (Δ={sel_k - cos_k:+d} vs cosine,"
+        f" Δ={sel_k - fcos_k:+d} vs filter+cosine)"
     )
     print()
     print("  Feedback breakdown (selector):")
@@ -526,16 +554,17 @@ def print_report(results: list[ExampleResult]) -> None:
 # CLI
 # ---------------------------------------------------------------------------
 
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--db",    default="data/proof_network_v3.db")
-    parser.add_argument("--eval",  default="data/canonical/canonical_residual_eval.jsonl")
+    parser.add_argument("--db", default="data/proof_network_v3.db")
+    parser.add_argument("--eval", default="data/canonical/canonical_residual_eval.jsonl")
     parser.add_argument("--lean-project", default="data/lean_project/")
     parser.add_argument("--selector", default="models/apply_exec_selector_v1.pt")
-    parser.add_argument("--output",   default="runs/exp048_results.jsonl")
-    parser.add_argument("--limit",    type=int, default=0)
+    parser.add_argument("--output", default="runs/exp048_results.jsonl")
+    parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--restart-every", type=int, default=64)
-    parser.add_argument("--top-k",    type=int, default=20)
+    parser.add_argument("--top-k", type=int, default=20)
     args = parser.parse_args()
 
     Path(args.output).parent.mkdir(parents=True, exist_ok=True)
@@ -543,9 +572,7 @@ def main() -> None:
     device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 
     # Load selector
-    selector_model, selector_encoder, selector_emb_dim = load_selector(
-        args.selector, device
-    )
+    selector_model, selector_encoder, selector_emb_dim = load_selector(args.selector, device)
 
     # Retrieval encoder (same as training)
     retrieval_encoder = SentenceTransformer("all-MiniLM-L6-v2")
@@ -559,7 +586,7 @@ def main() -> None:
     # Eval examples
     examples = load_apply_step0(args.eval)
     if args.limit:
-        examples = examples[:args.limit]
+        examples = examples[: args.limit]
     logger.info("Eval examples: %d step-0 apply", len(examples))
 
     # Kernel
@@ -584,9 +611,15 @@ def main() -> None:
 
             try:
                 res = run_one(
-                    ex, kernel, retrieval_encoder,
-                    selector_model, selector_encoder, selector_emb_dim,
-                    conn, id_to_name, name_to_id,
+                    ex,
+                    kernel,
+                    retrieval_encoder,
+                    selector_model,
+                    selector_encoder,
+                    selector_emb_dim,
+                    conn,
+                    id_to_name,
+                    name_to_id,
                     gold=gold,
                     project_root=args.lean_project,
                     device=device,

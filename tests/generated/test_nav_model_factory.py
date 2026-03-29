@@ -15,6 +15,7 @@ def test_resolve_model_config_returns_expected_output() -> None:
     result = resolve_model_config(..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
 
+
 def test_resolve_model_config_boundary_values() -> None:
     """Test resolve_model_config with edge cases that mutation testing targets."""
     # Boundary: config
@@ -24,11 +25,11 @@ def test_resolve_model_config_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_build_navigational_modules_returns_expected_output() -> None:
     """Test build_navigational_modules with valid input."""
     result = build_navigational_modules(..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_build_navigational_modules_boundary_values() -> None:
     """Test build_navigational_modules with edge cases that mutation testing targets."""
@@ -39,11 +40,11 @@ def test_build_navigational_modules_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_load_navigational_checkpoint_returns_expected_output() -> None:
     """Test load_navigational_checkpoint with valid input."""
     result = load_navigational_checkpoint(..., ..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_load_navigational_checkpoint_boundary_values() -> None:
     """Test load_navigational_checkpoint with edge cases that mutation testing targets."""
@@ -53,6 +54,3 @@ def test_load_navigational_checkpoint_boundary_values() -> None:
     # TODO: Test with boundary inputs (0, -1, empty string, None)
     result = load_navigational_checkpoint(..., ..., ...)
     assert result == EXPECTED  # TODO: Replace with actual expected value
-
-
-

@@ -11,6 +11,7 @@ def test_ternary_quantize_returns_expected_output() -> None:
     result = ternary_quantize(..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
 
+
 def test_ternary_quantize_boundary_values() -> None:
     """Test ternary_quantize with edge cases that mutation testing targets."""
     # Boundary: weights
@@ -18,7 +19,6 @@ def test_ternary_quantize_boundary_values() -> None:
     # TODO: Test with boundary inputs (0, -1, empty string, None)
     result = ternary_quantize(..., ...)
     assert result == EXPECTED  # TODO: Replace with actual expected value
-
 
 
 class TestTernaryLinearConfig:
@@ -36,6 +36,7 @@ class TestTernaryLinearConfig:
         obj = TernaryLinear()
         assert obj == EXPECTED  # TODO: Replace with expected instance
 
+
 class TestTernaryLinearState:
     """State invariant tests for TernaryLinear."""
 
@@ -50,7 +51,6 @@ class TestTernaryLinearState:
         obj = TernaryLinear()
         obj.forward()  # TODO: Provide arguments
         # TODO: Assert state changed correctly
-
 
 
 class TestTernaryDecoderConfig:
@@ -68,6 +68,7 @@ class TestTernaryDecoderConfig:
         obj = TernaryDecoder()
         assert obj == EXPECTED  # TODO: Replace with expected instance
 
+
 class TestTernaryDecoderState:
     """State invariant tests for TernaryDecoder."""
 
@@ -82,6 +83,3 @@ class TestTernaryDecoderState:
         obj = TernaryDecoder()
         obj.forward()  # TODO: Provide arguments
         # TODO: Assert state changed correctly
-
-
-

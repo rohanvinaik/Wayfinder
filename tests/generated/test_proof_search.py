@@ -11,6 +11,7 @@ def test_search_returns_expected_output() -> None:
     result = search(..., ..., ..., ..., ..., ..., ..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
 
+
 def test_search_boundary_values() -> None:
     """Test search with edge cases that mutation testing targets."""
     # Boundary: theorem_id
@@ -19,7 +20,6 @@ def test_search_boundary_values() -> None:
     # TODO: Test with boundary inputs (0, -1, empty string, None)
     result = search(..., ..., ..., ..., ..., ..., ..., ...)
     assert result == EXPECTED  # TODO: Replace with actual expected value
-
 
 
 class TestSearchConfigConfig:
@@ -32,7 +32,6 @@ class TestSearchConfigConfig:
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
 
 
-
 class TestSearchResultConfig:
     """Configuration tests for SearchResult."""
 
@@ -41,7 +40,6 @@ class TestSearchResultConfig:
         obj = SearchResult()
         # TODO: Assert specific field values, not just existence
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
-
 
 
 class TestPipelineConfig:
@@ -54,7 +52,6 @@ class TestPipelineConfig:
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
 
 
-
 class Test_SearchEnvConfig:
     """Configuration tests for _SearchEnv."""
 
@@ -65,7 +62,6 @@ class Test_SearchEnvConfig:
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
 
 
-
 class Test_SearchStateConfig:
     """Configuration tests for _SearchState."""
 
@@ -74,6 +70,3 @@ class Test_SearchStateConfig:
         obj = _SearchState()
         # TODO: Assert specific field values, not just existence
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
-
-
-

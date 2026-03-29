@@ -31,6 +31,8 @@ if __package__ is None or __package__ == "":
 logger = logging.getLogger(__name__)
 
 from scripts.benchmark_lane_b import run_lane_b
+from src.benchmark_residuals import augment_result_entry, summarize_residual_structure
+from src.hard_data_tags import canonicalize_theorem_id
 from src.lean_interface import LeanConfig, LeanKernel
 from src.nav_model_factory import load_navigational_checkpoint
 from src.proof_search import Pipeline, SearchConfig, search
@@ -60,10 +62,14 @@ def _load_theorems_from_file(path: Path, source_key: str) -> list[dict]:
             d = json.loads(line)
             theorems.append(
                 {
-                    "theorem_id": d.get("theorem_id", d.get("name", "")),
+                    "theorem_id": canonicalize_theorem_id(str(d.get("theorem_id", d.get("name", "")))),
                     "goal_state": d.get("goal_state", d.get("statement", "")),
                     "ground_truth_tactic": d.get("ground_truth_tactic", ""),
                     "source": source_key,
+                    "file_path": d.get("file_path", ""),
+                    "module": d.get("module", ""),
+                    "lean_path": d.get("lean_path", ""),
+                    "theorem_line": int(d.get("theorem_line", 0) or 0),
                 }
             )
     return theorems
@@ -111,10 +117,30 @@ def _build_search_components(config: dict, checkpoint_path: Path, device: str) -
         search_mode=search_cfg.get("search_mode", "full"),
         no_learned_premises=search_cfg.get("no_learned_premises", False),
         temporal_mode=search_cfg.get("temporal_mode", "off"),
+        strategy_memory_path=search_cfg.get("strategy_memory_path", ""),
         cosine_rw_beam=search_cfg.get("cosine_rw_beam", 5),
         cosine_rw_seq_max_atoms=search_cfg.get("cosine_rw_seq_max_atoms", 10),
         cosine_rw_seq_max_calls=search_cfg.get("cosine_rw_seq_max_calls", 50),
         cosine_rw_seq_enabled=search_cfg.get("cosine_rw_seq_enabled", False),
+        cosine_simp_enabled=search_cfg.get("cosine_simp_enabled", False),
+        interleaved_bootstrap_enabled=search_cfg.get("interleaved_bootstrap_enabled", False),
+        interleaved_bootstrap_max_depth=search_cfg.get("interleaved_bootstrap_max_depth", 4),
+        interleaved_bootstrap_max_calls=search_cfg.get("interleaved_bootstrap_max_calls", 20),
+        cosine_apply_enabled=search_cfg.get("cosine_apply_enabled", False),
+        cosine_apply_gated=search_cfg.get("cosine_apply_gated", False),
+        cosine_apply_beam=search_cfg.get("cosine_apply_beam", 5),
+        exec_apply_selector_path=search_cfg.get("exec_apply_selector_path", ""),
+        exec_apply_selector_pool=search_cfg.get("exec_apply_selector_pool", 20),
+        apply_trigger_path=search_cfg.get("apply_trigger_path", ""),
+        apply_trigger_threshold=search_cfg.get("apply_trigger_threshold", 0.47),
+        collect_trace=search_cfg.get("collect_trace", False),
+        family_classifier_path=search_cfg.get("family_classifier_path", ""),
+        family_classifier_torch_path=search_cfg.get("family_classifier_torch_path", ""),
+        norm_then_close_enabled=search_cfg.get("norm_then_close_enabled", True),
+        dr_ducky_enabled=search_cfg.get("dr_ducky_enabled", False),
+        dr_ducky_max_programs=search_cfg.get("dr_ducky_max_programs", 24),
+        dr_ducky_max_rounds=search_cfg.get("dr_ducky_max_rounds", 3),
+        dr_ducky_goal_limit=search_cfg.get("dr_ducky_goal_limit", 3),
     )
 
     lean_backend = config.get("lean", {}).get("backend", "stub")
@@ -140,9 +166,10 @@ def _build_theorem_id_map(conn: sqlite3.Connection) -> dict[str, int]:
 def _resolve_initial_goal(thm: dict, lean: LeanKernel) -> str | None:
     """Resolve the initial goal for proof search.
 
-    For Pantograph with a Mathlib project, uses env_inspect to get the
-    theorem's type, then goal_start (with load_sorry fallback for universe-
-    polymorphic types). Falls back to raw goal_state if env_inspect fails.
+    For Pantograph with a Mathlib project, the canonical path is theorem-site
+    faithful replay via `goal_via_file_context`. This avoids pretty-printer
+    ellipses, universe-pressure failures, and binder-mangling from raw theorem
+    type strings. Raw `goal_start` is retained only as degraded fallback.
 
     Returns None only if goal_start fails on both the inspected type AND
     the raw goal_state.
@@ -150,24 +177,43 @@ def _resolve_initial_goal(thm: dict, lean: LeanKernel) -> str | None:
     if lean._backend != "pantograph" or lean._server is None:
         return thm["goal_state"]
 
-    tid = thm["theorem_id"]
+    tid = canonicalize_theorem_id(str(thm["theorem_id"]))
+    file_path = thm.get("file_path", "")
+    module_hint = thm.get("module", "")
 
-    # Try env_inspect → goal_start (proper Lean type with load_sorry fallback)
+    if hasattr(lean, "goal_via_file_context"):
+        try:
+            result = lean.goal_via_file_context(
+                theorem_full_name=tid,
+                file_path=file_path,
+                prefix_tactics=[],
+                project_root=lean.config.project_root,
+                module_hint=module_hint,
+                fallback_goal_pp=thm.get("goal_state", ""),
+            )
+            if result.success and result.goal_state:
+                return result.goal_state
+        except Exception:
+            pass
+
+    # Degraded fallback: env_inspect → goal_start.
     try:
         info = lean._server.env_inspect(tid)
         theorem_type = info["type"]["pp"]
-        return lean.goal_start(theorem_type)
+        return lean.goal_start(theorem_type, theorem_name=tid, file_path=file_path)
     except Exception:
         pass
 
-    # env_inspect failed (theorem not in environment, or custom benchmark).
-    # Fall back to raw goal_state — works for simple type expressions.
+    # Final fallback: raw benchmark goal string.
     raw_goal = thm["goal_state"]
-    try:
-        return lean.goal_start(raw_goal)
-    except Exception as e:
-        logger.debug("Could not start goal for %s: %s", tid, e)
-        return None
+    if raw_goal:
+        try:
+            return lean.goal_start(raw_goal, theorem_name=tid, file_path=file_path)
+        except Exception:
+            pass
+
+    logger.debug("Could not start goal for %s", tid)
+    return None
 
 
 def _run_search_loop(
@@ -205,20 +251,22 @@ def _run_search_loop(
         if initial_goal is None:
             # Could not create goal state (universe polymorphism, missing theorem, etc.)
             results.append(
-                {
-                    "theorem_id": thm["theorem_id"],
-                    "source": thm["source"],
-                    "success": False,
-                    "success_category": "failed",
-                    "close_lane": "skipped",
-                    "close_provenance": [],
-                    "final_closer": "",
-                    "attempts": 0,
-                    "goals_closed": 0,
-                    "goals_remaining": 1,
-                    "tactics_used": [],
-                    "time_s": 0.0,
-                }
+                augment_result_entry(
+                    {
+                        "theorem_id": thm["theorem_id"],
+                        "source": thm["source"],
+                        "success": False,
+                        "success_category": "failed",
+                        "close_lane": "skipped",
+                        "close_provenance": [],
+                        "final_closer": "",
+                        "attempts": 0,
+                        "goals_closed": 0,
+                        "goals_remaining": 1,
+                        "tactics_used": [],
+                        "time_s": 0.0,
+                    }
+                )
             )
             continue
 
@@ -242,6 +290,8 @@ def _run_search_loop(
             close_lane = "failed"
         elif any(p == "learned" for p in prov):
             close_lane = "learned"
+        elif any(p == "self_application" for p in prov):
+            close_lane = "self_application"
         elif any(p.startswith("cosine_") for p in prov):
             close_lane = next(p for p in prov if p.startswith("cosine_"))
         elif any(p == "solver_bootstrap" for p in prov):
@@ -260,22 +310,24 @@ def _run_search_loop(
         lane_sequence = "→".join(dict.fromkeys(prov)) if prov else ""
 
         results.append(
-            {
-                "theorem_id": thm["theorem_id"],
-                "source": thm["source"],
-                "success": result.success,
-                "success_category": "raw_success" if result.success else "failed",
-                "close_lane": close_lane,
-                "lane_sequence": lane_sequence,
-                "close_provenance": prov,
-                "final_closer": final_closer,
-                "temporal_trace": getattr(result, "temporal_trace", []),
-                "attempts": result.attempts,
-                "goals_closed": result.goals_closed,
-                "goals_remaining": result.goals_remaining,
-                "tactics_used": result.tactics_used,
-                "time_s": round(elapsed, 3),
-            }
+            augment_result_entry(
+                {
+                    "theorem_id": thm["theorem_id"],
+                    "source": thm["source"],
+                    "success": result.success,
+                    "success_category": "raw_success" if result.success else "failed",
+                    "close_lane": close_lane,
+                    "lane_sequence": lane_sequence,
+                    "close_provenance": prov,
+                    "final_closer": final_closer,
+                    "temporal_trace": getattr(result, "temporal_trace", []),
+                    "attempts": result.attempts,
+                    "goals_closed": result.goals_closed,
+                    "goals_remaining": result.goals_remaining,
+                    "tactics_used": result.tactics_used,
+                    "time_s": round(elapsed, 3),
+                }
+            )
         )
 
         if result.success:
@@ -371,17 +423,19 @@ def _run_search_loop_v2(
         elapsed = time.perf_counter() - t0
 
         results.append(
-            {
-                "theorem_id": thm["theorem_id"],
-                "source": thm["source"],
-                "success": result.success,
-                "success_category": "raw_success" if result.success else "failed",
-                "attempts": result.attempts,
-                "goals_closed": result.goals_closed,
-                "goals_remaining": result.goals_remaining,
-                "tactics_used": result.tactics_used,
-                "time_s": round(elapsed, 3),
-            }
+            augment_result_entry(
+                {
+                    "theorem_id": thm["theorem_id"],
+                    "source": thm["source"],
+                    "success": result.success,
+                    "success_category": "raw_success" if result.success else "failed",
+                    "attempts": result.attempts,
+                    "goals_closed": result.goals_closed,
+                    "goals_remaining": result.goals_remaining,
+                    "tactics_used": result.tactics_used,
+                    "time_s": round(elapsed, 3),
+                }
+            )
         )
 
         if result.success:
@@ -484,18 +538,20 @@ def _run_search_loop_v3(
         elapsed = time.perf_counter() - t0
 
         results.append(
-            {
-                "theorem_id": thm["theorem_id"],
-                "source": thm["source"],
-                "success": result.success,
-                "success_category": "raw_success" if result.success else "failed",
-                "attempts": result.attempts,
-                "goals_closed": result.goals_closed,
-                "goals_remaining": result.goals_remaining,
-                "tactics_used": result.tactics_used,
-                "time_s": round(elapsed, 3),
-                "mode": "v3",
-            }
+            augment_result_entry(
+                {
+                    "theorem_id": thm["theorem_id"],
+                    "source": thm["source"],
+                    "success": result.success,
+                    "success_category": "raw_success" if result.success else "failed",
+                    "attempts": result.attempts,
+                    "goals_closed": result.goals_closed,
+                    "goals_remaining": result.goals_remaining,
+                    "tactics_used": result.tactics_used,
+                    "time_s": round(elapsed, 3),
+                    "mode": "v3",
+                }
+            )
         )
 
         if result.success:
@@ -539,6 +595,7 @@ def run_benchmark(
     encoder = None
     if cosine_rw or cosine_rw_seq:
         from sentence_transformers import SentenceTransformer
+
         encoder = SentenceTransformer("all-MiniLM-L6-v2")
         msg = "  Cosine rw lane: enabled"
         if cosine_rw_seq:
@@ -553,7 +610,8 @@ def run_benchmark(
     start = time.time()
     if mode == "v1":
         results, raw_proved, total_attempts = _run_search_loop(
-            theorems, pipeline, conn, lean, cfg, sentence_encoder=encoder)
+            theorems, pipeline, conn, lean, cfg, sentence_encoder=encoder
+        )
     elif mode == "v2":
         results, raw_proved, total_attempts = _run_search_loop_v2(
             theorems,
@@ -582,17 +640,27 @@ def run_benchmark(
     for r in results:
         lane = r.get("close_lane", "failed" if not r["success"] else "unknown")
         lane_counts[lane] = lane_counts.get(lane, 0) + 1
+    residual_structure = summarize_residual_structure(results)
+    honest_success = sum(1 for r in results if r.get("honest_success"))
+    self_application_successes = sum(1 for r in results if r.get("self_application_detected"))
 
     report = {
         "benchmark": {
             "total_theorems": n,
             "raw_success": raw_proved,
             "raw_success_rate": round(raw_proved / max(n, 1), 4),
+            "honest_success": honest_success,
+            "honest_success_rate": round(honest_success / max(n, 1), 4),
+            "self_application_successes": self_application_successes,
             "axle_assisted_success": 0,
             "axle_repair_only": 0,
             "failed": n - raw_proved,
+            "started_theorems": residual_structure["started_theorems"],
+            "skipped_start": residual_structure["skipped_start"],
+            "started_success_rate": residual_structure["started_success_rate"],
             "by_close_lane": lane_counts,
             "lane_activity": _summarize_lane_activity(results),
+            "residual_structure": residual_structure,
         },
         "efficiency": {
             "total_attempts": total_attempts,
@@ -686,6 +754,18 @@ def _print_summary(report: dict) -> None:
     print("\n=== Benchmark Results ===")
     print(f"  Theorems: {n}")
     print(f"  Raw success (Lane A only): {bm['raw_success']} ({100 * bm['raw_success_rate']:.1f}%)")
+    if bm.get("self_application_successes", 0):
+        print(
+            f"  Honest success (excluding self-application): "
+            f"{bm.get('honest_success', 0)} ({100 * bm.get('honest_success_rate', 0.0):.1f}%)"
+        )
+        print(f"  Self-application successes: {bm['self_application_successes']}")
+    if "started_theorems" in bm:
+        print(
+            f"  Started theorems: {bm['started_theorems']} "
+            f"(skip={bm.get('skipped_start', 0)})"
+        )
+        print(f"  Started success rate: {100 * bm.get('started_success_rate', 0.0):.1f}%")
     if bm.get("axle_assisted_success"):
         assisted = bm["axle_assisted_success"]
         print(f"  Axle-assisted success:     {assisted} ({100 * assisted / max(n, 1):.1f}%)")
@@ -700,6 +780,7 @@ def _print_summary(report: dict) -> None:
     if lanes:
         print("  --- Close lane breakdown ---")
         for lane in [
+            "self_application",
             "automation",
             "structural_core",
             "solver_bootstrap",
@@ -736,6 +817,23 @@ def _print_summary(report: dict) -> None:
                 f" rw={tactic_rows.get('rw_rows', 0)}"
                 f" rw_seq={tactic_rows.get('rw_seq_rows', 0)}"
             )
+    residual = bm.get("residual_structure", {})
+    if residual:
+        print("  --- Residual structure ---")
+        print(f"    progressed-but-unsolved: {residual.get('progressed_but_unsolved', 0)}")
+        print(f"    one-goal-left failures: {residual.get('one_goal_left_failures', 0)}")
+        for bucket in [
+            "skipped_start",
+            "single_goal_near_miss",
+            "single_goal_stall",
+            "multi_goal_small_progress",
+            "multi_goal_small_stall",
+            "multi_goal_large_progress",
+            "multi_goal_large_stall",
+        ]:
+            count = residual.get("by_residual_bucket", {}).get(bucket, 0)
+            if count > 0:
+                print(f"    {bucket}: {count}")
 
     print(f"  Avg attempts/theorem: {eff['avg_attempts_per_theorem']}")
     print(f"  Avg time/theorem: {eff['avg_time_per_theorem_s']:.2f}s")

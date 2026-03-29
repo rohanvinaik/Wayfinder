@@ -41,7 +41,6 @@ from scripts.run_benchmark import (
 )
 from src.proof_search import SearchConfig, SearchResult, search
 
-
 # ---------------------------------------------------------------------------
 # Per-theorem result
 # ---------------------------------------------------------------------------
@@ -66,7 +65,7 @@ class TheoremResult:
     rw_close_provenance: list[str] | None = None
     rw_tactics_used: list[str] | None = None
 
-    ib_success: bool = False           # interleaved_bootstrap only
+    ib_success: bool = False  # interleaved_bootstrap only
     ib_attempts: int = 0
     ib_time_s: float = 0.0
     ib_close_lane: str = ""
@@ -76,7 +75,7 @@ class TheoremResult:
     ib_simp_aesop_closes: int = 0
     ib_aesop_closes: int = 0
 
-    rw_ib_success: bool = False        # cosine_rw + interleaved_bootstrap
+    rw_ib_success: bool = False  # cosine_rw + interleaved_bootstrap
     rw_ib_attempts: int = 0
     rw_ib_time_s: float = 0.0
     rw_ib_close_lane: str = ""
@@ -90,9 +89,16 @@ def _dominant_lane(result: SearchResult) -> str:
     prov = result.close_provenance
     if not result.success:
         return "failed"
-    for label in ("learned", "interleaved_bootstrap", "cosine_simp",
-                  "cosine_rw_seq", "cosine_rw", "solver_bootstrap",
-                  "structural_core", "automation"):
+    for label in (
+        "learned",
+        "interleaved_bootstrap",
+        "cosine_simp",
+        "cosine_rw_seq",
+        "cosine_rw",
+        "solver_bootstrap",
+        "structural_core",
+        "automation",
+    ):
         if any(p == label or p.startswith(label) for p in prov):
             return label
     return prov[0] if prov else "unknown"
@@ -171,7 +177,11 @@ def _run_condition(
             res.ib_tactics_used = list(result.tactics_used)
             res.ib_simp_closes = _count_prov(result, "interleaved_bootstrap/simp")
             res.ib_simp_aesop_closes = _count_prov(result, "interleaved_bootstrap/simp_aesop")
-            res.ib_aesop_closes = _count_prov(result, "interleaved_bootstrap") - res.ib_simp_closes - res.ib_simp_aesop_closes
+            res.ib_aesop_closes = (
+                _count_prov(result, "interleaved_bootstrap")
+                - res.ib_simp_closes
+                - res.ib_simp_aesop_closes
+            )
         else:  # rw_ib
             res.rw_ib_success = result.success
             res.rw_ib_attempts = result.attempts
@@ -186,7 +196,9 @@ def _run_condition(
     return results
 
 
-def _merge(combined: list[TheoremResult], cond_results: list[TheoremResult], condition: str) -> None:
+def _merge(
+    combined: list[TheoremResult], cond_results: list[TheoremResult], condition: str
+) -> None:
     by_id = {r.theorem_id: r for r in cond_results}
     for res in combined:
         cr = by_id.get(res.theorem_id)
@@ -234,23 +246,25 @@ def _merge(combined: list[TheoremResult], cond_results: list[TheoremResult], con
 
 def print_report(results: list[TheoremResult]) -> None:
     n = len(results)
-    base_ok  = sum(r.baseline_success for r in results)
-    rw_ok    = sum(r.rw_success for r in results)
-    ib_ok    = sum(r.ib_success for r in results)
+    base_ok = sum(r.baseline_success for r in results)
+    rw_ok = sum(r.rw_success for r in results)
+    ib_ok = sum(r.ib_success for r in results)
     rw_ib_ok = sum(r.rw_ib_success for r in results)
 
-    ib_lost    = [r for r in results if r.baseline_success and not r.ib_success]
+    ib_lost = [r for r in results if r.baseline_success and not r.ib_success]
     rw_ib_lost = [r for r in results if r.baseline_success and not r.rw_ib_success]
-    ib_won     = [r for r in results if not r.baseline_success and r.ib_success]
-    rw_ib_won  = [r for r in results if not r.baseline_success and r.rw_ib_success]
+    ib_won = [r for r in results if not r.baseline_success and r.ib_success]
+    rw_ib_won = [r for r in results if not r.baseline_success and r.rw_ib_success]
 
-    ib_touched      = sum(1 for r in results if r.ib_simp_closes + r.ib_simp_aesop_closes + r.ib_aesop_closes > 0)
-    ib_simp_total   = sum(r.ib_simp_closes for r in results)
-    ib_sa_total     = sum(r.ib_simp_aesop_closes for r in results)
-    ib_aesop_total  = sum(r.ib_aesop_closes for r in results)
+    ib_touched = sum(
+        1 for r in results if r.ib_simp_closes + r.ib_simp_aesop_closes + r.ib_aesop_closes > 0
+    )
+    ib_simp_total = sum(r.ib_simp_closes for r in results)
+    ib_sa_total = sum(r.ib_simp_aesop_closes for r in results)
+    ib_aesop_total = sum(r.ib_aesop_closes for r in results)
 
-    rw_ib_touched   = sum(1 for r in results if r.rw_ib_simp_closes + r.rw_ib_simp_aesop_closes > 0)
-    rw_ib_sa_total  = sum(r.rw_ib_simp_aesop_closes for r in results)
+    rw_ib_touched = sum(1 for r in results if r.rw_ib_simp_closes + r.rw_ib_simp_aesop_closes > 0)
+    rw_ib_sa_total = sum(r.rw_ib_simp_aesop_closes for r in results)
 
     def calls(attr: str) -> int:
         return sum(getattr(r, attr) for r in results)
@@ -264,55 +278,65 @@ def print_report(results: list[TheoremResult]) -> None:
     print(f"\nTheorems: {n}")
     print(f"\n{'Condition':<45} {'Proved':>7} {'Rate':>7} {'Delta':>7}")
     print("-" * 68)
-    print(f"{'baseline':<45} {base_ok:>7} {100*base_ok/max(n,1):>6.1f}%       —")
-    print(f"{'+ cosine_rw':<45} {rw_ok:>7} {100*rw_ok/max(n,1):>6.1f}%  {rw_ok-base_ok:>+6}")
-    print(f"{'+ interleaved_bootstrap':<45} {ib_ok:>7} {100*ib_ok/max(n,1):>6.1f}%  {ib_ok-base_ok:>+6}")
-    print(f"{'+ cosine_rw + interleaved_bootstrap':<45} {rw_ib_ok:>7} {100*rw_ib_ok/max(n,1):>6.1f}%  {rw_ib_ok-base_ok:>+6}")
+    print(f"{'baseline':<45} {base_ok:>7} {100 * base_ok / max(n, 1):>6.1f}%       —")
+    print(f"{'+ cosine_rw':<45} {rw_ok:>7} {100 * rw_ok / max(n, 1):>6.1f}%  {rw_ok - base_ok:>+6}")
+    print(
+        f"{'+ interleaved_bootstrap':<45} {ib_ok:>7} {100 * ib_ok / max(n, 1):>6.1f}%  {ib_ok - base_ok:>+6}"
+    )
+    print(
+        f"{'+ cosine_rw + interleaved_bootstrap':<45} {rw_ib_ok:>7} {100 * rw_ib_ok / max(n, 1):>6.1f}%  {rw_ib_ok - base_ok:>+6}"
+    )
 
-    print(f"\nNo-regression check:")
+    print("\nNo-regression check:")
     print(f"  baseline proved, +ib lost:       {len(ib_lost)}")
     print(f"  baseline proved, +rw+ib lost:    {len(rw_ib_lost)}")
 
-    print(f"\ninterleaved_bootstrap lane activity (+ib condition):")
+    print("\ninterleaved_bootstrap lane activity (+ib condition):")
     print(f"  theorems touched:                {ib_touched}")
     print(f"  simp closes (partial progress):  {ib_simp_total}")
     print(f"  simp→aesop closes (full chain):  {ib_sa_total}")
     print(f"  aesop-direct closes:             {ib_aesop_total}")
     if ib_won:
-        print(f"\n  Theorems won by +ib (vs baseline):")
+        print("\n  Theorems won by +ib (vs baseline):")
         for r in ib_won:
             print(f"    {r.theorem_id}  (lane={r.ib_close_lane})")
 
-    print(f"\ninterleaved_bootstrap activity (+rw+ib condition):")
+    print("\ninterleaved_bootstrap activity (+rw+ib condition):")
     print(f"  theorems touched:                {rw_ib_touched}")
     print(f"  simp→aesop closes:               {rw_ib_sa_total}")
     if rw_ib_won:
-        print(f"\n  Theorems won by +rw+ib (vs baseline):")
+        print("\n  Theorems won by +rw+ib (vs baseline):")
         for r in rw_ib_won:
             print(f"    {r.theorem_id}  (lane={r.rw_ib_close_lane})")
 
     if ib_lost:
-        print(f"\n  Regressions in +ib vs baseline:")
+        print("\n  Regressions in +ib vs baseline:")
         for r in ib_lost:
             print(f"    {r.theorem_id}  (baseline_lane={r.baseline_close_lane})")
 
     c_base = calls("baseline_attempts")
-    c_rw   = calls("rw_attempts")
-    c_ib   = calls("ib_attempts")
+    c_rw = calls("rw_attempts")
+    c_ib = calls("ib_attempts")
     c_rwib = calls("rw_ib_attempts")
-    print(f"\nLean calls / theorem:")
-    print(f"  baseline:                        {c_base/max(n,1):.1f}  (total {c_base})")
-    print(f"  +cosine_rw:                      {c_rw/max(n,1):.1f}  (+{(c_rw-c_base)/max(n,1):.1f}/thm)")
-    print(f"  +interleaved_bootstrap:          {c_ib/max(n,1):.1f}  (+{(c_ib-c_base)/max(n,1):.1f}/thm)")
-    print(f"  +cosine_rw+interleaved:          {c_rwib/max(n,1):.1f}  (+{(c_rwib-c_base)/max(n,1):.1f}/thm)")
+    print("\nLean calls / theorem:")
+    print(f"  baseline:                        {c_base / max(n, 1):.1f}  (total {c_base})")
+    print(
+        f"  +cosine_rw:                      {c_rw / max(n, 1):.1f}  (+{(c_rw - c_base) / max(n, 1):.1f}/thm)"
+    )
+    print(
+        f"  +interleaved_bootstrap:          {c_ib / max(n, 1):.1f}  (+{(c_ib - c_base) / max(n, 1):.1f}/thm)"
+    )
+    print(
+        f"  +cosine_rw+interleaved:          {c_rwib / max(n, 1):.1f}  (+{(c_rwib - c_base) / max(n, 1):.1f}/thm)"
+    )
 
     t_base = t("baseline_time_s")
-    t_ib   = t("ib_time_s")
+    t_ib = t("ib_time_s")
     t_rwib = t("rw_ib_time_s")
-    print(f"\nTime / theorem:")
-    print(f"  baseline:                        {t_base/max(n,1):.1f}s")
-    print(f"  +interleaved_bootstrap:          {t_ib/max(n,1):.1f}s")
-    print(f"  +cosine_rw+interleaved:          {t_rwib/max(n,1):.1f}s")
+    print("\nTime / theorem:")
+    print(f"  baseline:                        {t_base / max(n, 1):.1f}s")
+    print(f"  +interleaved_bootstrap:          {t_ib / max(n, 1):.1f}s")
+    print(f"  +cosine_rw+interleaved:          {t_rwib / max(n, 1):.1f}s")
     print("=" * 72)
 
 
@@ -357,6 +381,7 @@ def main() -> None:
     encoder = None
     try:
         from sentence_transformers import SentenceTransformer
+
         encoder = SentenceTransformer("all-MiniLM-L6-v2")
         logger.info("Loaded MiniLM encoder")
     except ImportError:
@@ -392,20 +417,23 @@ def main() -> None:
     combined = [TheoremResult(theorem_id=t["theorem_id"], source=t["source"]) for t in theorems]
 
     for condition, cfg, enc, label in [
-        ("baseline", cfg_baseline, None,    "baseline"),
-        ("rw",       cfg_rw,       encoder, "+cosine_rw"),
-        ("ib",       cfg_ib,       None,    "+interleaved_bootstrap"),
-        ("rw_ib",    cfg_rw_ib,    encoder, "+cosine_rw +interleaved_bootstrap"),
+        ("baseline", cfg_baseline, None, "baseline"),
+        ("rw", cfg_rw, encoder, "+cosine_rw"),
+        ("ib", cfg_ib, None, "+interleaved_bootstrap"),
+        ("rw_ib", cfg_rw_ib, encoder, "+cosine_rw +interleaved_bootstrap"),
     ]:
         logger.info("Condition: %s (%d theorems)", label, len(theorems))
         t0 = time.time()
         cond_results = _run_condition(condition, theorems, cfg, pipeline, lean, conn, enc)
         elapsed = time.time() - t0
         proved = sum(
-            r.baseline_success if condition == "baseline" else
-            r.rw_success if condition == "rw" else
-            r.ib_success if condition == "ib" else
-            r.rw_ib_success
+            r.baseline_success
+            if condition == "baseline"
+            else r.rw_success
+            if condition == "rw"
+            else r.ib_success
+            if condition == "ib"
+            else r.rw_ib_success
             for r in cond_results
         )
         logger.info("  %d/%d proved in %.0fs", proved, len(theorems), elapsed)
@@ -417,13 +445,17 @@ def main() -> None:
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w") as f:
-        json.dump({
-            "experiment": "EXP-SIMP-039",
-            "ib_max_depth": args.ib_max_depth,
-            "ib_max_calls": args.ib_max_calls,
-            "n_theorems": len(combined),
-            "results": [asdict(r) for r in combined],
-        }, f, indent=2)
+        json.dump(
+            {
+                "experiment": "EXP-SIMP-039",
+                "ib_max_depth": args.ib_max_depth,
+                "ib_max_calls": args.ib_max_calls,
+                "n_theorems": len(combined),
+                "results": [asdict(r) for r in combined],
+            },
+            f,
+            indent=2,
+        )
     logger.info("Written to %s", output_path)
 
     print_report(combined)

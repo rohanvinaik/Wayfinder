@@ -2,8 +2,8 @@
 
 **Principal Investigator:** Rohan Vinaik
 **Research Partner:** Claude (Opus 4.6), Anthropic
-**Date:** March 10, 2026
-**Status:** v2.0 — Society of Mind architecture. v1.1 monolithic navigator trained (NAV-001/002). Pivoting to specialist decomposition.
+**Date:** March 26, 2026
+**Status:** v2.2 — publishable first-order baseline, tuned original / first-order SoM control substrate, deterministic Dr. Ducky residual executor, integrated hard-tail bridge, and benchmark-first second-order SoM program. The second-order SoM remains the final major empirical lift of the current research program rather than the already-canonical theorem-search runtime or the theoretical end of the architecture family.
 **Project:** Wayfinder — Navigational theorem proving for Lean 4
 
 ---
@@ -14,15 +14,37 @@ We propose a novel approach to neural theorem proving that treats proof search a
 
 **Navigational claim.** A structured semantic network — where mathematical entities (lemmas, tactics, proof states) are positioned along orthogonal signed dimensions and connected through a shared anchor dictionary — enables premise selection and proof search via deterministic symbolic operations (IDF-weighted set intersection, Bellman-Ford spreading activation, multiplicative bank alignment) that are faster, more auditable, and more precise than dense embedding retrieval.
 
-**Architectural claim.** A hybrid continuous-ternary architecture — with a continuous goal encoder, a learned information bottleneck, and a ternary {-1, 0, +1} navigational decoder — produces *directional coordinates in proof space* rather than vocabulary indices. In the current architecture those coordinates are best interpreted as theorem-level orchestration signals: lane routing, sketch-local family bias, and coarse premise frontier selection. Final local step choice is deferred to a small residual executor over post-structural goals, followed by a family-specific constrained decoder that emits typed action structure rather than raw Lean text. The neural network runs once per proof state; all subsequent search operations are pure arithmetic on structured data plus bounded local classification and constrained local synthesis over the collapsed frontier.
+**Architectural claim.** A hybrid continuous-ternary architecture — with a continuous goal encoder, a learned information bottleneck, and a ternary {-1, 0, +1} navigational decoder — produces *directional coordinates in proof space* rather than vocabulary indices. In the current architecture those coordinates are best interpreted as theorem-level orchestration signals: lane routing, sketch-local family bias, and coarse premise frontier selection. Final local step choice is deferred to a deterministic residual executor over post-structural goals (Dr. Ducky), followed by family-specific constrained execution that emits typed action structure rather than raw Lean text. The neural network runs once per proof state; all subsequent search operations are pure arithmetic on structured data plus bounded local classification and constrained local synthesis over the collapsed frontier.
 
 **Decomposition claim (v2).** Specification complexity theory provides a formal criterion for decomposing a monolithic proof search system into a *Society of Mind* architecture — multiple specialist models operating in typed temporal slots (PERCEPTION → RECOGNITION → PLANNING → TEMPORAL ORCHESTRATION → EXECUTION → VERIFICATION). The composition gap theorem (σ(A∘B) ≤ σ(A) + σ(B) + γ(A,B)) guarantees that when γ vanishes (independent specialists), total specification complexity is additive, not multiplicative. PAB stability per specialist serves as the empirical proxy for specification complexity, guiding decomposition until every component reaches the "stable" regime. Narrative construction converts hard proof structure prediction (Regime B, low symmetry, exponential σ) into tractable template classification (Regime A, high symmetry, polynomial σ).
+
+**Ceiling claim.** For mathematics that is already well-understood, rigorously defined, and expressible inside a fixed formal environment, Wayfinder should be read as a recursive proof-compilation architecture with a plausible path to practical completeness. The first-order system removes the cheap structural majority, the second-order system learns over the first residual manifold, and higher orders are justified only when they produce a strictly cleaner residual representation than the prior order. The current research program stops at second-order because that is the next major empirical lift, not because the design is theoretically capped there.
 
 **Epistemological claim.** The architecture produces measurable learning trajectories, enabling Process-Aware Benchmarking (PAB) to evaluate *how* it learns to navigate, not just whether proofs close. Progress prediction — estimating remaining proof steps — connects PAB's trajectory analysis to actionable training signals and search heuristics.
 
 The system draws on three distinct intellectual traditions: (1) the navigational semantic network architecture of ModelAtlas (Vinaik, 2025), which positions ML models in a structured coordinate system for deterministic similarity queries; (2) the hybrid continuous-ternary decoder of Balanced Sashimi (Vinaik & Claude, 2026), which uses {-1, 0, +1} weights for categorical decisions; and (3) the formal convergence guarantees of Mutation Theory (formalized in Lean 4), which proves trajectory monotonicity, phase transitions, and fixed-point partitions applicable to structured search processes.
 
 The experimental target is Lean 4 proof generation over Mathlib, evaluated against ReProver (Lean-Dojo), LeanProgress, and DeepSeek-Prover-V2 baselines.
+
+### 2026-03-26 Architectural Correction
+
+The project has now converged on a four-layer interpretation:
+
+1. **First-order theorem search**
+   - strong cheap main solver (`EXP-058` + validated 2-step residual extension)
+2. **Original / first-order SoM**
+   - deterministically tuned control substrate over theorem search
+   - includes `EXP-SOM-010`, `som_torch_v1`, temporal-control, and specialist-routing work
+3. **Dr. Ducky**
+   - deterministic 1.5th-order residual executor
+   - typed capsules, proof skeletons, theorem-faithful Lean replay, programmatic hole filling
+4. **Second-order SoM**
+   - learns orchestration over symbolic packets produced by the benchmark
+   - routes between compiler/startability repair, Dr. Ducky, residual planners, and escalation regimes
+
+This matters because some older design language can be misread in two different ways: either as if no SoM work had yet been done, or as if the second-order SoM were already the active theorem-search runtime. Neither is correct. The original / first-order SoM is real completed work. The current long-running hard benchmark is the data-generation pass that will train the later second-order SoM. Dr. Ducky is the executable local symbolic substrate underneath that future controller.
+
+The correct end-state claim is therefore recursive rather than one-shot. The current program aims to validate the second-order residual layer because that is the next major experiment. But the deeper architectural thesis is that formal proof search can be iteratively residualized: if a residual remains structured after one layer, it becomes the training and control surface for the next layer. On a fixed formal corpus, the relevant asymptotic target is not "a better next-token prover" but progressively cleaner residual proof objects until the remaining search problem becomes practically negligible.
 
 ### Practical Value Proposition
 
@@ -37,6 +59,21 @@ The research bet is therefore twofold:
 
 1. a verifier-backed hybrid system can make a large fraction of theorem-proving workloads operationally cheap; and
 2. the remaining hard cases become easier in practice because Wayfinder has already collapsed and instrumented the relevant solution space.
+
+### Practical Completeness on Fixed Formal Corpora
+
+The strongest version of the Wayfinder thesis should be stated carefully.
+
+- It is **not** a claim of literal omniscience over all conceivable mathematical truth.
+- It **is** a claim that, for mathematics already formalizable inside a fixed proof assistant and axiomatic environment, the architecture family has a plausible path to practical completeness.
+
+That stronger claim is possible because the target domain is unusually well behaved:
+
+- proofs are finite certificates
+- proof checking is decidable
+- unresolved theorems can be converted into typed residual objects rather than unstructured misses
+
+In that setting, higher-order continuation is not an escape hatch. It is the natural extension rule of the design. A third- or fourth-order layer is justified exactly when it makes the remaining proof gap smaller, more canonical, and more executable than the prior layer. The second-order SoM is therefore the last major lift of the **current program**, not the last possible representational order of the architecture family.
 
 ### Architectural Correction From Current Experiments
 

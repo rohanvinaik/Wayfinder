@@ -323,8 +323,13 @@ def resolve_landmarks(
 
     for pass_idx in range(max_passes):
         residual = compute_residual(
-            frozen, query.prefer_anchors, query.prefer_weights,
-            data, idf_cache, ambiguous, nbr_sigs,
+            frozen,
+            query.prefer_anchors,
+            query.prefer_weights,
+            data,
+            idf_cache,
+            ambiguous,
+            nbr_sigs,
         )
 
         # Convergence check (after first pass)
@@ -338,7 +343,12 @@ def resolve_landmarks(
         prev_coverage = residual.query_coverage
 
         resolved = resolve_ambiguous_landmarks(
-            frozen, residual, ambiguous, data, nbr_sigs, idf_cache,
+            frozen,
+            residual,
+            ambiguous,
+            data,
+            nbr_sigs,
+            idf_cache,
         )
         resolve_passes += 1
 
@@ -360,9 +370,7 @@ def resolve_landmarks(
 
         # Update ambiguous pool: remove promoted, keep remaining + unpromoted
         promoted_ids = {h.entity_id for h in newly_validated}
-        ambiguous = [
-            h for h in ambiguous if h.entity_id not in promoted_ids
-        ]
+        ambiguous = [h for h in ambiguous if h.entity_id not in promoted_ids]
 
         # On last pass, add all remaining resolved
         if pass_idx == max_passes - 1:
@@ -429,7 +437,8 @@ def resolve_landmarks(
     trace.convergence_distribution = dict(conv_dist)
 
     trace.hub_suppressed_count = sum(
-        1 for hyp in hypotheses
+        1
+        for hyp in hypotheses
         if any(v.selector_name == "hub_suppressor" and v.vote == -1 for v in hyp.votes)
     )
 

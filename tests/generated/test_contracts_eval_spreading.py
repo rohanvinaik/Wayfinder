@@ -5,12 +5,14 @@ from __future__ import annotations
 
 # Source module: scripts.eval_spreading
 
+
 # from scripts.eval_spreading import load_config
 def test_load_config_returns_dict() -> None:
     """Contract: load_config returns dict."""
     # TODO: Provide valid arguments
     # result = load_config(...)
     # assert isinstance(result, dict)
+
 
 # from scripts.eval_spreading import load_config
 def test_load_config_file_io(tmp_path) -> None:
@@ -20,12 +22,14 @@ def test_load_config_file_io(tmp_path) -> None:
     # TODO: call load_config(str(test_file)) and assert result
     pass
 
+
 # from scripts.eval_spreading import load_modules
 def test_load_modules_returns_dict() -> None:
     """Contract: load_modules returns dict."""
     # TODO: Provide valid arguments
     # result = load_modules(..., ..., ...)
     # assert isinstance(result, dict)
+
 
 # from scripts.eval_spreading import get_seed_entities
 def test_get_seed_entities_returns_list_int() -> None:
@@ -34,12 +38,14 @@ def test_get_seed_entities_returns_list_int() -> None:
     # result = get_seed_entities(..., ...)
     # assert isinstance(result, list)
 
+
 # from scripts.eval_spreading import retrieve_premises
 def test_retrieve_premises_returns_list_str() -> None:
     """Contract: retrieve_premises returns list[str]."""
     # TODO: Provide valid arguments
     # result = retrieve_premises(..., ..., ..., ..., ...)
     # assert isinstance(result, list)
+
 
 # from scripts.eval_spreading import compute_recall
 def test_compute_recall_returns_float() -> None:
@@ -48,12 +54,14 @@ def test_compute_recall_returns_float() -> None:
     # result = compute_recall(..., ..., ...)
     # assert isinstance(result, (int, float))
 
+
 # from scripts.eval_spreading import evaluate
 def test_evaluate_returns_dict() -> None:
     """Contract: evaluate returns dict."""
     # TODO: Provide valid arguments
     # result = evaluate(..., ..., ..., ...)
     # assert isinstance(result, dict)
+
 
 # from scripts.eval_spreading import evaluate
 def test_evaluate_http() -> None:
@@ -67,6 +75,7 @@ def test_evaluate_http() -> None:
     with patch("requests.get", return_value=mock_resp):
         pass  # TODO: call evaluate with valid args and assert result
 
+
 # from scripts.eval_spreading import main
 def test_main_file_io(tmp_path) -> None:
     """Contract: main handles file I/O."""
@@ -74,4 +83,3 @@ def test_main_file_io(tmp_path) -> None:
     test_file.write_text("test content")
     # TODO: call main(str(test_file)) and assert result
     pass
-

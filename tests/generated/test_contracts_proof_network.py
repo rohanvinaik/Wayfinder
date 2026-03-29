@@ -9,12 +9,14 @@ from __future__ import annotations
 # Detected I/O: sqlite3.connect
 # Suggested: mock sqlite3.connect and assert return handling
 
+
 # from src.proof_network import navigate
 def test_navigate_returns_list_scoredentity() -> None:
     """Contract: navigate returns list[ScoredEntity]."""
     # TODO: Provide valid arguments
     # result = navigate(..., ..., ..., ..., ...)
     # assert isinstance(result, list)
+
 
 # from src.proof_network import navigate
 def test_navigate_http() -> None:
@@ -28,10 +30,10 @@ def test_navigate_http() -> None:
     with patch("requests.get", return_value=mock_resp):
         pass  # TODO: call navigate with valid args and assert result
 
+
 # from src.proof_network import get_accessible_premises
 def test_get_accessible_premises_returns_set_int() -> None:
     """Contract: get_accessible_premises returns set[int]."""
     # TODO: Provide valid arguments
     # result = get_accessible_premises(..., ...)
     # assert isinstance(result, set)
-

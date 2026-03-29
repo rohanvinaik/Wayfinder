@@ -16,12 +16,12 @@ import unittest
 
 from src.nav_contracts import BANK_NAMES, ScoredEntity, StructuredQuery
 from src.proof_network import (
-    _DataCache,
     _MISSING_BANK_SCORE,
     _SCHEMA_SQL,
     _compute_anchor_score,
     _compute_bank_score,
     _compute_seed_score,
+    _DataCache,
     _score_candidates,
     bank_score,
     clear_caches,

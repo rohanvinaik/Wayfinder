@@ -11,6 +11,7 @@ def test_extract_entity_returns_expected_output() -> None:
     result = extract_entity(...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
 
+
 def test_extract_entity_boundary_values() -> None:
     """Test extract_entity with edge cases that mutation testing targets."""
     # Boundary: theorem
@@ -19,11 +20,11 @@ def test_extract_entity_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_extract_premise_entity_returns_expected_output() -> None:
     """Test extract_premise_entity with valid input."""
     result = extract_premise_entity(..., ..., ..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_extract_premise_entity_boundary_values() -> None:
     """Test extract_premise_entity with edge cases that mutation testing targets."""
@@ -35,11 +36,7 @@ def test_extract_premise_entity_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_main_returns_expected_output() -> None:
     """Test main with valid input."""
     result = main()
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
-
-
-

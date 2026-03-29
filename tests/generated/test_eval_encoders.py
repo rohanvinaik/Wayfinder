@@ -18,6 +18,7 @@ def test_resolve_model_path_returns_expected_output() -> None:
     result = resolve_model_path(..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
 
+
 def test_resolve_model_path_boundary_values() -> None:
     """Test resolve_model_path with edge cases that mutation testing targets."""
     # Boundary: model_name
@@ -27,11 +28,11 @@ def test_resolve_model_path_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_load_goal_states_returns_expected_output() -> None:
     """Test load_goal_states with valid input."""
     result = load_goal_states(..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_load_goal_states_boundary_values() -> None:
     """Test load_goal_states with edge cases that mutation testing targets."""
@@ -42,11 +43,11 @@ def test_load_goal_states_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_check_tokenizer_coverage_returns_expected_output() -> None:
     """Test check_tokenizer_coverage with valid input."""
     result = check_tokenizer_coverage(...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_check_tokenizer_coverage_boundary_values() -> None:
     """Test check_tokenizer_coverage with edge cases that mutation testing targets."""
@@ -56,11 +57,11 @@ def test_check_tokenizer_coverage_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_evaluate_model_returns_expected_output() -> None:
     """Test evaluate_model with valid input."""
     result = evaluate_model(..., ..., ..., ...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_evaluate_model_boundary_values() -> None:
     """Test evaluate_model with edge cases that mutation testing targets."""
@@ -72,11 +73,11 @@ def test_evaluate_model_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_print_comparison_table_returns_expected_output() -> None:
     """Test print_comparison_table with valid input."""
     result = print_comparison_table(...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
+
 
 def test_print_comparison_table_boundary_values() -> None:
     """Test print_comparison_table with edge cases that mutation testing targets."""
@@ -86,11 +87,7 @@ def test_print_comparison_table_boundary_values() -> None:
     assert result == EXPECTED  # TODO: Replace with actual expected value
 
 
-
 def test_main_returns_expected_output() -> None:
     """Test main with valid input."""
     result = main()
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
-
-
-

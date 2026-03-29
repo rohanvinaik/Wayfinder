@@ -15,6 +15,7 @@ Metrics reported:
   Lean calls/example
   Failure taxonomy by step index (rewrite_pattern_not_found, identifier_scope, etc.)
 """
+
 from __future__ import annotations
 
 import argparse
@@ -119,7 +120,13 @@ def load_rw3_bare_examples(path: str, step0_only: bool = True, limit: int = 0) -
             if step0_only and ex.get("step_index", 0) != 0:
                 continue
             examples.append(ex)
-    examples.sort(key=lambda x: (x.get("file_path", ""), x.get("theorem_full_name", ""), x.get("step_index", 0)))
+    examples.sort(
+        key=lambda x: (
+            x.get("file_path", ""),
+            x.get("theorem_full_name", ""),
+            x.get("step_index", 0),
+        )
+    )
     if limit > 0:
         examples = examples[:limit]
     return examples
@@ -209,11 +216,12 @@ class StepRecord:
 @dataclass
 class SeqResult:
     """Per-condition sequential execution result."""
-    condition: str = ""           # oracle_seq | cosine_seq | oracle1_cosine_rest
+
+    condition: str = ""  # oracle_seq | cosine_seq | oracle1_cosine_rest
     n_atoms: int = 0
     steps: list[StepRecord] = field(default_factory=list)
     full_seq_accept: bool = False
-    divergence_step: int = -1     # step index of first failure (-1 if fully succeeded)
+    divergence_step: int = -1  # step index of first failure (-1 if fully succeeded)
     total_lean_calls: int = 0
 
 
@@ -236,8 +244,14 @@ def _run_oracle_seq(
         tac = build_rw_tactic(full_name, direction)
 
         ok, new_goal, err, crashed = try_tactic_safe(kernel, goal, tac, goal_id=goal_id)
-        sr = StepRecord(step_idx=i, tactic=tac, success=ok, error=err,
-                        error_category=_categorize_error(err) if not ok else "", lean_calls=1)
+        sr = StepRecord(
+            step_idx=i,
+            tactic=tac,
+            success=ok,
+            error=err,
+            error_category=_categorize_error(err) if not ok else "",
+            lean_calls=1,
+        )
         res.steps.append(sr)
         res.total_lean_calls += 1
 
@@ -271,7 +285,7 @@ def _run_cosine_seq(
     encoder,
     max_scope_premises: int,
     cosine_topk: int,
-    first_atom_tactic: str = "",   # if set, use this for step 0 instead of cosine
+    first_atom_tactic: str = "",  # if set, use this for step 0 instead of cosine
 ) -> SeqResult:
     """At each step: refresh scope, rerank, try cosine top-k (both dirs)."""
     condition = "oracle1_cosine_rest" if first_atom_tactic else "cosine_seq"
@@ -287,7 +301,7 @@ def _run_cosine_seq(
         lean_calls = 0
         step_ok = False
         step_tac = ""
-        step_err = ""   # set on failure; pre-initialized so it's always bound
+        step_err = ""  # set on failure; pre-initialized so it's always bound
         new_goal = ""
         err = ""
 
@@ -296,8 +310,14 @@ def _run_cosine_seq(
             ok, ng, err, crashed = try_tactic_safe(kernel, goal, first_atom_tactic, goal_id=goal_id)
             lean_calls += 1
             if crashed or not ok:
-                sr = StepRecord(step_idx=i, tactic=first_atom_tactic, success=False,
-                                error=err, error_category=_categorize_error(err), lean_calls=lean_calls)
+                sr = StepRecord(
+                    step_idx=i,
+                    tactic=first_atom_tactic,
+                    success=False,
+                    error=err,
+                    error_category=_categorize_error(err),
+                    lean_calls=lean_calls,
+                )
                 res.steps.append(sr)
                 res.total_lean_calls += lean_calls
                 res.divergence_step = i
@@ -314,8 +334,14 @@ def _run_cosine_seq(
                     ok, ng, err, crashed = try_tactic_safe(kernel, goal, tac, goal_id=goal_id)
                     lean_calls += 1
                     if crashed:
-                        sr = StepRecord(step_idx=i, tactic=tac, success=False,
-                                        error=err, error_category="server_crash", lean_calls=lean_calls)
+                        sr = StepRecord(
+                            step_idx=i,
+                            tactic=tac,
+                            success=False,
+                            error=err,
+                            error_category="server_crash",
+                            lean_calls=lean_calls,
+                        )
                         res.steps.append(sr)
                         res.total_lean_calls += lean_calls
                         res.divergence_step = i
@@ -331,9 +357,14 @@ def _run_cosine_seq(
             if not step_ok:
                 step_err = err
 
-        sr = StepRecord(step_idx=i, tactic=step_tac, success=step_ok,
-                        error=step_err, error_category=_categorize_error(step_err) if not step_ok else "",
-                        lean_calls=lean_calls)
+        sr = StepRecord(
+            step_idx=i,
+            tactic=step_tac,
+            success=step_ok,
+            error=step_err,
+            error_category=_categorize_error(step_err) if not step_ok else "",
+            lean_calls=lean_calls,
+        )
         res.steps.append(sr)
         res.total_lean_calls += lean_calls
 
@@ -464,22 +495,38 @@ def run_one_example(
     res.oracle_full = oracle_r.full_seq_accept
     res.oracle_divergence = oracle_r.divergence_step
     res.oracle_lean_calls = oracle_r.total_lean_calls
-    res.oracle_step_errors = [(s.step_idx, s.error_category) for s in oracle_r.steps if not s.success]
+    res.oracle_step_errors = [
+        (s.step_idx, s.error_category) for s in oracle_r.steps if not s.success
+    ]
 
     # --- cosine_seq ---
     cosine_r = _run_cosine_seq(
-        atoms, goal_str, goal_id, kernel, premise_names, encoder,
-        max_scope_premises, cosine_topk,
+        atoms,
+        goal_str,
+        goal_id,
+        kernel,
+        premise_names,
+        encoder,
+        max_scope_premises,
+        cosine_topk,
     )
     res.cosine_full = cosine_r.full_seq_accept
     res.cosine_divergence = cosine_r.divergence_step
     res.cosine_lean_calls = cosine_r.total_lean_calls
-    res.cosine_step_errors = [(s.step_idx, s.error_category) for s in cosine_r.steps if not s.success]
+    res.cosine_step_errors = [
+        (s.step_idx, s.error_category) for s in cosine_r.steps if not s.success
+    ]
 
     # --- oracle1_cosine_rest ---
     oc_r = _run_cosine_seq(
-        atoms, goal_str, goal_id, kernel, premise_names, encoder,
-        max_scope_premises, cosine_topk,
+        atoms,
+        goal_str,
+        goal_id,
+        kernel,
+        premise_names,
+        encoder,
+        max_scope_premises,
+        cosine_topk,
         first_atom_tactic=oracle_first_tac,
     )
     res.oc_rest_full = oc_r.full_seq_accept
@@ -509,7 +556,7 @@ def print_report(results: list[Rw3SeqResult], total: int) -> None:
     print("rw3 Sequential Composition Benchmark (EXP-RW-035)")
     print("=" * 65)
     print(f"\nExamples (all-bare rw3, step-0): {total}")
-    print(f"GoalStart@rw3_bare: {n}/{total} ({100*n/max(total,1):.1f}%)")
+    print(f"GoalStart@rw3_bare: {n}/{total} ({100 * n / max(total, 1):.1f}%)")
     if fail_cats:
         for cat, cnt in fail_cats.most_common():
             print(f"  {cat}: {cnt}")
@@ -518,27 +565,33 @@ def print_report(results: list[Rw3SeqResult], total: int) -> None:
 
     print(f"\n{'Condition':<40} {'FullSeq':>10} {'Rate':>7}")
     print("-" * 60)
-    print(f"{'Oracle step-by-step':<40} {oracle_full:>10} {100*oracle_full/n:>6.1f}%")
-    print(f"{'Cosine-5 sequential':<40} {cosine_full:>10} {100*cosine_full/n:>6.1f}%")
-    print(f"{'Oracle-1 + cosine-rest':<40} {oc_full:>10} {100*oc_full/n:>6.1f}%")
+    print(f"{'Oracle step-by-step':<40} {oracle_full:>10} {100 * oracle_full / n:>6.1f}%")
+    print(f"{'Cosine-5 sequential':<40} {cosine_full:>10} {100 * cosine_full / n:>6.1f}%")
+    print(f"{'Oracle-1 + cosine-rest':<40} {oc_full:>10} {100 * oc_full / n:>6.1f}%")
 
-    print(f"\nAccept@k (fraction where first k steps all succeeded):")
+    print("\nAccept@k (fraction where first k steps all succeeded):")
     print(f"{'k':<6} {'Oracle':>10} {'Cosine-5':>10} {'Oracle1+CRest':>14}")
     for k in range(1, 6):
         o_k = sum(1 for r in started if r.oracle_divergence == -1 or r.oracle_divergence >= k)
         c_k = sum(1 for r in started if r.cosine_divergence == -1 or r.cosine_divergence >= k)
         oc_k = sum(1 for r in started if r.oc_rest_divergence == -1 or r.oc_rest_divergence >= k)
-        print(f"  k={k}  {o_k:>6}/{n} {100*o_k/n:>5.1f}%   {c_k:>6}/{n} {100*c_k/n:>5.1f}%   {oc_k:>6}/{n} {100*oc_k/n:>5.1f}%")
+        print(
+            f"  k={k}  {o_k:>6}/{n} {100 * o_k / n:>5.1f}%   {c_k:>6}/{n} {100 * c_k / n:>5.1f}%   {oc_k:>6}/{n} {100 * oc_k / n:>5.1f}%"
+        )
 
     # Mean divergence step
     oracle_divs = [r.oracle_divergence for r in started if r.oracle_divergence >= 0]
     cosine_divs = [r.cosine_divergence for r in started if r.cosine_divergence >= 0]
     oc_divs = [r.oc_rest_divergence for r in started if r.oc_rest_divergence >= 0]
-    print(f"\nMean divergence step (among failures):")
+    print("\nMean divergence step (among failures):")
     if oracle_divs:
-        print(f"  Oracle:           {np.mean(oracle_divs):.2f} (median {np.median(oracle_divs):.0f})")
+        print(
+            f"  Oracle:           {np.mean(oracle_divs):.2f} (median {np.median(oracle_divs):.0f})"
+        )
     if cosine_divs:
-        print(f"  Cosine-5:         {np.mean(cosine_divs):.2f} (median {np.median(cosine_divs):.0f})")
+        print(
+            f"  Cosine-5:         {np.mean(cosine_divs):.2f} (median {np.median(cosine_divs):.0f})"
+        )
     if oc_divs:
         print(f"  Oracle1+CRest:    {np.mean(oc_divs):.2f} (median {np.median(oc_divs):.0f})")
 
@@ -548,7 +601,7 @@ def print_report(results: list[Rw3SeqResult], total: int) -> None:
         for step_idx, cat in r.oracle_step_errors:
             oracle_err_by_step[step_idx][cat] += 1
     if oracle_err_by_step:
-        print(f"\nOracle failure taxonomy by step index:")
+        print("\nOracle failure taxonomy by step index:")
         for step in sorted(oracle_err_by_step)[:6]:
             cats = oracle_err_by_step[step].most_common()
             cat_str = ", ".join(f"{c}:{v}" for c, v in cats)
@@ -558,23 +611,25 @@ def print_report(results: list[Rw3SeqResult], total: int) -> None:
     o_calls = sum(r.oracle_lean_calls for r in started)
     c_calls = sum(r.cosine_lean_calls for r in started)
     oc_calls = sum(r.oc_rest_lean_calls for r in started)
-    print(f"\nLean call budget (per started example):")
-    print(f"  Oracle seq:        {o_calls/n:.1f}")
-    print(f"  Cosine-5 seq:      {c_calls/n:.1f}")
-    print(f"  Oracle1+CRest:     {oc_calls/n:.1f}")
+    print("\nLean call budget (per started example):")
+    print(f"  Oracle seq:        {o_calls / n:.1f}")
+    print(f"  Cosine-5 seq:      {c_calls / n:.1f}")
+    print(f"  Oracle1+CRest:     {oc_calls / n:.1f}")
 
     # Per atom-count breakdown
     atom_groups = sorted(set(r.n_atoms for r in started))
-    print(f"\nFullSeqAccept by atom count:")
+    print("\nFullSeqAccept by atom count:")
     print(f"  {'atoms':<8} {'N':>5} {'Oracle':>10} {'Cosine5':>10} {'OC-rest':>10}")
     for k in atom_groups:
         grp = [r for r in started if r.n_atoms == k]
         o_k = sum(r.oracle_full for r in grp)
         c_k = sum(r.cosine_full for r in grp)
         oc_k = sum(r.oc_rest_full for r in grp)
-        print(f"  {k:<8} {len(grp):>5} {o_k:>6}/{len(grp)} {100*o_k/len(grp):>4.0f}%  "
-              f"{c_k:>6}/{len(grp)} {100*c_k/len(grp):>4.0f}%  "
-              f"{oc_k:>6}/{len(grp)} {100*oc_k/len(grp):>4.0f}%")
+        print(
+            f"  {k:<8} {len(grp):>5} {o_k:>6}/{len(grp)} {100 * o_k / len(grp):>4.0f}%  "
+            f"{c_k:>6}/{len(grp)} {100 * c_k / len(grp):>4.0f}%  "
+            f"{oc_k:>6}/{len(grp)} {100 * oc_k / len(grp):>4.0f}%"
+        )
 
     elapsed = [r.elapsed_s for r in results if r.elapsed_s > 0]
     if elapsed:
@@ -587,16 +642,32 @@ def print_report(results: list[Rw3SeqResult], total: int) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _worker_cmd(args: argparse.Namespace, shard_index: int, num_shards: int, shard_out: str) -> list[str]:
+def _worker_cmd(
+    args: argparse.Namespace, shard_index: int, num_shards: int, shard_out: str
+) -> list[str]:
     cmd = [
-        sys.executable, "-m", "scripts.run_rw3_sequential",
-        "--worker", "--shard-index", str(shard_index), "--num-shards", str(num_shards),
-        "--output", shard_out,
-        "--data", args.data, "--db", args.db,
-        "--lean-project", args.lean_project,
-        "--cosine-topk", str(args.cosine_topk),
-        "--max-scope-premises", str(args.max_scope_premises),
-        "--restart-every", str(args.restart_every),
+        sys.executable,
+        "-m",
+        "scripts.run_rw3_sequential",
+        "--worker",
+        "--shard-index",
+        str(shard_index),
+        "--num-shards",
+        str(num_shards),
+        "--output",
+        shard_out,
+        "--data",
+        args.data,
+        "--db",
+        args.db,
+        "--lean-project",
+        args.lean_project,
+        "--cosine-topk",
+        str(args.cosine_topk),
+        "--max-scope-premises",
+        str(args.max_scope_premises),
+        "--restart-every",
+        str(args.restart_every),
     ]
     if args.limit > 0:
         cmd += ["--limit", str(args.limit)]
@@ -634,24 +705,36 @@ def run_parallel(args: argparse.Namespace) -> None:
                 for line in f:
                     if line.strip():
                         merged.append(json.loads(line))
-    merged.sort(key=lambda d: (d.get("file_path", ""), d.get("theorem_full_name", ""), d.get("step_index", 0)))
+    merged.sort(
+        key=lambda d: (
+            d.get("file_path", ""),
+            d.get("theorem_full_name", ""),
+            d.get("step_index", 0),
+        )
+    )
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "w") as f:
         for row in merged:
             f.write(json.dumps(row) + "\n")
 
-    results = [Rw3SeqResult(**{k: v for k, v in row.items() if k in Rw3SeqResult.__dataclass_fields__})
-               for row in merged]
+    results = [
+        Rw3SeqResult(**{k: v for k, v in row.items() if k in Rw3SeqResult.__dataclass_fields__})
+        for row in merged
+    ]
     print_report(results, len(results))
 
 
 def run_worker(args: argparse.Namespace) -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
-    examples = load_rw3_bare_examples(args.data, step0_only=not args.include_step_gt0, limit=args.limit)
+    examples = load_rw3_bare_examples(
+        args.data, step0_only=not args.include_step_gt0, limit=args.limit
+    )
     if args.num_shards > 1:
         examples = [ex for i, ex in enumerate(examples) if i % args.num_shards == args.shard_index]
-    logger.info("Worker shard %d/%d: %d examples", args.shard_index + 1, args.num_shards, len(examples))
+    logger.info(
+        "Worker shard %d/%d: %d examples", args.shard_index + 1, args.num_shards, len(examples)
+    )
 
     conn = sqlite3.connect(args.db)
     id_to_name, name_to_id = load_entity_maps(conn)
@@ -659,14 +742,19 @@ def run_worker(args: argparse.Namespace) -> None:
     encoder = None
     try:
         from sentence_transformers import SentenceTransformer
+
         encoder = SentenceTransformer("all-MiniLM-L6-v2")
     except ImportError:
         logger.warning("sentence-transformers not available")
 
-    kernel = LeanKernel(LeanConfig(
-        backend="pantograph", timeout=120,
-        project_root=args.lean_project, imports=["Mathlib"],
-    ))
+    kernel = LeanKernel(
+        LeanConfig(
+            backend="pantograph",
+            timeout=120,
+            project_root=args.lean_project,
+            imports=["Mathlib"],
+        )
+    )
 
     results: list[Rw3SeqResult] = []
     out_path = Path(args.output)
@@ -686,9 +774,13 @@ def run_worker(args: argparse.Namespace) -> None:
 
             try:
                 res = run_one_example(
-                    example=ex, kernel=kernel, conn=conn,
-                    id_to_name=id_to_name, name_to_id=name_to_id,
-                    encoder=encoder, project_root=args.lean_project,
+                    example=ex,
+                    kernel=kernel,
+                    conn=conn,
+                    id_to_name=id_to_name,
+                    name_to_id=name_to_id,
+                    encoder=encoder,
+                    project_root=args.lean_project,
                     max_scope_premises=args.max_scope_premises,
                     cosine_topk=args.cosine_topk,
                 )
@@ -715,7 +807,9 @@ def run_worker(args: argparse.Namespace) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="rw3 sequential composition benchmark (EXP-RW-035)")
+    parser = argparse.ArgumentParser(
+        description="rw3 sequential composition benchmark (EXP-RW-035)"
+    )
     parser.add_argument("--data", default="data/canonical/canonical_rw_eval.jsonl")
     parser.add_argument("--db", default="data/proof_network.db")
     parser.add_argument("--lean-project", default="data/lean_project/")

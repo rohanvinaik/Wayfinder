@@ -11,12 +11,10 @@ def test_get_encoder_model_name_returns_expected_output() -> None:
     result = get_encoder_model_name(...)
     assert result == EXPECTED  # TODO: Replace EXPECTED with the actual expected value
 
+
 def test_get_encoder_model_name_boundary_values() -> None:
     """Test get_encoder_model_name with edge cases that mutation testing targets."""
     # Boundary: config
     # TODO: Test with boundary inputs (0, -1, empty string, None)
     result = get_encoder_model_name(...)
     assert result == EXPECTED  # TODO: Replace with actual expected value
-
-
-

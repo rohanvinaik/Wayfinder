@@ -8,4 +8,3 @@ from __future__ import annotations
 # TODO: Mock-based contract for main
 # Detected I/O: mkdir
 # Suggested: mock mkdir and assert return handling
-

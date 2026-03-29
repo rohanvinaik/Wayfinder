@@ -5,12 +5,14 @@ from __future__ import annotations
 
 # Source module: scripts.eval_retrieval
 
+
 # from scripts.eval_retrieval import load_config
 def test_load_config_returns_dict() -> None:
     """Contract: load_config returns dict."""
     # TODO: Provide valid arguments
     # result = load_config(...)
     # assert isinstance(result, dict)
+
 
 # from scripts.eval_retrieval import load_config
 def test_load_config_file_io(tmp_path) -> None:
@@ -20,12 +22,14 @@ def test_load_config_file_io(tmp_path) -> None:
     # TODO: call load_config(str(test_file)) and assert result
     pass
 
+
 # from scripts.eval_retrieval import load_checkpoint
 def test_load_checkpoint_returns_dict() -> None:
     """Contract: load_checkpoint returns dict."""
     # TODO: Provide valid arguments
     # result = load_checkpoint(..., ..., ...)
     # assert isinstance(result, dict)
+
 
 # from scripts.eval_retrieval import nav_retrieve
 def test_nav_retrieve_returns_list_str() -> None:
@@ -34,12 +38,14 @@ def test_nav_retrieve_returns_list_str() -> None:
     # result = nav_retrieve(..., ..., ..., ...)
     # assert isinstance(result, list)
 
+
 # from scripts.eval_retrieval import dense_retrieve
 def test_dense_retrieve_returns_list_str() -> None:
     """Contract: dense_retrieve returns list[str]."""
     # TODO: Provide valid arguments
     # result = dense_retrieve(..., ..., ..., ..., ...)
     # assert isinstance(result, list)
+
 
 # from scripts.eval_retrieval import compute_recall_at_k
 def test_compute_recall_at_k_returns_float() -> None:
@@ -48,12 +54,14 @@ def test_compute_recall_at_k_returns_float() -> None:
     # result = compute_recall_at_k(..., ..., ...)
     # assert isinstance(result, (int, float))
 
+
 # from scripts.eval_retrieval import compute_universe_coverage
 def test_compute_universe_coverage_returns_tuple_float_list_str_list_str() -> None:
     """Contract: compute_universe_coverage returns tuple[float, list[str], list[str]]."""
     # TODO: Provide valid arguments
     # result = compute_universe_coverage(..., ...)
     # assert isinstance(result, tuple)
+
 
 # from scripts.eval_retrieval import compute_conditional_recall_at_k
 def test_compute_conditional_recall_at_k_returns_float() -> None:
@@ -62,12 +70,14 @@ def test_compute_conditional_recall_at_k_returns_float() -> None:
     # result = compute_conditional_recall_at_k(..., ..., ..., ...)
     # assert isinstance(result, (int, float))
 
+
 # from scripts.eval_retrieval import evaluate
 def test_evaluate_returns_dict() -> None:
     """Contract: evaluate returns dict."""
     # TODO: Provide valid arguments
     # result = evaluate(..., ..., ..., ..., ...)
     # assert isinstance(result, dict)
+
 
 # from scripts.eval_retrieval import evaluate
 def test_evaluate_http() -> None:
@@ -81,6 +91,7 @@ def test_evaluate_http() -> None:
     with patch("requests.get", return_value=mock_resp):
         pass  # TODO: call evaluate with valid args and assert result
 
+
 # from scripts.eval_retrieval import main
 def test_main_file_io(tmp_path) -> None:
     """Contract: main handles file I/O."""
@@ -88,4 +99,3 @@ def test_main_file_io(tmp_path) -> None:
     test_file.write_text("test content")
     # TODO: call main(str(test_file)) and assert result
     pass
-

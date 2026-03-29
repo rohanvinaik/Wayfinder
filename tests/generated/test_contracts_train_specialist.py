@@ -5,12 +5,14 @@ from __future__ import annotations
 
 # Source module: scripts.train_specialist
 
+
 # from scripts.train_specialist import train_specialist
 def test_train_specialist_returns_dict() -> None:
     """Contract: train_specialist returns dict."""
     # TODO: Provide valid arguments
     # result = train_specialist(..., ..., ..., ..., ..., ...)
     # assert isinstance(result, dict)
+
 
 # from scripts.train_specialist import train_specialist
 def test_train_specialist_http() -> None:
@@ -33,6 +35,7 @@ def test_train_specialist_file_io(tmp_path) -> None:
     # TODO: call train_specialist(str(test_file)) and assert result
     pass
 
+
 # from scripts.train_specialist import main
 def test_main_file_io(tmp_path) -> None:
     """Contract: main handles file I/O."""
@@ -40,4 +43,3 @@ def test_main_file_io(tmp_path) -> None:
     test_file.write_text("test content")
     # TODO: call main(str(test_file)) and assert result
     pass
-

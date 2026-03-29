@@ -16,7 +16,6 @@ class TestCheckpointDataConfig:
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
 
 
-
 class Test_CoreAccumConfig:
     """Configuration tests for _CoreAccum."""
 
@@ -25,7 +24,6 @@ class Test_CoreAccumConfig:
         obj = _CoreAccum()
         # TODO: Assert specific field values, not just existence
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
-
 
 
 class Test_TierAccumConfig:
@@ -38,7 +36,6 @@ class Test_TierAccumConfig:
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
 
 
-
 class Test_AuxAccumConfig:
     """Configuration tests for _AuxAccum."""
 
@@ -49,7 +46,6 @@ class Test_AuxAccumConfig:
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
 
 
-
 class TestPABTrackerConfig:
     """Configuration tests for PABTracker."""
 
@@ -58,6 +54,3 @@ class TestPABTrackerConfig:
         obj = PABTracker()
         # TODO: Assert specific field values, not just existence
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
-
-
-

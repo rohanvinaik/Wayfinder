@@ -152,8 +152,17 @@ def infer_direction(premise_name: str, goal_target: str) -> str:
     base_lower = base.lower()
 
     # Directional name patterns that suggest backward application
-    _BACKWARD_SUFFIXES = {"_symm", "_comm", "_swap", "_flip", "_reverse",
-                          "_inv", "_neg", "_sub", "_div"}
+    _BACKWARD_SUFFIXES = {
+        "_symm",
+        "_comm",
+        "_swap",
+        "_flip",
+        "_reverse",
+        "_inv",
+        "_neg",
+        "_sub",
+        "_div",
+    }
     if any(base_lower.endswith(s) for s in _BACKWARD_SUFFIXES):
         return "backward"
 

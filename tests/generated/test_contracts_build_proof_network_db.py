@@ -8,4 +8,3 @@ from __future__ import annotations
 # TODO: Mock-based contract for main
 # Detected I/O: unlink
 # Suggested: mock unlink and assert return handling
-

@@ -23,7 +23,6 @@ class TestPABCoreSeriesConfig:
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
 
 
-
 class TestPABTierSeriesConfig:
     """Configuration tests for PABTierSeries."""
 
@@ -32,7 +31,6 @@ class TestPABTierSeriesConfig:
         obj = PABTierSeries()
         # TODO: Assert specific field values, not just existence
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
-
 
 
 class TestPABDomainDataConfig:
@@ -45,7 +43,6 @@ class TestPABDomainDataConfig:
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
 
 
-
 class TestPABLossSeriesConfig:
     """Configuration tests for PABLossSeries."""
 
@@ -54,7 +51,6 @@ class TestPABLossSeriesConfig:
         obj = PABLossSeries()
         # TODO: Assert specific field values, not just existence
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
-
 
 
 class TestPABSummaryConfig:
@@ -67,7 +63,6 @@ class TestPABSummaryConfig:
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
 
 
-
 class TestPABProfileConfig:
     """Configuration tests for PABProfile."""
 
@@ -76,6 +71,3 @@ class TestPABProfileConfig:
         obj = PABProfile()
         # TODO: Assert specific field values, not just existence
         assert obj == EXPECTED  # TODO: Replace with expected instance or field checks
-
-
-

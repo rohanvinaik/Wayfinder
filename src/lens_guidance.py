@@ -95,9 +95,7 @@ def build_guidance_packet(
         ea = data.anchor_sets.get(c.entity_id, set())
         anchor_sets[c.entity_id] = ea
 
-        const_anchors = {
-            a for a in ea if data.anchor_categories.get(a) == "constant"
-        }
+        const_anchors = {a for a in ea if data.anchor_categories.get(a) == "constant"}
         summaries[c.entity_id] = {
             "anchor_count": len(ea),
             "constant_count": len(const_anchors),

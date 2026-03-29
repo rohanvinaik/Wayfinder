@@ -5,12 +5,14 @@ from __future__ import annotations
 
 # Source module: src.trainer_setup
 
+
 # from src.trainer_setup import load_vocabs
 def test_load_vocabs_returns_tuple_dict_dict() -> None:
     """Contract: load_vocabs returns tuple[dict, dict]."""
     # TODO: Provide valid arguments
     # result = load_vocabs(...)
     # assert isinstance(result, tuple)
+
 
 # from src.trainer_setup import load_vocabs
 def test_load_vocabs_http() -> None:
@@ -24,12 +26,14 @@ def test_load_vocabs_http() -> None:
     with patch("requests.get", return_value=mock_resp):
         pass  # TODO: call load_vocabs with valid args and assert result
 
+
 # from src.trainer_setup import build_pipeline_modules
 def test_build_pipeline_modules_returns_tuple_tuple_str() -> None:
     """Contract: build_pipeline_modules returns tuple[tuple, str]."""
     # TODO: Provide valid arguments
     # result = build_pipeline_modules(..., ..., ...)
     # assert isinstance(result, tuple)
+
 
 # from src.trainer_setup import build_pipeline_modules
 def test_build_pipeline_modules_http() -> None:
@@ -43,6 +47,7 @@ def test_build_pipeline_modules_http() -> None:
     with patch("requests.get", return_value=mock_resp):
         pass  # TODO: call build_pipeline_modules with valid args and assert result
 
+
 # from src.trainer_setup import build_pab_tracker
 def test_build_pab_tracker_http() -> None:
     """Contract: build_pab_tracker handles HTTP response."""
@@ -55,12 +60,14 @@ def test_build_pab_tracker_http() -> None:
     with patch("requests.get", return_value=mock_resp):
         pass  # TODO: call build_pab_tracker with valid args and assert result
 
+
 # from src.trainer_setup import load_datasets
 def test_load_datasets_returns_tuple_any_any_list_any_list_any() -> None:
     """Contract: load_datasets returns tuple[Any, Any, list[Any], list[Any]]."""
     # TODO: Provide valid arguments
     # result = load_datasets(...)
     # assert isinstance(result, tuple)
+
 
 # from src.trainer_setup import load_datasets
 def test_load_datasets_http() -> None:
@@ -74,12 +81,14 @@ def test_load_datasets_http() -> None:
     with patch("requests.get", return_value=mock_resp):
         pass  # TODO: call load_datasets with valid args and assert result
 
+
 # from src.trainer_setup import build_losses
 def test_build_losses_returns_tuple() -> None:
     """Contract: build_losses returns tuple."""
     # TODO: Provide valid arguments
     # result = build_losses(..., ...)
     # assert isinstance(result, tuple)
+
 
 # from src.trainer_setup import build_losses
 def test_build_losses_http() -> None:
@@ -93,6 +102,7 @@ def test_build_losses_http() -> None:
     with patch("requests.get", return_value=mock_resp):
         pass  # TODO: call build_losses with valid args and assert result
 
+
 # from src.trainer_setup import setup_run_dirs
 def test_setup_run_dirs_returns_tuple_path_path() -> None:
     """Contract: setup_run_dirs returns tuple[Path, Path]."""
@@ -100,8 +110,8 @@ def test_setup_run_dirs_returns_tuple_path_path() -> None:
     # result = setup_run_dirs(..., ...)
     # assert isinstance(result, tuple)
 
+
 # TODO: Mock-based contract for setup_run_dirs
 # Detected I/O: checkpoint_dir.mkdir, run_dir.mkdir
 # Suggested: mock checkpoint_dir.mkdir and assert return handling
 # Suggested: mock run_dir.mkdir and assert return handling
-
