@@ -17,7 +17,7 @@ axle = [
 ]
 dev = [
     "pytest>=7.0",
-    "ruff>=0.1",
+    "ruff>=0.15.10",
 ]
 
 [build-system]
