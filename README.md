@@ -6,14 +6,23 @@
 [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=rohanvinaik_Wayfinder&metric=coverage)](https://sonarcloud.io/summary/new_code?id=rohanvinaik_Wayfinder)
 [![Maintainability](https://sonarcloud.io/api/project_badges/measure?project=rohanvinaik_Wayfinder&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=rohanvinaik_Wayfinder)
 [![Reliability](https://sonarcloud.io/api/project_badges/measure?project=rohanvinaik_Wayfinder&metric=reliability_rating)](https://sonarcloud.io/summary/new_code?id=rohanvinaik_Wayfinder)
-[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=rohanvinaik_Wayfinder&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=rohanvinaik_Wayfinder)
-[![Security Lite](https://github.com/rohanvinaik/Wayfinder/actions/workflows/security-lite.yml/badge.svg)](https://github.com/rohanvinaik/Wayfinder/actions/workflows/security-lite.yml)
 
 **Proof search as navigation, not prediction.**
 
-Wayfinder is a neural theorem prover for Lean 4 / Mathlib that runs the neural network *once* per proof state. All subsequent search — premise retrieval, tactic resolution, proof tree expansion — is deterministic arithmetic on a precomputed semantic network.
+`1,277 / 2,000 Mathlib theorems (63.8%) · one neural pass per state · 22M-param frozen encoder · runs on a laptop · Lean-verified`
 
-Current neural provers (ReProver, DeepSeek-Prover-V2, HTPS) run a multi-billion parameter model at every search node. Wayfinder inverts this: a lightweight encoder produces ternary coordinates `{-1, 0, +1}` across six navigational dimensions, and a structured semantic network resolves those coordinates to concrete tactics and premises via set intersection, IDF weighting, and spreading activation. No embeddings are queried at search time.
+Every current neural theorem prover runs a multi-billion-parameter model at *every node* of the search — thousands of forward passes to prove one lemma. Wayfinder runs the network **once** per proof state. That single pass turns the goal into six ternary coordinates — `{-1, 0, +1}` on six orthogonal axes — and from there it is pure arithmetic: a precomputed semantic network of Mathlib resolves those coordinates to concrete premises and tactics by set intersection and IDF-weighted overlap, with **no embedding queried at search time.** The neural net does the one genuinely hard part — understand the goal — and deterministic search does the structured part — find the relevant mathematics. They never compete for the same compute.
+
+On a frozen 2,000-theorem Mathlib benchmark it proves **1,277 (63.8%)**, extending to ~68.6% with offline residual work, on a **22M-parameter frozen encoder** at 617 goals/sec on an Apple laptop — and Lean's kernel checks every proof.
+
+## The part that matters most: it compresses the hard residual
+
+Wayfinder is not trying to replace cluster-scale end-to-end math models. The trade is different, and better. A normal prover that fails hands the theorem back as raw text, and a bigger model then has to reason over *the entirety of mathematics.* Wayfinder does not fail flat. Even an unsolved theorem comes out **structured** — which lane it belongs to, a constrained candidate set, the branches that already failed, residual diagnostics — so the hard tail is no longer "all of math." It is a small, better-conditioned frontier, and a stronger model or a human works from a partial solution state with an actual sense of the answer space instead of a cold goal.
+
+- **Make the routine majority cheap** — discharge the easy and medium obligations with a small trainable stack, symbolic search, and exact Lean verification, on commodity hardware.
+- **Compress the hard minority** — collapse what's left into a narrowed, legible region, so a larger solver spends compute only where it is actually needed.
+
+Solved proofs become cheap local search; unsolved proofs still produce usable structure. The claim is not "beat the giants" — it is "spend their compute only on the tail, and hand them a map of it."
 
 ## How it works
 
@@ -31,111 +40,61 @@ Proof state → [Encoder] → Continuous embedding
               [Multiplicative composition] → Ranked premises + tactics
 ```
 
-The neural network handles the hard part (understanding the goal). Search handles the structured part (finding relevant mathematics). They don't compete for the same compute.
-
-## The six banks
+### The six banks
 
 Proof entities are positioned along six orthogonal signed dimensions. Zero sits at the mode — the most common mathematical situation.
 
 | Bank | Negative | Zero | Positive |
 |------|----------|------|----------|
 | **STRUCTURE** | decidable, arithmetic | equality / rewrite | quantified, dependent |
-| **DOMAIN** | concrete (N, Z, Q) | general algebra | abstract (topology, category) |
+| **DOMAIN** | concrete (ℕ, ℤ, ℚ) | general algebra | abstract (topology, category) |
 | **DEPTH** | trivial (1 tactic) | 2-3 tactic proof | deep (10+ tactics) |
 | **AUTOMATION** | fully auto (omega, simp) | partially automated | manual reasoning |
 | **CONTEXT** | no hypotheses | moderate (3-5 hyps) | rich (10+ hyps) |
 | **DECOMPOSITION** | atomic (no splits) | single goal | multi-subgoal |
 
-3^6 = 729 direction bins. A ternary vector like `(-1, +1, 0, -1, 0, +1)` means: "look for decidable lemmas in abstract domains, at typical depth, solvable by automation, with typical context, requiring subgoal decomposition." The proof network resolves this to a ranked list of matching premises.
+3⁶ = 729 direction bins. A vector like `(-1, +1, 0, -1, 0, +1)` reads: *decidable lemmas in abstract domains, at typical depth, solvable by automation, typical context, needs subgoal decomposition.* The proof network resolves it to a ranked list of matching premises — every score auditable, traceable to the banks and anchors that produced it.
+
+## Dr. Ducky — the hard closes, symbolically
+
+The theorems the navigator cannot discharge get a proof-local execution engine of their own: **Dr. Ducky**, a *pure symbolic* VM (a `ProofShadowLedger`, a portfolio of proof-bearing math engines — equality saturation, a proof-DSL, bounded relational search, an arithmetic runtime — and a `ProofProjector` that lowers its certificates into Lean-valid proof programs). No neural network runs in that path, by invariant, so every close it produces is auditable down to the kernel. Honest progress on the frozen hard slice is real; converting progress into closure is the active engineering frontier.
 
 ## What this is not
 
 - **Not an LLM wrapper.** No autoregressive generation, no token-level prediction, no prompt engineering.
 - **Not embedding retrieval.** Premises are found by structured coordinate matching and IDF-weighted anchor overlap, not dense vector similarity.
-- **Not a standalone prover.** Wayfinder produces tactic suggestions and premise rankings. Lean's kernel verifies. The system delegates `AUTOMATION=-1` goals to hammer tactics (LeanHammer, Aesop).
-
-## Project structure
-
-```
-src/                        # 29 modules
-  encoder.py                # Dual-backend goal encoder (SentenceTransformer / T5)
-  ternary_decoder.py        # Continuous → ternary {-1, 0, +1} bottleneck
-  proof_network.py          # SQLite semantic network (banks, anchors, IDF)
-  resolution.py             # Coordinate → premise/tactic resolution
-  proof_search.py           # Navigational best-first search
-  bridge.py                 # Continuous-ternary bridge with proof history
-  proof_navigator.py        # End-to-end: goal → ranked actions
-  lean_interface.py         # Lean 4 interaction (Pantograph / Axle / lean4checker)
-  trainer.py                # Training loop with PAB tracking
-  pab_*.py                  # Process-Aware Benchmarking metrics and profiling
-  verification.py           # 3-lane verification (Pantograph, Axle, lean4checker)
-  ...
-
-scripts/                    # Extraction, training, evaluation
-  extract_proof_network.py  # Mathlib → proof_network.db
-  build_nav_training_data.py# Proof traces → nav_training.jsonl
-  anchor_gap_analysis.py    # Iterative anchor refinement (target: top-16 recall >= 70%)
-  train_navigator.py        # Train encoder + ternary decoder
-  run_benchmark.py          # MiniF2F / Mathlib evaluation
-
-configs/
-  wayfinder.yaml            # All hyperparameters and paths
-
-docs/
-  WAYFINDER_RESEARCH.md     # Theory and claims
-  WAYFINDER_DESIGN.md       # Engineering specification
-  WAYFINDER_PLAN.md         # Experiment phases 0-5
-  EXPERIMENT_RESULTS.md     # Results ledger
-```
+- **Not a standalone prover.** Wayfinder produces tactic suggestions and premise rankings; Lean's kernel verifies, and `AUTOMATION = -1` goals are delegated to hammer tactics (LeanHammer, Aesop).
+- **Not a headline-inflator.** Reports separate `raw_success` from `honest_success` by invariant — self-application is telemetry, never counted as a solve.
 
 ## Getting started
 
 ```bash
 pip install -e .
 
-# Phase 0: Build the proof network from Mathlib
+# Build the proof network from Mathlib, then train the navigator
 python scripts/extract_proof_network.py --config configs/wayfinder.yaml
-
-# Phase 0: Generate navigation training data
 python scripts/build_nav_training_data.py --config configs/wayfinder.yaml
+python scripts/train_navigator.py         --config configs/wayfinder.yaml
 
-# Phase 0: Anchor gap analysis (iterate until recall >= 70%)
-python scripts/anchor_gap_analysis.py --config configs/wayfinder.yaml
-
-# Phase 1: Train the navigator
-python scripts/train_navigator.py --config configs/wayfinder.yaml
-
-# Evaluate
-python scripts/run_benchmark.py --config configs/wayfinder.yaml
+# Theorem-search benchmark
+python -m scripts.run_benchmark --config configs/wayfinder.yaml \
+  --checkpoint models/NAV-AUX-001_step5000.pt --mode v1 --search-mode full --cosine-rw
 ```
 
-Requires Python >= 3.11, PyTorch >= 2.1, and a LeanDojo-compatible Lean 4 + Mathlib installation.
-
-## Documentation
-
-Full documentation at **[rohanvinaik.github.io/Wayfinder](https://rohanvinaik.github.io/Wayfinder/)** — structured reading rails across research theory, engineering design, experiment plan, and results.
-
-| Document | What it covers |
-|----------|---------------|
-| [Research](https://rohanvinaik.github.io/Wayfinder/abstract/) | Theory, claims, related work, evaluation design |
-| [Design](https://rohanvinaik.github.io/Wayfinder/1-design-thesis/) | Banks, anchors, scoring, module architecture, config |
-| [Experiment Plan](https://rohanvinaik.github.io/Wayfinder/plan-overview/) | Phases 0-5, stop/go criteria, hardware distribution |
-| [Results](docs/EXPERIMENT_RESULTS.md) | Experiment ledger (pre-experimental) |
+Requires Python ≥ 3.11, PyTorch ≥ 2.1, and a LeanDojo-compatible Lean 4 + Mathlib installation. Full documentation at **[rohanvinaik.github.io/Wayfinder](https://rohanvinaik.github.io/Wayfinder/)**.
 
 ## Lineage
 
 Wayfinder integrates three prior systems:
 
-1. **ModelAtlas** (Vinaik, 2025) — Structured semantic navigation for ML model discovery. Wayfinder adapts the bank/anchor/IDF architecture from models to mathematical entities.
-2. **Balanced Sashimi** (Vinaik & Claude, 2026) — Hybrid continuous-ternary architecture. Wayfinder uses the `{-1, 0, +1}` information bottleneck for navigational coordinates.
-3. **Mutation Theory** (formalized in Lean 4) — Convergence guarantees for structured search: trajectory monotonicity, phase transitions, fixed-point partitions.
+1. **[ModelAtlas](https://github.com/rohanvinaik/ModelAtlas)** — structured semantic navigation for ML-model discovery. Wayfinder adapts the bank / anchor / IDF architecture from models to mathematical entities.
+2. **Balanced Sashimi** — the hybrid continuous-ternary architecture; Wayfinder uses the `{-1, 0, +1}` information bottleneck for navigational coordinates.
+3. **Mutation Theory** (formalized in Lean 4) — convergence guarantees for structured search: trajectory monotonicity, phase transitions, fixed-point partitions.
 
 ## Status
 
-**v1.1 — Implementation complete, pre-experimental.** All source modules implemented and import-chain verified. Phase 0 (proof network construction from Mathlib) is the next execution step.
-
-Baselines: ReProver (LeanDojo), LeanProgress, DeepSeek-Prover-V2.
+**63.8% Mathlib baseline (`EXP-058`), architecture wired end to end.** The first-order navigator is the frozen, tuned baseline; the symbolic hard-tail stack (Dr. Ducky, the second-order controller, the integrated bridge) is built and under active measurement, aimed at closing a nontrivial share of the remaining tail and compressing the rest. Baselines: ReProver (LeanDojo), DeepSeek-Prover-V2, HTPS.
 
 ---
 
-*Rohan Vinaik, with Claude (Opus 4.6), Anthropic. March 2026.*
+*Rohan Vinaik, with Claude, Anthropic.*
