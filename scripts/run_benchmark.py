@@ -270,16 +270,50 @@ def _run_search_loop(
             )
             continue
 
-        result = search(
-            theorem_id=thm["theorem_id"],
-            initial_goal=initial_goal,
-            pipeline=pipeline,
-            conn=conn,
-            lean=lean,
-            config=cfg,
-            accessible_theorem_id=accessible_id,
-            sentence_encoder=sentence_encoder,
-        )
+        try:
+            result = search(
+                theorem_id=thm["theorem_id"],
+                initial_goal=initial_goal,
+                pipeline=pipeline,
+                conn=conn,
+                lean=lean,
+                config=cfg,
+                accessible_theorem_id=accessible_id,
+                sentence_encoder=sentence_encoder,
+            )
+        except Exception as exc:  # noqa: BLE001 — per-theorem isolation
+            # A divergent tactic can crash the Pantograph server (e.g. a `whnf`
+            # heartbeat timeout in the hammer lane). One bad goal must NOT take
+            # down the whole batch: restart the kernel, record a crash, continue.
+            logger.warning(
+                "theorem %s crashed the search (%s); restarting server and skipping",
+                thm["theorem_id"],
+                type(exc).__name__,
+            )
+            try:
+                lean._restart_server()
+            except Exception:  # noqa: BLE001
+                lean._server = None  # force lazy re-init on the next theorem
+            results.append(
+                augment_result_entry(
+                    {
+                        "theorem_id": thm["theorem_id"],
+                        "source": thm["source"],
+                        "success": False,
+                        "success_category": "crashed",
+                        "close_lane": "crashed",
+                        "close_provenance": [],
+                        "final_closer": "",
+                        "attempts": 0,
+                        "goals_closed": 0,
+                        "goals_remaining": 1,
+                        "tactics_used": [],
+                        "time_s": round(time.perf_counter() - t0, 3),
+                        "crash_error": str(exc)[:300],
+                    }
+                )
+            )
+            continue
         elapsed = time.perf_counter() - t0
 
         # Determine dominant close lane for this theorem.
