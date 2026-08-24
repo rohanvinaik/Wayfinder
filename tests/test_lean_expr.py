@@ -14,7 +14,6 @@ from pathlib import Path
 from src.dr_ducky import ProjectedProofProgram
 from src.lean_expr import (
     EmissionWarrant,
-    LeanExpr,
     from_ducky_program,
     from_tactics,
     read_environment_pin,

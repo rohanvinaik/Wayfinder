@@ -48,6 +48,7 @@ import sys  # noqa: E402
 if str(WF) not in sys.path:
     sys.path.insert(0, str(WF))
 from src.lean_expr import EmissionWarrant, from_tactics, read_environment_pin, render_declaration  # noqa: E402
+
 VENV_PY = WF / ".venv/bin/python"
 BENCH = WF / "scripts/run_benchmark.py"
 CONFIG = WF / "configs/wayfinder.yaml"
