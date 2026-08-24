@@ -49,6 +49,7 @@ Current evidence for this value proposition:
 
 | Document | Authoritative for | Current state |
 |----------|------------------|---------------|
+| [`THE_REFOUNDING.md`](Research_Paper/THE_REFOUNDING.md) | **The re-founding diff thesis**: σ_search (navigation as exact identification), two-sign navigation (admissible censors, κ, the Monty Hall gate), computed bank reads replacing the encoder estimator, LeanExpr warranted emission, the cheat-sheet residual artifact, the disposition calculus. Module diff (§8), experimental program EXP-RF-002..021 (§9), build waves (§12). | Authoritative for the re-founding; re-issued per wave with its ledger. |
 | [`THE_DETERMINISTIC_CORE.md`](Research_Paper/THE_DETERMINISTIC_CORE.md) | The thesis chapter: the deterministic inferential core as the system, the statistical layer as bounded intuition above it. Layer inventory, the zero-neural search path, removability invariant, EXP-DET-001. | Complete and pinned (2026-08). |
 | [`WAYFINDER_RESEARCH.md`](Research_Paper/WAYFINDER_RESEARCH.md) | Theory, claims, intellectual foundations. §2.1-2.10 (v1/v2), §2.11 (v3 OTP/COEC/guidance/EBM). | Complete through v3 theory. |
 | [`WAYFINDER_DESIGN.md`](Research_Paper/WAYFINDER_DESIGN.md) | Engineering: interfaces, modules, invariants. Main runtime, original / first-order SoM, Dr. Ducky symbolic VM (`GoalSpecification` → `ProofShadowLedger` → `MathEngine` → `ProofProjector`), compiler/startability, and second-order SoM boundary. | Canonical architecture reference. |
