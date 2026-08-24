@@ -16,8 +16,14 @@ data/
 .env
 .DS_Store
 .lintgate/
+.detective/
+.wesker/
+.serena/
+.pytest_cache/
 .claude/settings.local.json
 .claude/rules/
+.claude/projects/
+.claude/continuity/
 **/.mypy_cache/
 .qlty/
 .coverage
