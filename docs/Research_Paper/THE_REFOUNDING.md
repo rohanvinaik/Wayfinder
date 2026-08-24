@@ -476,6 +476,11 @@ Each experiment is paired, budget-reported, and gates the next wave. Names are c
 - **EXP-RF-005 — censors, paired** (the headline): deterministic path vs deterministic + censor
   gate. Primary metrics: attempts saved, solve-rate delta (must be ≥ 0), abstention ledger audit.
   The negative channel's measured worth, with the statistical layer entirely out of the room.
+  **005a (offline, out-of-sample) MEASURED 2026-08:** corpus split by theorem-hash parity, store
+  mined on half A (20 fences, standard floors), evaluated on unseen half B: **4,000 of 23,552
+  failed lane-attempts fenced (17.0%) at ZERO fenced successes (0 of 2,010)** — the fences
+  generalize exactly as channel isolation + admissibility predict. `scripts/exp_rf005_offline_split.py`;
+  005b (live Lean, paired configs `wayfinder_deterministic[_censored].yaml`) is staged.
 - **EXP-RF-006 — warranted emission**: LeanExpr reconstruction vs string reconstruction at v4.28:
   compile rate, repair rate, environment-mismatch failures. The §5.3 quirks get their data here.
 - **EXP-RF-007 — the cheat-sheet fold**: Aristotle lane with vs without the rendered sheet on the
@@ -525,7 +530,10 @@ scale data).
 
 **Measured (in-repo).** EXP-3.2 / NAV-004 (learned lane zero direct closures); EXP-058 and the
 residual structure; the apply-lane regression (the ungoverned censor); EXP-049 (the unconsumed
-signal); Gotcha 3 (the discarded residual); the `proof_knee` corpus knee.
+signal); Gotcha 3 (the discarded residual); the `proof_knee` corpus knee; **EXP-RF-003** (reads:
+62→497 distinct signatures after the mined surface dimensions; contradiction 2–8%); **EXP-RF-005a**
+(the negative channel, out-of-sample: 17.0% of failed lane-attempts fenced at zero fenced
+successes — the two-sign claim's first in-repo measurement).
 
 **Asserted (this document's moves; each with its named test).** The σ_search transport (EXP-RF-002);
 reads replace the estimator (EXP-RF-003); censors pay in budget at non-negative solve delta

@@ -1,0 +1,53 @@
+# Wayfinder — the DETERMINISTIC PATH + THE MONTY HALL GATE (EXP-RF-005b's
+# treated condition). Identical to wayfinder_deterministic.yaml except the
+# censor store: fenced tactic families are removed from the per-goal lane
+# order before any Lean call, every removal on the abstention ledger.
+#
+# Pairing discipline: the control is configs/wayfinder_deterministic.yaml on
+# the SAME manifest; the store must be mined from gate-off runs that do not
+# include the evaluation manifest (no self-confirmation).
+#
+# Usage:
+#   python -m scripts.mine_censors --out runs/censor_store_v1.json   # gate-off spine
+#   python scripts/run_benchmark.py --config configs/wayfinder_deterministic_censored.yaml
+
+data:
+  nav_train: data/nav_training.jsonl
+  nav_eval: data/nav_eval.jsonl
+  proof_network_db: data/proof_network_v3.db
+  anchor_labels: data/anchor_labels.json
+
+search:
+  search_mode: deterministic
+  budget: 600
+  hammer_delegation: false
+  accessible_premises: true
+  max_candidates_per_step: 8
+  hammer_timeout: 60
+  cosine_rw_beam: 5
+  dr_ducky_enabled: true
+  dr_ducky_max_programs: 24
+  dr_ducky_max_rounds: 3
+  dr_ducky_goal_limit: 3
+  norm_then_close_enabled: true
+  censor_store_path: runs/censor_store_v1.json   # THE one difference vs the control
+
+lean:
+  backend: pantograph
+  project_root: data/lean_project
+  imports: ["Mathlib"]
+
+axle:
+  enabled: false
+
+evaluation:
+  benchmark_theorems: data/minif2f_test.jsonl
+  mathlib_test_split: data/mathlib_test.jsonl
+
+logging:
+  run_dir: runs/
+
+invariants:
+  eval_data_frozen: true
+  single_inference_per_state: true
+  scoring_auditable: true

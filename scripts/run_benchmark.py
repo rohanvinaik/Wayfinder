@@ -367,6 +367,10 @@ def _run_search_loop(
                     "goals_remaining": result.goals_remaining,
                     "tactics_used": result.tactics_used,
                     "time_s": round(elapsed, 3),
+                    # The abstention ledger (THE_REFOUNDING §7.3): the negative
+                    # channel is reported wherever the positive one is.
+                    "censor_drops": result.censor_drops,
+                    "censor_drop_count": len(result.censor_drops),
                 }
             )
         )

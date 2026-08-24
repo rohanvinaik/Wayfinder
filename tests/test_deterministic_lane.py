@@ -11,15 +11,18 @@ layer is broken regardless of what the statistical layer does.
 import unittest
 from unittest import mock
 
-from src.proof_network import init_db
-from src.proof_search import (
-    SearchConfig,
-    _search_step,
-    _SearchEnv,
-    _SearchState,
-    _try_symbolic_family,
-)
-from src.resolution import SearchContext, build_symbolic_query, symbolic_rank_premises
+try:  # proof_search pulls torch — skip in torch-less envs, never poison collection
+    from src.proof_network import init_db
+    from src.proof_search import (
+        SearchConfig,
+        _search_step,
+        _SearchEnv,
+        _SearchState,
+        _try_symbolic_family,
+    )
+    from src.resolution import SearchContext, build_symbolic_query, symbolic_rank_premises
+except ImportError:  # pragma: no cover
+    raise unittest.SkipTest("src.proof_search requires torch") from None
 
 GOAL = "⊢ Nat.add a b = Nat.add b a"
 

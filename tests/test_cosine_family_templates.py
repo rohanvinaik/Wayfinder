@@ -18,7 +18,15 @@ thesis chapter's template table together).
 import unittest
 from unittest import mock
 
-from src.proof_search import _SearchEnv, _SearchState, _try_cosine_family
+try:  # proof_search pulls torch — skip in torch-less envs, never poison collection
+    from src.proof_search import _SearchEnv, _SearchState, _try_cosine_family
+
+    _HAVE_SEARCH = True
+except ImportError:  # pragma: no cover
+    _HAVE_SEARCH = False
+
+if not _HAVE_SEARCH:
+    raise unittest.SkipTest("src.proof_search requires torch")
 
 
 class _FakeLean:
