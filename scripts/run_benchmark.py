@@ -99,15 +99,21 @@ def load_benchmark_theorems(config: dict, limit: int | None) -> list[dict]:
 
 def _build_search_components(config: dict, checkpoint_path: Path, device: str) -> tuple:
     """Build pipeline, search config, lean kernel, and db connection."""
-    modules = load_modules(checkpoint_path, config, device)
-    pipeline = Pipeline(
-        encoder=modules["encoder"],
-        analyzer=modules["analyzer"],
-        bridge=modules["bridge"],
-        navigator=modules["navigator"],
-    )
-
     search_cfg = config.get("search", {})
+
+    # Deterministic mode is the pipeline-free thesis path: the search runs
+    # entirely on the proof network + pure tactic grammar + Lean kernel,
+    # so the navigator checkpoint is never loaded.
+    if search_cfg.get("search_mode") == "deterministic":
+        pipeline = None
+    else:
+        modules = load_modules(checkpoint_path, config, device)
+        pipeline = Pipeline(
+            encoder=modules["encoder"],
+            analyzer=modules["analyzer"],
+            bridge=modules["bridge"],
+            navigator=modules["navigator"],
+        )
     cfg = SearchConfig(
         budget=search_cfg.get("budget", 600),
         hammer_delegation=search_cfg.get("hammer_delegation", True),

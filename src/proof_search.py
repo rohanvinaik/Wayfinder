@@ -751,6 +751,134 @@ def _exec_selector_topk(
         return cosine_ranked[:k]
 
 
+def _neutral_nav_output() -> NavOutput:
+    """Neutral navigator output for deterministic (pipeline-free) search.
+
+    Empty direction/anchor maps: hammer never fires (_should_hammer needs
+    an AUTOMATION direction) and no learned signal leaks into the step.
+    """
+    return NavOutput(
+        directions={},
+        direction_confidences={},
+        anchor_scores={},
+        progress=0.0,
+        critic_score=0.0,
+    )
+
+
+def _symbolic_rank_premises(
+    goal: str,
+    env: _SearchEnv,
+    accessible_theorem_id: int | None,
+    family: str,
+    max_premises: int = 30,
+) -> list[str] | None:
+    """Deterministic premise ranking over the accessible pool — no encoder.
+
+    Same accessible-premise pool and the same rw/simp scope filter as the
+    cosine ranker; the ranking step is IDF-weighted anchor intersection
+    (src.resolution.symbolic_rank_premises) instead of embedding cosine.
+    Requires env.conn (the proof network DB).
+    """
+    if env.conn is None or not env.id_to_name:
+        return None
+    clean_goal = _sanitize_goal_text(goal)
+
+    from src.proof_network import get_accessible_premises
+
+    premise_names: list[str] = []
+    if accessible_theorem_id is not None:
+        premise_ids = get_accessible_premises(env.conn, accessible_theorem_id)
+        premise_names = [env.id_to_name[pid] for pid in premise_ids if pid in env.id_to_name]
+    if not premise_names:
+        return None
+
+    if family in ("rw", "simp"):
+        from src.rw_scoper import scope_for_rw
+
+        scope = scope_for_rw(clean_goal, premise_names, max_premises=max_premises)
+        if not scope.all_symbols:
+            return None
+        candidates = scope.all_symbols
+    else:
+        candidates = premise_names
+
+    from src.resolution import symbolic_rank_premises
+
+    return symbolic_rank_premises(env.conn, clean_goal, candidates, max_premises=max_premises)
+
+
+def _try_symbolic_family(
+    family: str,
+    goal: str,
+    goal_idx: int,
+    state: _SearchState,
+    env: _SearchEnv,
+    accessible_theorem_id: int | None = None,
+    beam_width: int = 1,
+) -> bool:
+    """The deterministic twin of _try_cosine_family.
+
+    IDF-ranked premises compiled through the pure tactic grammar and
+    verified by Lean. One-shot per (family, goal) pair. No neural
+    component anywhere on this path.
+    """
+    cache_key = f"symbolic_{family}:{goal}"
+    if cache_key in state._expensive_tried:
+        return False
+    state._expensive_tried.add(cache_key)
+
+    ranked = _symbolic_rank_premises(goal, env, accessible_theorem_id, family)
+    if not ranked:
+        return False
+    if not env.allow_self_application and state.theorem_id:
+        ranked = [sym for sym in ranked if sym != state.theorem_id]
+        if not ranked:
+            return False
+    return _try_ranked_family(
+        family, ranked[:beam_width], goal, goal_idx, state, env, f"symbolic_{family}"
+    )
+
+
+def _try_ranked_family(
+    family: str,
+    ranked_top: list[str],
+    goal: str,
+    goal_idx: int,
+    state: _SearchState,
+    env: _SearchEnv,
+    provenance: str,
+) -> bool:
+    """Execute compiled tactic candidates for a family over a ranked premise list.
+
+    The compilation grammar is the pure src.tactic_compiler; this function
+    owns the impure half — Lean submission, attempt accounting, apply
+    telemetry, goal closing. It is ranking-source-agnostic: cosine, symbolic
+    IDF, and any future ranker all execute through the same grammar.
+    """
+    from src.rw_scoper import extract_goal_target
+    from src.tactic_compiler import compile_tactic
+
+    goal_target = extract_goal_target(goal) if family == "rw" else ""
+    candidates = compile_tactic(
+        family, ranked_top, goal_target, max_premises=max(len(ranked_top), 1)
+    )
+    for cand in candidates:
+        result = env.lean.try_tactic(goal, cand.text)
+        state.attempts += 1
+        if family == "apply":
+            state._last_apply_candidates.append({
+                "candidate": cand.premises_used[0] if cand.premises_used else "",
+                "tactic": cand.text,
+                "accepted": result.success,
+                "new_goals": len(result.new_goals) if result.success else 0,
+            })
+        if result.success:
+            _close_goal(goal, goal_idx, cand.text, result.new_goals, state, provenance)
+            return True
+    return False
+
+
 def _try_cosine_family(
     family: str,
     goal: str,
@@ -799,72 +927,7 @@ def _try_cosine_family(
                 top.append(c)
         provenance = "exec_selector_apply"
 
-    if family == "rw":
-        from src.rw_scoper import extract_goal_target, infer_direction
-
-        goal_target = extract_goal_target(goal)
-        for sym in top:
-            # Per-tier direction: try the more likely direction first
-            d = infer_direction(sym, goal_target)
-            if d == "backward":
-                dirs = [f"rw [← {sym}]", f"rw [{sym}]"]
-            else:
-                dirs = [f"rw [{sym}]", f"rw [← {sym}]"]
-            for tac in dirs:
-                result = env.lean.try_tactic(goal, tac)
-                state.attempts += 1
-                if result.success:
-                    _close_goal(goal, goal_idx, tac, result.new_goals, state, provenance)
-                    return True
-
-    elif family == "exact":
-        for sym in top:
-            tac = f"exact {sym}"
-            result = env.lean.try_tactic(goal, tac)
-            state.attempts += 1
-            if result.success:
-                _close_goal(goal, goal_idx, tac, result.new_goals, state, provenance)
-                return True
-
-    elif family == "apply":
-        for sym in top:
-            # Try multiple tactic forms per candidate:
-            # 1. exact (full unification, closes completely)
-            # 2. refine with wildcards (lets elaborator fill implicits)
-            # 3. bare apply (fallback, may leave metavar holes)
-            tactics_to_try = [
-                f"exact {sym}",
-                f"refine {sym} ?_ ?_",
-                f"refine {sym} ?_ ?_ ?_",
-                f"apply {sym}",
-            ]
-            for tac in tactics_to_try:
-                result = env.lean.try_tactic(goal, tac)
-                state.attempts += 1
-                state._last_apply_candidates.append({
-                    "candidate": sym,
-                    "tactic": tac,
-                    "accepted": result.success,
-                    "new_goals": len(result.new_goals) if result.success else 0,
-                })
-                if result.success:
-                    _close_goal(goal, goal_idx, tac, result.new_goals, state, provenance)
-                    return True
-
-    elif family == "simp":
-        # Policy: bare simp first (most robust), then simp [top1] as fallback.
-        # top-5 hinted simp underperforms top-1 in benchmarks (more hints hurt acceptance).
-        simp_tactics: list[str] = ["simp"]
-        if top:
-            simp_tactics.append(f"simp [{top[0]}]")
-        for tac in simp_tactics:
-            result = env.lean.try_tactic(goal, tac)
-            state.attempts += 1
-            if result.success:
-                _close_goal(goal, goal_idx, tac, result.new_goals, state, provenance)
-                return True
-
-    return False
+    return _try_ranked_family(family, top, goal, goal_idx, state, env, provenance)
 
 
 def _try_cosine_rw_seq(
@@ -1509,6 +1572,16 @@ def _try_lane(
         return _try_structural_fallback(goal, goal_idx, state, env)
     elif lane in ("solver_bootstrap", "structural"):
         return _try_structural_fallback(goal, goal_idx, state, env)
+    elif lane in ("symbolic_rw", "symbolic_exact", "symbolic_simp", "symbolic_apply"):
+        return _try_symbolic_family(
+            lane.removeprefix("symbolic_"),
+            goal,
+            goal_idx,
+            state,
+            env,
+            context.accessible_theorem_id,
+            cfg.cosine_rw_beam,
+        )
     elif lane == "cosine_rw":
         return _try_cosine_family(
             "rw", goal, goal_idx, state, env, context.accessible_theorem_id, cfg.cosine_rw_beam
@@ -1844,7 +1917,10 @@ def _search_step(
     else:
         goal, goal_idx = _select_goal(state.open_goals, pipeline, cfg.device, state)
 
-    nav_output = _cached_infer(goal, pipeline, state)
+    if pipeline is not None:
+        nav_output = _cached_infer(goal, pipeline, state)
+    else:
+        nav_output = _neutral_nav_output()
 
     # Hammer is always a pre-check when applicable — not subject to lane ordering.
     # The TC controls non-hammer lane priority, not whether hammer fires.
@@ -1860,7 +1936,18 @@ def _search_step(
     else:
         mode = cfg.search_mode
         lane_order = []
-        if mode != "learned_only":
+        if mode == "deterministic":
+            # The thesis path: every lane on this list is symbolic —
+            # structural setup, IDF-ranked family lanes lowered through the
+            # pure tactic grammar, and (optionally) the Dr. Ducky residual
+            # VM. No encoder, no navigator, no classifier anywhere.
+            lane_order.append("structural_core")
+            lane_order.extend(["symbolic_rw", "symbolic_exact", "symbolic_simp"])
+            if cfg.cosine_apply_enabled:
+                lane_order.append("symbolic_apply")
+            if cfg.dr_ducky_enabled:
+                lane_order.append("dr_ducky")
+        if mode not in ("learned_only", "deterministic"):
             # Interleaved bootstrap is a structural policy replacement, not an
             # extra post-structural lane. If appended after structural_core, the
             # one-shot structural setup consumes the only useful opportunity and
@@ -1874,7 +1961,7 @@ def _search_step(
         # Cosine family lanes run after structural setup, before learned navigation.
         # cosine_rw: always active when encoder present.
         # cosine_simp/cosine_apply: opt-in via config flags (benchmarked separately).
-        if env.sentence_encoder is not None:
+        if mode != "deterministic" and env.sentence_encoder is not None:
             lane_order.append("cosine_rw")
             if cfg.cosine_rw_seq_enabled:
                 lane_order.append("cosine_rw_seq")
@@ -1883,9 +1970,9 @@ def _search_step(
                 lane_order.append("cosine_simp")
             if cfg.cosine_apply_enabled:
                 lane_order.append("cosine_apply")
-        if mode != "no_learned":
+        if mode not in ("no_learned", "deterministic"):
             lane_order.append("learned")
-        if cfg.dr_ducky_enabled:
+        if cfg.dr_ducky_enabled and mode != "deterministic":
             lane_order.append("dr_ducky")
 
     # Family classifier reordering: predict specialist and promote relevant lanes
@@ -2372,6 +2459,10 @@ def _select_goal(
     the subsequent _cached_infer call in _search_step.
     """
     if len(open_goals) == 1:
+        return open_goals[0], 0
+
+    # Deterministic (pipeline-free) mode: FIFO goal selection — no critic.
+    if pipeline is None:
         return open_goals[0], 0
 
     best_idx = 0

@@ -75,6 +75,114 @@ def build_query(
     )
 
 
+_GOAL_TOKEN_RE = None  # compiled lazily so `re` stays a local import
+
+
+def build_symbolic_query(
+    conn: sqlite3.Connection,
+    goal_text: str,
+    top_k_anchors: int = 24,
+) -> StructuredQuery:
+    """Build a StructuredQuery from goal TEXT alone — no navigator, no model.
+
+    The deterministic twin of :func:`build_query`. Anchors come from exact
+    set intersection between the goal's identifier tokens (and their dotted
+    components) and the proof network's anchor dictionary; banks stay
+    neutral (empty = the mode). IDF weighting happens downstream in
+    anchor scoring, so all matched anchors carry weight 1.0 here.
+    """
+    import re
+
+    global _GOAL_TOKEN_RE
+    if _GOAL_TOKEN_RE is None:
+        _GOAL_TOKEN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_.']*")
+
+    tokens: set[str] = set()
+    for tok in _GOAL_TOKEN_RE.findall(goal_text or ""):
+        tok = tok.rstrip(".'")
+        if not tok:
+            continue
+        tokens.add(tok)
+        # Dotted identifiers also contribute their components and namespace
+        # prefixes (Nat.add_comm -> Nat, add_comm, Nat.add_comm).
+        if "." in tok:
+            parts = tok.split(".")
+            tokens.update(p for p in parts if p)
+            for i in range(1, len(parts)):
+                tokens.add(".".join(parts[:i]))
+
+    prefer_anchors: list[int] = []
+    if tokens:
+        ordered = sorted(tokens)
+        placeholders = ",".join("?" for _ in ordered)
+        rows = conn.execute(
+            f"SELECT id FROM anchors WHERE label IN ({placeholders}) ORDER BY id",
+            ordered,
+        ).fetchall()
+        prefer_anchors = [row[0] for row in rows][:top_k_anchors]
+
+    return StructuredQuery(
+        bank_directions={},
+        bank_confidences={},
+        prefer_anchors=prefer_anchors,
+        prefer_weights=[1.0] * len(prefer_anchors),
+        avoid_anchors=[],
+    )
+
+
+def symbolic_rank_premises(
+    conn: sqlite3.Connection,
+    goal_text: str,
+    premise_names: list[str],
+    max_premises: int = 30,
+) -> list[str]:
+    """Rank a premise pool by IDF-weighted anchor intersection with the goal.
+
+    Fully deterministic: goal tokens -> anchor dictionary (set intersection)
+    -> per-premise IDF-weighted overlap score -> stable sort with the
+    original pool order as tie-break. No embeddings, no model, no learned
+    state. This is the retrieval mechanism the network was built for,
+    driven from text instead of from navigator coordinates.
+    """
+    from src.proof_network import _get_idf_cache
+    from src.proof_scoring import _compute_anchor_score
+
+    if not premise_names:
+        return []
+
+    query = build_symbolic_query(conn, goal_text)
+    if not query.prefer_anchors:
+        return list(premise_names[:max_premises])
+
+    placeholders = ",".join("?" for _ in premise_names)
+    id_rows = conn.execute(
+        f"SELECT id, name FROM entities WHERE name IN ({placeholders})",
+        list(premise_names),
+    ).fetchall()
+    name_to_eid = {name: eid for eid, name in id_rows}
+
+    anchor_sets: dict[int, set[int]] = {}
+    eids = list(name_to_eid.values())
+    if eids:
+        eid_placeholders = ",".join("?" for _ in eids)
+        for eid, aid in conn.execute(
+            f"SELECT entity_id, anchor_id FROM entity_anchors "
+            f"WHERE entity_id IN ({eid_placeholders})",
+            eids,
+        ).fetchall():
+            anchor_sets.setdefault(eid, set()).add(aid)
+
+    idf_cache = _get_idf_cache(conn)
+    scored: list[tuple[float, int, str]] = []
+    for pool_idx, name in enumerate(premise_names):
+        eid = name_to_eid.get(name)
+        ea_set = anchor_sets.get(eid, set()) if eid is not None else set()
+        score = _compute_anchor_score(ea_set, query, idf_cache)
+        scored.append((-score, pool_idx, name))
+    scored.sort()
+    return [name for _neg, _idx, name in scored[:max_premises]]
+
+
 def resolve(
     nav_output: NavOutput,
     conn: sqlite3.Connection,
