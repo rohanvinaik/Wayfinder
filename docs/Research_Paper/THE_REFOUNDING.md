@@ -479,8 +479,24 @@ Each experiment is paired, budget-reported, and gates the next wave. Names are c
   **005a (offline, out-of-sample) MEASURED 2026-08:** corpus split by theorem-hash parity, store
   mined on half A (20 fences, standard floors), evaluated on unseen half B: **4,000 of 23,552
   failed lane-attempts fenced (17.0%) at ZERO fenced successes (0 of 2,010)** — the fences
-  generalize exactly as channel isolation + admissibility predict. `scripts/exp_rf005_offline_split.py`;
-  005b (live Lean, paired configs `wayfinder_deterministic[_censored].yaml`) is staged.
+  generalize exactly as channel isolation + admissibility predict. `scripts/exp_rf005_offline_split.py`.
+  **005b (live Lean, paired) MEASURED 2026-08** — four-arm battery (MiniF2F ×100 cross-corpus
+  store; Mathlib half-B ×150 half-A store), run twice retrieval-dark and once retrieval-live:
+  **solve delta exactly 0 in every pair, every round** (the safety constraint, live: MiniF2F 40/100
+  both arms; Mathlib½B 71/150 both arms retrieval-live), with **1,682 lane-removals under warrant**
+  in the live round (304 + 1,378) paying **65 + 224 attempts saved (1.4% / 2.7% of budget)** — the
+  negative channel's first live payment, on the budget axis §3.3 predicted and at zero solve cost.
+  Two methodological findings the run itself produced: (i) the `premise_pool_counts` ledger — a
+  consumed signal per §7.2 — exposed two successive retrieval starvations (a site-only pool
+  disposition, then encoder-gated entity maps) that two green paired rounds could not distinguish
+  from a working channel; the dark rounds still measured gate safety honestly (801 removals, delta
+  0), but budget movement required the channel live. (ii) Retrieval-live perturbs the trajectory:
+  the symbolic lanes' *progress* (rewrites) preempts the Ducky tail regime — all four Mathlib
+  solves lost vs the dark round were prior `dr_ducky` closes whose goals were rewritten out of
+  capsule form before Ducky saw them (one theorem gained the same way; net −3 on the control arm,
+  orthogonal to the censor gate). The principled fix is §4.1b law 4's routing: reads that identify
+  a tail-regime goal should escalate to Ducky *before* bulk rewriting — a lane-ordering question
+  now carried by the ledger, not a heuristic patch.
 - **EXP-RF-006 — warranted emission**: LeanExpr reconstruction vs string reconstruction at v4.28:
   compile rate, repair rate, environment-mismatch failures. The §5.3 quirks get their data here.
   **Harness BUILT + dry-mode smoked 2026-08** (`scripts/exp_rf006_emission_gate.py`): paired
@@ -539,7 +555,10 @@ residual structure; the apply-lane regression (the ungoverned censor); EXP-049 (
 signal); Gotcha 3 (the discarded residual); the `proof_knee` corpus knee; **EXP-RF-003** (reads:
 62→497 distinct signatures after the mined surface dimensions; contradiction 2–8%); **EXP-RF-005a**
 (the negative channel, out-of-sample: 17.0% of failed lane-attempts fenced at zero fenced
-successes — the two-sign claim's first in-repo measurement).
+successes — the two-sign claim's first in-repo measurement); **EXP-RF-005b** (the negative channel,
+live kernel, paired: solve delta exactly 0 across all rounds and both corpora; 1,682 warranted
+lane-removals paying 1.4%/2.7% of attempt budget with the retrieval channel live; plus the
+Ducky-preemption trajectory finding and the consumed-signal starvation catches — §9).
 
 **Asserted (this document's moves; each with its named test).** The σ_search transport (EXP-RF-002);
 reads replace the estimator (EXP-RF-003); censors pay in budget at non-negative solve delta
