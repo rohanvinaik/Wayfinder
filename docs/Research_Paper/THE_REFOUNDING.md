@@ -554,13 +554,21 @@ Aristotle lane (EXP-RF-007).
 ## 12. Build Order
 
 **Wave 1 — the vocabulary** (`structural_reads.py` + norm miner; EXP-RF-002/003). Everything else
-consumes the reads; nothing else can land first.
+consumes the reads; nothing else can land first. **SHIPPED 2026-08** (+ Wave 1.5 surface
+dimensions off the collapsed-signature audit: 62→497 distinct signatures).
 **Wave 2 — the negative channel** (censor stack port; obligation graph + EXP-RF-004; mining run;
-EXP-RF-005). The headline wave.
+EXP-RF-005). The headline wave. **SHIPPED 2026-08** (37 censors mined; EXP-RF-005a: 17.0% budget
+at zero fenced successes out-of-sample; live gate wired, paired configs staged).
 **Wave 3 — warranted emission** (`lean_expr.py`; projector + reconstruction seams; EXP-RF-006).
-**Wave 4 — the artifact** (`cheat_sheet.py`; Aristotle fold; EXP-RF-007; packet-freeze integration).
+**SHIPPED 2026-08** (MCP reconstruction emits warranted artifacts; EXP-RF-006 dry: surface
+identical modulo warrant).
+**Wave 4 — the artifact** (`cheat_sheet.py`; Aristotle fold; EXP-RF-007; packet-freeze
+integration). **SHIPPED 2026-08** (goal ledger persisted by prove(); send_to_aristotle folds the
+rendered sheet — Gotcha 3 closed; packet-freeze integration remains open).
 **Wave 5 — the calculus** (dispositions + controller into the loop and reports; EXP-RF-021 runs
-across all waves as the longitudinal instrument).
+across all waves as the longitudinal instrument). **SHIPPED 2026-08** (seven-verdict calculus
+consumed by every row via augment_result_entry; EXP-RF-021 and the live 005b/006/007 runs are the
+open experimental program).
 
 Each wave lands with its paired experiment, its Detective-pinned pure decisions, and its ledger
 entry; a wave that cannot show its measurement does not merge its claims into this document — the
