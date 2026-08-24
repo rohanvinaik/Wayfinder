@@ -41,10 +41,25 @@ class CasSolverTierTest(unittest.TestCase):
             self.assertEqual(len(program.tactics), 1)
 
     def test_cas_scores_descend_below_local_fact_closers(self):
-        cas = _cas_programs(_ARITH_ROW)
-        scores = [p.score for p in cas]
-        self.assertEqual(scores, sorted(scores, reverse=True))
-        self.assertLessEqual(max(scores), 0.85)
+        # Since Wave C the capsule's bank weights scale scores across
+        # families (program_score), so the pre-governance absolute ceiling
+        # (0.85) no longer holds; the INTENT — a cached local fact beats a
+        # speculative CAS chain on the same goal — is pinned relatively.
+        capsule = build_goal_capsule(_ARITH_ROW)
+        programs = build_ducky_programs(
+            capsule,
+            theorem_id=_ARITH_ROW["theorem_id"],
+            goal_text=_ARITH_ROW["last_goal"],
+            max_programs=64,
+        )
+        cas_scores = [p.score for p in programs if p.certificate_shape == "cas_solver"]
+        hyp_scores = [
+            p.score for p in programs if p.certificate_shape == "local_hypothesis"
+            and p.tactics[0].startswith("exact ")
+        ]
+        self.assertEqual(cas_scores, sorted(cas_scores, reverse=True))
+        self.assertTrue(hyp_scores, "the h1 hypothesis must yield exact closers")
+        self.assertGreater(max(hyp_scores), max(cas_scores))
 
     def test_abstract_goal_stays_cas_free(self):
         row = {

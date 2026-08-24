@@ -2324,7 +2324,7 @@ def build_ducky_programs(
         # never reached these program families), and the bank weight
         # scales the within-family rank score across families.
         weight = bank_weight(capsule, bank)
-        if weight == BANK_SUPPRESSED:
+        if isinstance(weight, str):  # the BANK_SUPPRESSED code — generate nothing
             return
         _add_program(programs, seen, bank=bank, specialist=specialist,
                      name=name, tactics=tactics, rationale=rationale,
