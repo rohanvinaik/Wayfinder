@@ -49,6 +49,7 @@ Current evidence for this value proposition:
 
 | Document | Authoritative for | Current state |
 |----------|------------------|---------------|
+| [`THE_DETERMINISTIC_CORE.md`](Research_Paper/THE_DETERMINISTIC_CORE.md) | The thesis chapter: the deterministic inferential core as the system, the statistical layer as bounded intuition above it. Layer inventory, the zero-neural search path, removability invariant, EXP-DET-001. | Complete and pinned (2026-08). |
 | [`WAYFINDER_RESEARCH.md`](Research_Paper/WAYFINDER_RESEARCH.md) | Theory, claims, intellectual foundations. §2.1-2.10 (v1/v2), §2.11 (v3 OTP/COEC/guidance/EBM). | Complete through v3 theory. |
 | [`WAYFINDER_DESIGN.md`](Research_Paper/WAYFINDER_DESIGN.md) | Engineering: interfaces, modules, invariants. Main runtime, original / first-order SoM, Dr. Ducky symbolic VM (`GoalSpecification` → `ProofShadowLedger` → `MathEngine` → `ProofProjector`), compiler/startability, and second-order SoM boundary. | Canonical architecture reference. |
 | [`WAYFINDER_PLAN.md`](Research_Paper/WAYFINDER_PLAN.md) | Execution: phases, stop/go gates, hard-run program, and post-run second-order training order. | Canonical execution plan. |
@@ -192,6 +193,9 @@ python -m scripts.run_benchmark \
   --search-mode full \
   --cosine-rw \
   --cosine-rw-seq
+
+# THE DETERMINISTIC PATH — zero neural components, no checkpoint loaded
+python scripts/run_benchmark.py --config configs/wayfinder_deterministic.yaml
 ```
 
 ## Key Invariants
@@ -205,3 +209,4 @@ python -m scripts.run_benchmark \
 7. Theorem-search reports must separate `raw_success` from `honest_success`; self-application is telemetry, not a headline solve.
 8. Dr. Ducky runtime is pure symbolic. Any future neural residual must be documented as non-canonical and out-of-band.
 9. `EXP-SOM-016` is the canonical final first-order benchmark collector. It must freeze a random 2,000-theorem Mathlib sample and emit crash-stable theorem rows, trigger states, hard-resolution packets, and second-order packet/features from the same run.
+10. **The deterministic path must remain complete and runnable at all times** (`search_mode: deterministic`, zero neural components — see [`THE_DETERMINISTIC_CORE.md`](Research_Paper/THE_DETERMINISTIC_CORE.md)). The statistical layer may only rank/route options the principled layer generates and Lean verifies; a change that makes the core depend on the statistical layer violates the project thesis. Pinned by `tests/test_deterministic_lane.py`.
