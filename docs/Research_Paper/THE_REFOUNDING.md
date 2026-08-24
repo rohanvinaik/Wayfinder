@@ -483,6 +483,12 @@ Each experiment is paired, budget-reported, and gates the next wave. Names are c
   005b (live Lean, paired configs `wayfinder_deterministic[_censored].yaml`) is staged.
 - **EXP-RF-006 — warranted emission**: LeanExpr reconstruction vs string reconstruction at v4.28:
   compile rate, repair rate, environment-mismatch failures. The §5.3 quirks get their data here.
+  **Harness BUILT + dry-mode smoked 2026-08** (`scripts/exp_rf006_emission_gate.py`): paired
+  legacy/warranted emission from the same lineage, compile-surface identity modulo the warrant
+  comment verified mechanically (the behavior-preservation claim); `--verify` runs the live v4.28
+  gate. Wave 3 shipped: `src/lean_expr.py` (value/expr coupled by construction, environment pin,
+  warrant headers) consumed by `wayfinder_mcp._reconstruct_proof`; `from_ducky_program` provides
+  the projector seam for the packet writers.
 - **EXP-RF-007 — the cheat-sheet fold**: Aristotle lane with vs without the rendered sheet on the
   residual set — closes the loop on the oldest measured gap in the project's notes.
 - **EXP-RF-021 — the pre/post-refit proof batch**: rerun the 21-theorem SSL/Ansatz batch (closed

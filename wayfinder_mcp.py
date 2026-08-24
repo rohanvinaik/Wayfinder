@@ -40,6 +40,14 @@ from pathlib import Path
 from mcp.server.fastmcp import FastMCP
 
 WF = Path("/Users/rohanvinaik/Projects/Wayfinder")
+
+# The warranted-emission seam (THE_REFOUNDING §5) is pure stdlib, so it is
+# safe to import into the MCP host environment directly.
+import sys  # noqa: E402
+
+if str(WF) not in sys.path:
+    sys.path.insert(0, str(WF))
+from src.lean_expr import EmissionWarrant, from_tactics, read_environment_pin, render_declaration  # noqa: E402
 VENV_PY = WF / ".venv/bin/python"
 BENCH = WF / "scripts/run_benchmark.py"
 CONFIG = WF / "configs/wayfinder.yaml"
@@ -50,6 +58,8 @@ CHECKPOINT = WF / "models/NAV-004_step5000.pt"
 LEAN_PROJECT = WF / "data/lean_project"
 # v4.28.0 — soundness gate: reconstructed proofs re-verified here
 VERIFY_PROJECT = WF / "data/lean_project_v428"
+# The environment pin every emitted artifact carries (THE_REFOUNDING §5).
+VERIFY_ENV = read_environment_pin(VERIFY_PROJECT)
 DB = WF / "data/proof_network_v3.db"                          # absolute — kills the cwd DB error
 DEFAULT_MANIFEST = WF / "data/rerun_v427_manifest.jsonl"      # the 9 SSL/Ansatz/Socratic theorems
 LAKE_BIN = Path("/Users/rohanvinaik/.elan/bin/lake")          # elan shim (picks toolchain from lean-toolchain)
@@ -141,13 +151,35 @@ def _augmented_declaration(row: dict) -> str:
     return f"{pre}\n\n{row['full_declaration']}" if pre else row["full_declaration"]
 
 
-def _reconstruct_proof(row: dict, tactics_used: list[str]) -> str:
-    """Assemble Wayfinder's closing tactic sequence into a candidate .lean proof (imports + opens + `by …`)."""
-    imports = "\n".join(row.get("imports") or ["import Mathlib"])
-    opens = "\n".join(row.get("opens") or [])
+def _reconstruct_proof(
+    row: dict,
+    tactics_used: list[str],
+    provenance: tuple[str, ...] = (),
+    source_run: str = "",
+) -> str:
+    """Assemble Wayfinder's closing tactic sequence into a WARRANTED candidate .lean proof.
+
+    Wave-3 emission (THE_REFOUNDING §5): the artifact goes through the typed
+    LeanExpr seam — imports/opens/environment first-class, the warrant
+    (lane provenance, source run, verify environment) as a Lean comment
+    header — instead of bare string assembly. The emitted file is
+    self-documenting evidence; the compile surface is unchanged.
+    """
     head = _augmented_declaration(row).split(":= by", 1)[0].rstrip() + " := by"
-    body = "\n".join("  " + t for t in tactics_used) if tactics_used else "  sorry"
-    return "\n".join(x for x in [imports, opens, "", head, body] if x) + "\n"
+    warrant = EmissionWarrant(
+        theorem_id=str(row.get("theorem_id", "")),
+        provenance=tuple(provenance),
+        source_run=source_run,
+        note="reconstructed from the verified search lineage",
+    )
+    expr = from_tactics(
+        tactics_used,
+        warrant,
+        imports=tuple(row.get("imports") or ["import Mathlib"]),
+        opens=tuple(row.get("opens") or ()),
+        environment=VERIFY_ENV,
+    )
+    return render_declaration(head, expr)
 
 
 def _elaboration_probe(row: dict) -> tuple[bool, str]:
@@ -297,7 +329,12 @@ def prove(
         saved_to = None
         verify_detail = None
         if proved:
-            candidate = _reconstruct_proof(row, d.get("tactics_used") or [])
+            candidate = _reconstruct_proof(
+                row,
+                d.get("tactics_used") or [],
+                provenance=tuple(d.get("close_provenance") or ()),
+                source_run=str(out),
+            )
             verified, verify_detail = _verify_at_v428(candidate, theorem_id)
             if verified:
                 saved_to = str(_save_solved_proof(theorem_id, candidate))
