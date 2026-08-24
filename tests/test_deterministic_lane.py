@@ -193,6 +193,35 @@ class LibraryPoolTest(unittest.TestCase):
         _try_symbolic_family("exact", GOAL, 0, state, env, accessible_theorem_id=1, beam_width=1)
         self.assertEqual(state._premise_pool_counts, {"site": 1})
 
+    def test_library_pool_fires_without_entity_maps(self):
+        # THE round-3 regression: deterministic mode has no encoder, so the
+        # entity-name maps are empty — the library pool queries names
+        # directly and must not be gated on the map.
+        conn = _make_network()
+        lean = _FakeLean(succeed_on={"exact Nat.add_comm"})
+        env = _SearchEnv(conn=conn, lean=lean, anchor_id_map={}, max_candidates=8)
+        self.assertEqual(env.id_to_name, {})  # the exact runtime state
+        state = _SearchState(open_goals=[GOAL], theorem_id="External.no_site")
+        closed = _try_symbolic_family(
+            "exact", GOAL, 0, state, env, accessible_theorem_id=None, beam_width=2
+        )
+        self.assertTrue(closed)
+        self.assertEqual(state._premise_pool_counts, {"library": 1})
+
+    def test_sited_goal_without_maps_abstains_never_substitutes_library(self):
+        # A sited goal whose sound pool cannot be built must NOT fall back to
+        # the library pool — that would break replay anti-circularity.
+        conn = _make_network()
+        lean = _FakeLean()
+        env = _SearchEnv(conn=conn, lean=lean, anchor_id_map={}, max_candidates=8)
+        state = _SearchState(open_goals=[GOAL], theorem_id="TestThm.goal_thm")
+        closed = _try_symbolic_family(
+            "exact", GOAL, 0, state, env, accessible_theorem_id=1, beam_width=1
+        )
+        self.assertFalse(closed)
+        self.assertEqual(lean.submitted, [])
+        self.assertEqual(state._premise_pool_counts, {"none": 1})
+
     def test_siteless_goal_without_evidence_abstains(self):
         conn = _make_network()
         lean = _FakeLean()

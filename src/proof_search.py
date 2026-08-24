@@ -844,7 +844,7 @@ def _symbolic_rank_premises(
     Ranking is IDF-weighted anchor intersection either way; rw/simp get the
     same scope filter in both regimes.
     """
-    if env.conn is None or not env.id_to_name:
+    if env.conn is None:
         return None, "none"
     clean_goal = _sanitize_goal_text(goal)
 
@@ -852,10 +852,16 @@ def _symbolic_rank_premises(
     from src.resolution import library_premise_pool, symbolic_rank_premises
 
     if accessible_theorem_id is not None:
+        # The SITE pool needs the entity-name map; without it the sound pool
+        # cannot be built, and the library pool must NOT substitute — that
+        # would break the anti-circularity constraint for a sited goal.
+        if not env.id_to_name:
+            return None, "none"
         premise_ids = get_accessible_premises(env.conn, accessible_theorem_id)
         premise_names = [env.id_to_name[pid] for pid in premise_ids if pid in env.id_to_name]
         pool_kind = "site"
     else:
+        # The LIBRARY pool queries names directly — no map required.
         premise_names = library_premise_pool(env.conn, clean_goal)
         pool_kind = "library"
     if not premise_names:
@@ -2190,10 +2196,13 @@ def search(
     )
     state = _SearchState(theorem_id=theorem_id, open_goals=initial_goals)
 
-    # Build entity maps for cosine_rw lane (once per search call)
+    # Build entity maps once per search call. Needed by the cosine lanes AND
+    # by the symbolic site-pool path — deterministic mode has no encoder, and
+    # gating the maps on the encoder alone silently starved the symbolic
+    # lanes (measured: premise pools read `none` across two full arms).
     id_to_name: dict[int, str] = {}
     name_to_id: dict[str, int] = {}
-    if sentence_encoder is not None:
+    if sentence_encoder is not None or cfg.search_mode == "deterministic":
         rows = conn.execute("SELECT id, name FROM entities").fetchall()
         id_to_name = {eid: name for eid, name in rows}
         name_to_id = {name: eid for eid, name in rows}
