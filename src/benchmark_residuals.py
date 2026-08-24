@@ -123,6 +123,12 @@ def augment_result_entry(entry: dict[str, Any]) -> dict[str, Any]:
         out["success_category"] = "raw_success"
     else:
         out["success_category"] = out.get("success_category", "failed") or "failed"
+    # Wave 5 (THE_REFOUNDING §7): the disposition calculus consumes the fields
+    # computed above — one named verdict + one imperative per row, everywhere.
+    from src.dispositions import disposition_of_row, next_action
+
+    out["disposition"] = disposition_of_row(out)
+    out["next_action"] = next_action(out["disposition"])
     return out
 
 

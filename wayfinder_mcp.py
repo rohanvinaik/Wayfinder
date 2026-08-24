@@ -47,7 +47,13 @@ import sys  # noqa: E402
 
 if str(WF) not in sys.path:
     sys.path.insert(0, str(WF))
+from src.cheat_sheet import render_cheat_sheet  # noqa: E402
 from src.lean_expr import EmissionWarrant, from_tactics, read_environment_pin, render_declaration  # noqa: E402
+
+# The goal ledger (THE_REFOUNDING §4.1b/§6): prove() persists each theorem's
+# augmented detail row here; send_to_aristotle renders the cheat sheet from it
+# so the hand-off carries Wayfinder's computed understanding (Gotcha 3 closed).
+GOAL_LEDGER = WF / "runs/goal_ledger"
 
 VENV_PY = WF / ".venv/bin/python"
 BENCH = WF / "scripts/run_benchmark.py"
@@ -322,6 +328,15 @@ def prove(
             )
         r = json.loads(out.read_text())
         d = (r.get("details") or [{}])[0]
+        # Persist the goal-ledger row: the accreting per-theorem source of
+        # truth the cheat sheet renders from at hand-off time.
+        try:
+            GOAL_LEDGER.mkdir(parents=True, exist_ok=True)
+            (GOAL_LEDGER / f"{theorem_id}.json").write_text(
+                json.dumps({"detail": d, "manifest_row": row}, indent=2)
+            )
+        except OSError:
+            pass  # the ledger is an artifact, never a gate on the prove result
         proved = bool(d.get("success")) and bool(d.get("honest_success"))
         skipped = (not proved) and d.get("close_lane") == "skipped" and not d.get("attempts")
 
@@ -541,6 +556,18 @@ async def send_to_aristotle(
         f"Fill all sorry placeholders and prove the theorem `{theorem_id}` ({name}) using Mathlib. "
         "Leave any declarations marked `axiom` as axioms; do not add new axioms or `sorry`."
     )
+    # Fold Wayfinder's computed understanding into the hand-off (Gotcha 3):
+    # the cheat sheet renders deterministically from the persisted goal-ledger
+    # row of the most recent prove() run — signature walk, lane history, the
+    # negative channel, and the verified progress so far.
+    ledger_path = GOAL_LEDGER / f"{theorem_id}.json"
+    if ledger_path.exists():
+        try:
+            ledger = json.loads(ledger_path.read_text())
+            sheet = render_cheat_sheet(ledger.get("detail") or {}, ledger.get("manifest_row") or row)
+            default_prompt += "\n\nContext from Wayfinder's own search (computed, deterministic):\n\n" + sheet
+        except (OSError, ValueError, KeyError):
+            pass  # a malformed ledger never blocks the submission; the bare prompt stands
 
     aristotlelib.set_api_key(key)
     base = Path(tempfile.mkdtemp(prefix="aristotle_"))
