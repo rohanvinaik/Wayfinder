@@ -507,6 +507,15 @@ Each experiment is paired, budget-reported, and gates the next wave. Names are c
   the projector seam for the packet writers.
 - **EXP-RF-007 — the cheat-sheet fold**: Aristotle lane with vs without the rendered sheet on the
   residual set — closes the loop on the oldest measured gap in the project's notes.
+- **EXP-RF-008 — Dr. Ducky's term-construction closure**: her skeleton machinery
+  (ProofSkeleton typed holes → hole filling from local facts/premises/witness spaces →
+  have/calc/witness lowering → warranted LeanExpr emission) measured on the residual band whose
+  true proofs head with have/refine/obtain (≈17% of corpus steps; 31/79 of the round-4 autopsy's
+  ≥4-step tail). Metric: honest closure rate on that band, paired against the finisher stack;
+  the executor's standing 0-closure validation slices are the baseline of record. This is the
+  Detective homology's load-bearing test — emission that compiles by construction, holes filled
+  programmatically, never free-form generation — and §10.7's "fully passing" criterion for the
+  iterative loop.
 - **EXP-RF-021 — the pre/post-refit proof batch**: rerun the 21-theorem SSL/Ansatz batch (closed
   2026-08-24 by the pre-refit prover) through the refit stack — bounded-nat search, CAS tier, and
   successively the re-founded elements. A fixed baseline on *novel mathematics*, free of Mathlib
@@ -545,9 +554,16 @@ Each experiment is paired, budget-reported, and gates the next wave. Names are c
    from Mathlib½B failures are validated cross-corpus and on untouched splits). Parameterization
    is always by rank/read/norm, never by theorem identity. The loop's universe-redefinition step
    is population re-estimation over the residual distribution (norms, censors, IDF re-mined) —
-   by construction never a per-theorem patch. Corollary boundary: have/refine/obtain (≈17% of
-   corpus steps) are term-construction forms deliberately OUTSIDE the premise-pool grammar —
-   Ducky/LeanExpr territory, not productions to be chased by form-mining.
+   by construction never a per-theorem patch. Corollary boundary, stated positively: the
+   term-construction forms — have/refine/obtain, ≈17% of corpus steps — are outside the
+   premise-pool grammar because they are inside **Dr. Ducky's designed mandate**: typed proof
+   skeletons with holes filled programmatically from deterministic source spaces, lowered
+   through the projector's have/calc/witness chains and emitted as warranted LeanExpr
+   (her paper §5.5–5.7; the `from_ducky_program` seam). That band is a REQUIRED deliverable
+   of the full system, not an accepted residual — her executor's current closure gap on it is
+   what EXP-RF-008 measures, and "fully passing" means the loop's residual is empty of goals
+   whose true proofs are utterable by her skeleton families. Form-mining must not chase it;
+   Dr. Ducky must close it.
 
 ---
 
