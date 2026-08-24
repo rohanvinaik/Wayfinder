@@ -1,0 +1,44 @@
+# EXP-RF-005b, Mathlib arm, TREATED condition: the deterministic path gated by
+# the HALF-A censor store, evaluated only on HALF-B theorems (the 005a split
+# discipline, live) — fences are never evaluated on their mining theorems.
+# Control: configs/wayfinder_deterministic.yaml on the same half-B manifest.
+
+data:
+  nav_train: data/nav_training.jsonl
+  nav_eval: data/nav_eval.jsonl
+  proof_network_db: data/proof_network_v3.db
+  anchor_labels: data/anchor_labels.json
+
+search:
+  search_mode: deterministic
+  budget: 600
+  hammer_delegation: false
+  accessible_premises: true
+  max_candidates_per_step: 8
+  hammer_timeout: 60
+  cosine_rw_beam: 5
+  dr_ducky_enabled: true
+  dr_ducky_max_programs: 24
+  dr_ducky_max_rounds: 3
+  dr_ducky_goal_limit: 3
+  norm_then_close_enabled: true
+  censor_store_path: runs/censor_store_halfA.json   # the one difference vs the control
+
+lean:
+  backend: pantograph
+  project_root: data/lean_project
+  imports: ["Mathlib"]
+
+axle:
+  enabled: false
+
+evaluation:
+  benchmark_theorems: data/minif2f_test.jsonl   # overridden by --theorems at launch
+
+logging:
+  run_dir: runs/
+
+invariants:
+  eval_data_frozen: true
+  single_inference_per_state: true
+  scoring_auditable: true
