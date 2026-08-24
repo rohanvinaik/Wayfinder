@@ -497,6 +497,20 @@ Each experiment is paired, budget-reported, and gates the next wave. Names are c
   orthogonal to the censor gate). The principled fix is §4.1b law 4's routing: reads that identify
   a tail-regime goal should escalate to Ducky *before* bulk rewriting — a lane-ordering question
   now carried by the ledger, not a heuristic patch.
+  **Round 5 (post wiring pass — close-before-unpack + grammar v2 + Dr. Ducky rewiring;
+  §10.7-warranted): Mathlib½B control 71 → 82/150 (54.7%), all 11 gains attributed to
+  `atomic_sweep` (8 close in ONE attempt), zero losses; grammar v2 live at goal level
+  (simp_set 26 / simpa 4 / rw_chain 4 goal-closes); safety delta exactly 0 both pairs, fifth
+  consecutive round.** Costs honestly: +15.3% attempts on Mathlib (+11.5% MiniF2F) — coverage
+  bought with budget; the censor store predates the new lane population, so re-mining fences
+  against the post-wiring traces (the loop's universe re-estimation) is where the refund grows.
+  MiniF2F theorem-level unchanged at 40/100 while the sweep closes goals there too (9) — the
+  mechanism transports cross-corpus; the MiniF2F frontier is simply not the one-shot-closability
+  disease but the multi-step tail (EXP-RF-008's band). The four round-4 preemption victims stay
+  unsolved: `goal_tail_regime` reads them '' (no concrete surface) — a discrimination-guarantee
+  finding (Ducky-closable goals sharing the not-tail read), whose principled fix is a new
+  orthogonal read MINED from the population of historical dr_ducky closes, never markers tuned
+  to four names.
 - **EXP-RF-006 — warranted emission**: LeanExpr reconstruction vs string reconstruction at v4.28:
   compile rate, repair rate, environment-mismatch failures. The §5.3 quirks get their data here.
   **Harness BUILT + dry-mode smoked 2026-08** (`scripts/exp_rf006_emission_gate.py`): paired
