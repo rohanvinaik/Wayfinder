@@ -14,16 +14,24 @@ from src.structural_reads import (
     BANKS,
     CONSTRUCTIVE,
     DESTRUCTIVE,
+    READ_DIMENSIONS,
     SILENT,
     ContextNorms,
+    SurfaceNorms,
     count_hypotheses,
     discriminates,
     goal_target,
     hamming,
     interference,
     mine_context_zero,
+    mine_median,
+    mine_top_tertile,
+    read_casts,
     read_context,
+    read_coupling,
     read_goal,
+    read_numerals,
+    read_size,
     ternary,
 )
 
@@ -91,10 +99,15 @@ class GoalReadsTest(unittest.TestCase):
             self.assertEqual(reads.directions()["depth"], 0)
             self.assertIn("no opinion", reads.evidence()["depth"])
 
-    def test_signature_is_bank_ordered_and_total(self):
+    def test_signature_spans_all_read_dimensions(self):
         sig = read_goal(self.BARE_ARITH).signature()
-        self.assertEqual(len(sig), len(BANKS))
+        self.assertEqual(len(sig), len(READ_DIMENSIONS))
         self.assertTrue(all(s in (-1, 0, 1) for s in sig))
+
+    def test_directions_stay_six_bank_for_query_compat(self):
+        # Surface dims have no entity-side positions; leaking them into a
+        # StructuredQuery would silently score nothing.
+        self.assertEqual(set(read_goal(self.BARE_ARITH).directions()), set(BANKS))
 
     def test_every_read_carries_evidence(self):
         for text in read_goal(self.ABSTRACT).evidence().values():
@@ -105,6 +118,42 @@ class GoalReadsTest(unittest.TestCase):
         sig_b = read_goal(self.ABSTRACT).signature()
         self.assertTrue(discriminates(sig_a, sig_b))
         self.assertEqual(hamming(sig_a, sig_a), 0)
+
+
+class SurfaceReadsTest(unittest.TestCase):
+    """The Wave-1.5 dimensions — each off its mined zero (nav_eval, 2026-08-24)."""
+
+    def test_size_bands_align_with_mined_tertiles(self):
+        self.assertEqual(read_size(5).sign, -1)  # ≤6 compact
+        self.assertEqual(read_size(11).sign, 0)  # the mined median
+        self.assertEqual(read_size(16).sign, 1)  # ≥16 large
+        self.assertEqual(read_size(30).zero_state, 11.0)
+
+    def test_casts_one_sided_off_zero_mode(self):
+        self.assertEqual(read_casts(0).sign, 0)
+        self.assertEqual(read_casts(1).sign, 1)  # above the mined boundary 0
+        # The −1 pole is deliberately unused: the mode IS "no casts".
+        self.assertIn("corpus mode", read_casts(0).evidence)
+
+    def test_numerals_boundary_is_the_mined_top_tertile(self):
+        self.assertEqual(read_numerals(1).sign, 0)  # within mode (boundary 1)
+        self.assertEqual(read_numerals(2).sign, 1)
+
+    def test_coupling_poles(self):
+        self.assertEqual(read_coupling(0, hyp_count=3).sign, -1)  # isolated target
+        self.assertEqual(read_coupling(2, hyp_count=3).sign, 0)
+        self.assertEqual(read_coupling(5, hyp_count=3).sign, 1)  # locally coupled
+
+    def test_coupling_abstains_without_hypotheses(self):
+        # The bare goal is CONTEXT's pole; coupling must not double-read it.
+        read = read_coupling(0, hyp_count=0)
+        self.assertEqual(read.sign, 0)
+        self.assertIn("no opinion", read.evidence)
+
+    def test_norms_are_remineable(self):
+        self.assertEqual(mine_median([7, 11, 15]), 11.0)
+        self.assertEqual(mine_top_tertile([0, 0, 0, 0, 1, 2]), 1.0)
+        self.assertEqual(read_size(15, SurfaceNorms(size_zero=20.0, size_tol=4.0)).sign, -1)
 
 
 class HypothesisParsingTest(unittest.TestCase):

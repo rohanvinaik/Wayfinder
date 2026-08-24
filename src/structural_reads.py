@@ -31,12 +31,21 @@ The estimator is pinned harder than any controller above it (Peitho DESIGN
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from scripts.tactic_maps import DOMAIN_PATTERNS  # shared vocabulary; slated for src/ in a later wave
 from src.hard_data_tags import classify_goal_bucket, sanitize_goal_text
 
 BANKS = ("structure", "domain", "depth", "automation", "context", "decomposition")
+
+# Wave-1.5 surface dimensions, added per the discrimination guarantee after
+# EXP-RF-003's first run found 23 collapsed signature cells (the two largest:
+# near-neutral signatures holding 1151 and 823 goals across 66–80 tactic
+# families). A collapsed signature is a missing dimension; these are the
+# orthogonal reads, each off its own MINED zero — never a tuned threshold.
+SURFACE_DIMENSIONS = ("size", "casts", "numerals", "coupling")
+READ_DIMENSIONS = BANKS + SURFACE_DIMENSIONS
 
 # Interference verdicts (Peitho otp, named codes — never booleans).
 CONSTRUCTIVE = "constructive"
@@ -91,6 +100,52 @@ class ContextNorms:
 
 
 DEFAULT_NORMS = ContextNorms()
+
+
+@dataclass(frozen=True)
+class SurfaceNorms:
+    """Mined zeros for the Wave-1.5 surface dimensions.
+
+    Defaults were MINED 2026-08-24 from the frozen eval set (nav_eval,
+    deterministic stride-2 sample, n=4000 goal targets): size median 11,
+    tertiles (7, 15); cast counts 78% zero, top-tertile boundary 0; numeral
+    counts 65% zero, top-tertile boundary 1; hypothesis∩target identifier
+    overlap median 2, tertiles (1, 3). Re-mine with :func:`mine_median` /
+    :func:`mine_top_tertile` when the corpus changes — norms are data.
+    """
+
+    size_zero: float = 11.0
+    size_tol: float = 4.0  # bands align with the mined tertiles (7, 15)
+    cast_t2: float = 0.0  # count > t2 reads +1; the −1 pole is unused (mode IS none)
+    numeral_t2: float = 1.0  # count > t2 reads +1; the −1 pole is unused
+    coupling_zero: float = 2.0
+    coupling_tol: float = 1.0  # bands align with the mined tertiles (1, 3)
+
+
+DEFAULT_SURFACE = SurfaceNorms()
+
+_IDENTIFIER_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_.']*")
+_NUMERAL_RE = re.compile(r"\b\d+\b")
+
+
+def mine_median(values: list[int]) -> float:
+    """Plain median — the mined zero for two-sided surface dimensions."""
+    ordered = sorted(values)
+    if not ordered:
+        return 0.0
+    mid = len(ordered) // 2
+    if len(ordered) % 2:
+        return float(ordered[mid])
+    return (ordered[mid - 1] + ordered[mid]) / 2.0
+
+
+def mine_top_tertile(values: list[int]) -> float:
+    """The top-tertile boundary — the mined threshold for one-sided count
+    dimensions whose mode is zero (count > boundary reads +1)."""
+    ordered = sorted(values)
+    if not ordered:
+        return 0.0
+    return float(ordered[(2 * len(ordered)) // 3])
 
 
 def ternary(deviation: float, tol: float) -> int:
@@ -239,6 +294,83 @@ def read_decomposition(target: str, goal_bucket: str) -> BankRead:
     return BankRead("decomposition", 0, 0.0, None, "single-goal surface")
 
 
+def read_size(token_count: int, norms: SurfaceNorms = DEFAULT_SURFACE) -> BankRead:
+    """SIZE: target term size as a deviation read against the mined median.
+
+    −1 compact target (single-fact/assumption territory) · 0 typical ·
+    +1 large target (normalization/simp territory before any closer).
+    """
+    dev = token_count - norms.size_zero
+    return BankRead(
+        "size",
+        ternary(dev, norms.size_tol),
+        abs(dev),
+        norms.size_zero,
+        f"{token_count} target tokens vs mined zero {norms.size_zero:g} (tol {norms.size_tol:g})",
+    )
+
+
+def read_casts(cast_count: int, norms: SurfaceNorms = DEFAULT_SURFACE) -> BankRead:
+    """CASTS: coercion surface (↑ / .cast) — one-sided off a zero mode.
+
+    The mined mode is no casts (78% of the corpus), so 0 IS the norm and the
+    −1 pole is legitimately unused; count above the mined top-tertile
+    boundary reads +1 (norm_cast/push_cast territory).
+    """
+    if cast_count > norms.cast_t2:
+        return BankRead(
+            "casts", 1, float(cast_count), norms.cast_t2,
+            f"{cast_count} coercion marker(s) — above the mined boundary {norms.cast_t2:g}",
+        )
+    return BankRead("casts", 0, 0.0, norms.cast_t2, "no coercion surface — the corpus mode")
+
+
+def read_numerals(numeral_count: int, norms: SurfaceNorms = DEFAULT_SURFACE) -> BankRead:
+    """NUMERALS: concrete numeric literals — one-sided off a zero mode.
+
+    Mode is none (65%); above the mined top-tertile boundary reads +1
+    (norm_num/decide/omega territory). The −1 pole is legitimately unused.
+    """
+    if numeral_count > norms.numeral_t2:
+        return BankRead(
+            "numerals", 1, float(numeral_count), norms.numeral_t2,
+            f"{numeral_count} numeral(s) — above the mined boundary {norms.numeral_t2:g}",
+        )
+    return BankRead(
+        "numerals", 0, float(numeral_count), norms.numeral_t2,
+        f"{numeral_count} numeral(s) — within the corpus mode",
+    )
+
+
+def target_identifiers(text: str) -> set[str]:
+    """The identifier tokens of a goal fragment (the coupling vocabulary)."""
+    return set(_IDENTIFIER_RE.findall(text))
+
+
+def read_coupling(
+    overlap_count: int, hyp_count: int, norms: SurfaceNorms = DEFAULT_SURFACE
+) -> BankRead:
+    """COUPLING: hypothesis∩target identifier overlap as a deviation read.
+
+    −1 isolated target (no shared identifiers — external premises must carry
+    the proof) · 0 typical coupling · +1 tightly coupled (local-fact /
+    assumption-closable territory). Abstains when there are no hypotheses:
+    that situation is CONTEXT's −1 pole, and double-reading it here would
+    entangle the two dimensions.
+    """
+    if hyp_count == 0:
+        return BankRead("coupling", 0, 0.0, None, "no hypotheses — coupling has no opinion")
+    dev = overlap_count - norms.coupling_zero
+    return BankRead(
+        "coupling",
+        ternary(dev, norms.coupling_tol),
+        abs(dev),
+        norms.coupling_zero,
+        f"{overlap_count} shared identifier(s) vs mined zero {norms.coupling_zero:g}"
+        f" (tol {norms.coupling_tol:g})",
+    )
+
+
 @dataclass(frozen=True)
 class GoalReads:
     """The goal's ledger row, Wave-1 slice: raw facts + the six positions."""
@@ -248,24 +380,41 @@ class GoalReads:
     reads: tuple[BankRead, ...]
 
     def signature(self) -> tuple[int, ...]:
-        """The ternary signature, bank-ordered — the coordinate AND the justification key."""
+        """The full ternary signature over READ_DIMENSIONS — coordinate AND justification key."""
         by_bank = {r.bank: r.sign for r in self.reads}
-        return tuple(by_bank[b] for b in BANKS)
+        return tuple(by_bank[b] for b in READ_DIMENSIONS)
 
     def directions(self) -> dict[str, int]:
-        """Bank → sign, the StructuredQuery vocabulary."""
-        return {r.bank: r.sign for r in self.reads}
+        """The SIX-BANK subset only — the StructuredQuery/entity-position vocabulary.
+
+        Surface dimensions have no entity-side positions in the network, so
+        leaking them into a navigational query would silently score nothing;
+        consumers wanting the full read use :meth:`signature`/:attr:`reads`.
+        """
+        by_bank = {r.bank: r.sign for r in self.reads}
+        return {b: by_bank[b] for b in BANKS}
 
     def evidence(self) -> dict[str, str]:
         return {r.bank: r.evidence for r in self.reads}
 
 
-def read_goal(goal_text: str, norms: ContextNorms = DEFAULT_NORMS) -> GoalReads:
-    """Read all six banks for one goal state. Pure; total; every sign warranted."""
+def read_goal(
+    goal_text: str,
+    norms: ContextNorms = DEFAULT_NORMS,
+    surface: SurfaceNorms = DEFAULT_SURFACE,
+) -> GoalReads:
+    """Read every dimension for one goal state. Pure; total; every sign warranted."""
     clean = sanitize_goal_text(goal_text or "")
     bucket = classify_goal_bucket(clean)
     target = goal_target(clean)
     hyps = count_hypotheses(clean)
+    hyp_ids: set[str] = set()
+    for line in clean.split("\n"):
+        if "⊢" in line or "|-" in line:
+            break
+        if ":" in line:
+            hyp_ids |= target_identifiers(line.split(":", 1)[1])
+    target_ids = target_identifiers(target)
     reads = (
         read_structure(target, bucket),
         read_domain(clean),
@@ -273,6 +422,10 @@ def read_goal(goal_text: str, norms: ContextNorms = DEFAULT_NORMS) -> GoalReads:
         read_automation(target),
         read_context(hyps, norms),
         read_decomposition(target, bucket),
+        read_size(len(target.split()), surface),
+        read_casts(target.count("↑") + target.count(".cast"), surface),
+        read_numerals(len(_NUMERAL_RE.findall(target)), surface),
+        read_coupling(len(hyp_ids & target_ids), hyps, surface),
     )
     return GoalReads(goal_bucket=bucket, hyp_count=hyps, reads=reads)
 
