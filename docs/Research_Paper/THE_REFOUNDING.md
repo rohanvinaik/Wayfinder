@@ -242,6 +242,57 @@ inventing new signals. [Status: the model MEASURED in Peitho; the consolidation 
 that computed reads match or beat encoder-estimated coordinates on routing is EXP-RF-003's question,
 not an assumption.]
 
+### 4.1b The Peitho geometry, transported precisely (interrogated 2026-08-24; code + design)
+
+The Peitho probe (its `position`/`otp`/`network`/`resolve` core and DESIGN §§2–6, noting the
+multi-network layer is *specified beyond the build*) sharpens §4.1 into seven transported laws:
+
+1. **The position is five-tuple, not a sign.** `DimensionPosition(dimension, sign, depth,
+   zero_state, path)`: the ternary sign for the signature, the *magnitude* retained as depth, the
+   *mined zero the deviation was read against*, and the provenance path. The ledger row keeps the
+   raw fact AND the read AND its norm — "the flat number is the fact; the signed position is what
+   the geometry knows about it; both sit in the same row." `BankRead` adopts this shape verbatim.
+2. **The mined zero is median-of-active.** Non-participants are excluded so they cannot drag the
+   norm (`mine_sales_zero`: the median of *sellers*). Norms are data, re-mined when the corpus
+   changes — never authored thresholds; a tolerance band around zero defines the `0` read.
+3. **The discrimination guarantee is an executable check.** `discriminates(sig_a, sig_b)` =
+   Hamming > 0. Two goal populations with different closing behavior sharing one signature is a
+   **structural bug whose fix is a new orthogonal read off its own mined zero — never a tuned
+   threshold**. This check is a first-class deliverable of EXP-RF-003, not commentary.
+4. **The verdict operator is set-valued interference, not a score.** `interference(supports,
+   opposes, support_min, oppose_min)` → CONSTRUCTIVE / DESTRUCTIVE / AMBIGUOUS / SILENT; one
+   confident opposition vetoes a pile of weak supports; banks never fuse or average. The routing
+   translation: DESTRUCTIVE = censor-grade elimination of an action family; AMBIGUOUS = the
+   *escalate/disambiguate* signal (route to Ducky or a probe); SILENT = no structural opinion
+   (fall through to the ranking layer).
+5. **Two gate laws bind the censor layer.** From `resolve.gate`: *no signature → conservative
+   keep* (elimination requires positive fence evidence, never absence of evidence), and the
+   *full-signature escape hatch* (a protected class — Peitho's core inventory; here, e.g., a goal
+   family under active study — is never struck by a single read's dip, only by full-signature
+   decision). Both are admissibility clause (ii) made operational.
+6. **The multi-network substrate, with the proof step as the transaction.** Peitho's deepest
+   design element: several geometries over the *same* data, coupled by atomic primitives, the
+   transaction being the seam that touches all networks at once. The proof network already holds
+   five latent networks — the anchor/lens geometry (five anchor categories), the
+   accessible-premises DAG, the 339K `depends_on` premise graph, the namespace hierarchy, and the
+   trace-derived tactic co-occurrence structure — and **the proof step is the transaction**: one
+   step touches a goal, a tactic, premises, and an outcome. The obligation graph of §3.4 is one of
+   these networks (the `depends_on` geometry), not a new artifact.
+7. **The cross-network resolution operator.** Where one network's read under-resolves (an
+   AMBIGUOUS interference verdict), the residual is resolved by *comparing independent orthogonal
+   traversals* — agreement between structurally-derived readings is itself a signal, a dimension
+   beyond any literal encoding. The in-repo primitives are `compute_lens_scores`'s geometric-mean
+   lens coherence and the holographic multi-projection coherence (the latter now recognizable as
+   this operator's vibe-era form); Detective's parsimony consensus ("fused by lens *agreement*,
+   never a weighted sum") is the same operator in its third domain. [Status: laws 1–5 BUILT and
+   mutation-pinned in Peitho — transport is a port; laws 6–7 SPECIFIED in Peitho's design with
+   in-repo primitives here — their full form lands with Waves 2 and 4.]
+
+The goal-ledger consequence unifies §4 with §6: the per-goal **ledger row** (raw goal text, bucket,
+the five-tuple reads, the interference verdicts, eliminations with warrants, lane history) is the
+single accreting source of truth — Peitho's shadow ledger for proof states — and the cheat sheet of
+§6 is a *projection* of it, exactly as Peitho's operator reports are projections of its ledgers.
+
 ### 4.2 Reads, fences, and coordinates are one vocabulary
 
 The same structural reads serve three consumers: they *are* the σ_search tests of §2, the censor
