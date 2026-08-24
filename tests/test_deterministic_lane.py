@@ -37,7 +37,11 @@ def _make_network():
     ]
     for eid, name in ents:
         conn.execute("INSERT INTO entities (id, name) VALUES (?,?)", (eid, name))
-    for aid, label in [(1, "Nat"), (2, "add"), (3, "List"), (4, "map"), (5, "mul")]:
+    # TYPED labels, formed as extraction forms them (ns:/type:/name:) — the
+    # fixture vocabulary must mirror the production dictionary; bare labels
+    # here once let a query-side mismatch pass green while the live DB
+    # matched zero anchors across a whole benchmark arm.
+    for aid, label in [(1, "ns:Nat"), (2, "name:add"), (3, "ns:List"), (4, "name:map"), (5, "name:mul")]:
         conn.execute("INSERT INTO anchors (id, label) VALUES (?,?)", (aid, label))
     for eid, aid in [(2, 1), (2, 2), (3, 3), (3, 4), (4, 1), (4, 5)]:
         conn.execute(
@@ -75,12 +79,23 @@ def _make_env(conn, lean):
 
 
 class SymbolicQueryTest(unittest.TestCase):
-    def test_goal_tokens_intersect_anchor_dictionary(self):
+    def test_goal_labels_intersect_anchor_dictionary(self):
         conn = _make_network()
         query = build_symbolic_query(conn, GOAL)
-        # "Nat" (from Nat.add) and "add" match; List/map/mul do not.
+        # ns:Nat and name:add match; List/map/mul labels do not.
         self.assertEqual(sorted(query.prefer_anchors), [1, 2])
         self.assertEqual(query.bank_directions, {})
+
+    def test_query_labels_are_typed_like_extraction(self):
+        from src.resolution import symbolic_query_labels
+
+        labels = symbolic_query_labels(GOAL)
+        self.assertIn("ns:Nat", labels)
+        self.assertIn("type:Nat", labels)
+        self.assertIn("name:add", labels)
+        # Bare tokens never appear — they match nothing in the network.
+        self.assertNotIn("Nat", labels)
+        self.assertNotIn("add", labels)
 
     def test_no_matching_tokens_yields_empty_anchors(self):
         conn = _make_network()

@@ -75,7 +75,9 @@ def build_query(
     )
 
 
-_GOAL_TOKEN_RE = None  # compiled lazily so `re` stays a local import
+# The anchor-label vocabulary lives in src.structural_reads (the vocabulary
+# module, importable without numpy); re-exported here for query consumers.
+from src.structural_reads import symbolic_query_labels  # noqa: E402
 
 
 def build_symbolic_query(
@@ -86,38 +88,18 @@ def build_symbolic_query(
     """Build a StructuredQuery from goal TEXT alone — no navigator, no model.
 
     The deterministic twin of :func:`build_query`. Anchors come from exact
-    set intersection between the goal's identifier tokens (and their dotted
-    components) and the proof network's anchor dictionary; banks stay
-    neutral (empty = the mode). IDF weighting happens downstream in
-    anchor scoring, so all matched anchors carry weight 1.0 here.
+    set intersection between the goal's typed candidate labels
+    (:func:`symbolic_query_labels`) and the proof network's anchor
+    dictionary; banks stay neutral (empty = the mode). IDF weighting happens
+    downstream in anchor scoring, so all matched anchors carry weight 1.0.
     """
-    import re
-
-    global _GOAL_TOKEN_RE
-    if _GOAL_TOKEN_RE is None:
-        _GOAL_TOKEN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_.']*")
-
-    tokens: set[str] = set()
-    for tok in _GOAL_TOKEN_RE.findall(goal_text or ""):
-        tok = tok.rstrip(".'")
-        if not tok:
-            continue
-        tokens.add(tok)
-        # Dotted identifiers also contribute their components and namespace
-        # prefixes (Nat.add_comm -> Nat, add_comm, Nat.add_comm).
-        if "." in tok:
-            parts = tok.split(".")
-            tokens.update(p for p in parts if p)
-            for i in range(1, len(parts)):
-                tokens.add(".".join(parts[:i]))
-
+    labels = symbolic_query_labels(goal_text)
     prefer_anchors: list[int] = []
-    if tokens:
-        ordered = sorted(tokens)
-        placeholders = ",".join("?" for _ in ordered)
+    if labels:
+        placeholders = ",".join("?" for _ in labels)
         rows = conn.execute(
             f"SELECT id FROM anchors WHERE label IN ({placeholders}) ORDER BY id",
-            ordered,
+            labels,
         ).fetchall()
         prefer_anchors = [row[0] for row in rows][:top_k_anchors]
 

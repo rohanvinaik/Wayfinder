@@ -126,6 +126,47 @@ DEFAULT_SURFACE = SurfaceNorms()
 
 _IDENTIFIER_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_.']*")
 _NUMERAL_RE = re.compile(r"\b\d+\b")
+_TYPE_CHAIN_RE = re.compile(r"\b([A-Z][A-Za-z]+(?:\.[A-Z][A-Za-z]+)*)\b")
+_NAME_FRAG_RE = re.compile(r"[A-Z]?[a-z]+|[A-Z]+(?=[A-Z]|$)")
+
+
+def symbolic_query_labels(goal_text: str, max_ns_depth: int = 4) -> list[str]:
+    """Candidate anchor labels for a goal, formed as extraction formed them.
+
+    One vocabulary, by construction: the network's stored anchor labels are
+    TYPED (`type:Finset`, `ns:Nat`, `name:comm` — scripts/extract_proof_network),
+    so query-side labels must be formed by the same rules or they match
+    nothing (measured: bare tokens matched 0 anchors on the v3 network
+    across an entire 100-theorem arm).
+
+    - ``type:{Leaf}`` — capitalized type tokens, leaf after the last dot,
+      length >= 3;
+    - ``ns:{prefix}`` — hierarchical namespace prefixes of capitalized
+      dotted chains, up to ``max_ns_depth`` levels;
+    - ``name:{frag}`` — lowercase name fragments (underscore + camelCase
+      split, length >= 3) of identifier name parts.
+
+    Sorted and deduplicated — deterministic byte-for-byte. Lives here, in
+    the vocabulary module, so the label rules sit beside the reads that
+    share their tokens (and stay importable in numpy-free environments).
+    """
+    labels: set[str] = set()
+    text = goal_text or ""
+    for chain in _TYPE_CHAIN_RE.findall(text):
+        parts = chain.split(".")
+        leaf = parts[-1]
+        if len(leaf) >= 3:
+            labels.add(f"type:{leaf}")
+        for i in range(1, min(len(parts) + 1, max_ns_depth + 1)):
+            labels.add("ns:" + ".".join(parts[:i]))
+    for token in _IDENTIFIER_RE.findall(text):
+        name = token.rstrip(".'").rsplit(".", 1)[-1]
+        for part in name.split("_"):
+            for frag in _NAME_FRAG_RE.findall(part):
+                frag_lower = frag.lower()
+                if len(frag_lower) >= 3:
+                    labels.add(f"name:{frag_lower}")
+    return sorted(labels)
 
 
 def mine_median(values: list[int]) -> float:
