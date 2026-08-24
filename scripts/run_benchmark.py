@@ -147,6 +147,7 @@ def _build_search_components(config: dict, checkpoint_path: Path, device: str) -
         dr_ducky_max_programs=search_cfg.get("dr_ducky_max_programs", 24),
         dr_ducky_max_rounds=search_cfg.get("dr_ducky_max_rounds", 3),
         dr_ducky_goal_limit=search_cfg.get("dr_ducky_goal_limit", 3),
+        censor_store_path=search_cfg.get("censor_store_path", ""),
     )
 
     lean_backend = config.get("lean", {}).get("backend", "stub")

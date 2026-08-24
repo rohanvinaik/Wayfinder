@@ -128,6 +128,11 @@ class SearchConfig:
     dr_ducky_max_programs: int = 24
     dr_ducky_max_rounds: int = 3
     dr_ducky_goal_limit: int = 3
+    # The Monty Hall gate (THE_REFOUNDING §3.3): path to an adopted censor
+    # store mined from gate-off traces. Empty = gate off. When set, fenced
+    # tactic families are removed from the per-goal lane order BEFORE any
+    # Lean call, each removal recorded on the abstention ledger.
+    censor_store_path: str = ""
 
 
 @dataclass
@@ -158,6 +163,9 @@ class SearchResult:
     metavariable_penalty_count: int = 0
     state_loop_penalty_count: int = 0
     replanner_trigger_count: int = 0
+    # The abstention ledger (THE_REFOUNDING §7.3): every censor-gate lane
+    # removal with its warrant — the negative channel, auditable in every report.
+    censor_drops: list = field(default_factory=list)
 
 
 @dataclass
@@ -202,6 +210,8 @@ class _SearchEnv:
     apply_trigger_head: Any | None = None
     apply_trigger_threshold: float = 0.47
     allow_self_application: bool = False
+    # The Monty Hall gate: key → fenced families (None/empty = gate off).
+    censor_fences: dict[str, set[str]] | None = None
 
 
 @dataclass
@@ -243,6 +253,8 @@ class _SearchState:
     _state_loop_penalty_count: int = 0
     _replanner_trigger_count: int = 0
     _last_pathology_tags: list[str] = field(default_factory=list)
+    # The abstention ledger: every censor-gate removal, with its warrant key.
+    _censor_drops: list[dict] = field(default_factory=list)
 
 
 _METAVAR_RE = re.compile(r"\?[A-Za-z][A-Za-z0-9_.]*")
@@ -749,6 +761,43 @@ def _exec_selector_topk(
         return [cosine_ranked[i] for i in ranked_idx[:k]]
     except Exception:
         return cosine_ranked[:k]
+
+
+def _censored_lane_order(
+    lane_order: list[str],
+    goal: str,
+    state: _SearchState,
+    env: _SearchEnv,
+) -> list[str]:
+    """The Monty Hall gate: remove censor-fenced tactic families before Lean.
+
+    Consults the adopted censor store (mined from gate-off traces, admitted
+    under spine-source + retained-plurality) on the goal's censor-slice
+    signature. Gate laws (THE_REFOUNDING §3.3, §4.1b law 5): with no store or
+    no computable signature, nothing is fenced; the gate only ever REMOVES
+    lanes, each removal recorded on the abstention ledger with its warrant
+    key; and as a gate-time backstop to admission-time plurality, a fence set
+    that would empty the lane order is not applied.
+    """
+    if not env.censor_fences:
+        return lane_order
+    from src.censor_store import FAMILY_OF_LANE, fenced_families, slice_signature
+    from src.structural_reads import read_goal
+
+    reads = read_goal(goal)
+    fences = fenced_families(reads.goal_bucket, slice_signature(reads), env.censor_fences)
+    if not fences:
+        return lane_order
+    kept = [lane for lane in lane_order if FAMILY_OF_LANE.get(lane) not in fences]
+    if not kept:
+        return lane_order  # plurality backstop: never eliminate every lane
+    for lane in lane_order:
+        family = FAMILY_OF_LANE.get(lane)
+        if family in fences:
+            state._censor_drops.append(
+                {"goal": goal[:120], "lane": lane, "family": family, "bucket": reads.goal_bucket}
+            )
+    return kept
 
 
 def _neutral_nav_output() -> NavOutput:
@@ -1980,6 +2029,7 @@ def _search_step(
     if predicted is not None:
         lane_order = _reorder_lanes_by_family(lane_order, predicted)
     lane_order = _apply_domain_lane_policy(state.theorem_id, goal, lane_order)
+    lane_order = _censored_lane_order(lane_order, goal, state, env)
     state._last_lane_order_executed = list(lane_order)
 
     # Try non-hammer lanes in order, tracking which were attempted
@@ -2192,6 +2242,12 @@ def search(
         family_classifier_torch=family_clf_torch,
         holographic_premises=list(holographic_premises or []),
     )
+
+    # The Monty Hall gate loads only when a store is configured (gate-off default).
+    if cfg.censor_store_path:
+        from src.censor_store import load_fences
+
+        env.censor_fences = load_fences(cfg.censor_store_path) or None
 
     # Populate premise type cache from DB (for v2 selector compat features)
     if exec_apply_selector is not None:
@@ -2432,6 +2488,7 @@ def search(
         metavariable_penalty_count=state._metavariable_penalty_count,
         state_loop_penalty_count=state._state_loop_penalty_count,
         replanner_trigger_count=state._replanner_trigger_count,
+        censor_drops=list(state._censor_drops),
     )
 
 
