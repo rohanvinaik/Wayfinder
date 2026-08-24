@@ -1078,7 +1078,13 @@ The ActionIR decoder sits inside the EXECUTION slot. It takes the residual execu
 **Modules:**
 - `src/tactic_ir.py` — `TermExpr`, `RewriteAtom`, `ActionIR` typed AST with `lower()` method
 - `src/tactic_canonicalizer.py` — parse Lean tactic strings into canonical ActionIR
-- `src/tactic_compiler.py` — compile family + premises into tactic candidates (template-based v0)
+
+(The template-based v0 compiler, `src/tactic_compiler.py`, was removed 2026-08: its
+family→tactic templates were superseded by the benchmark-validated inline compilation in
+`proof_search._try_cosine_family` — per-premise rw direction via `rw_scoper.infer_direction`,
+the exact→refine→apply escalation ladder, and the bare-simp-first policy — and its
+`exact p _` wildcard escalation is the `premise_direct` failure mode documented in the
+Dr. Ducky paper.)
 
 **Architecture (GSE-aligned two-stage):**
 
@@ -1582,7 +1588,6 @@ src/
 ├── subtask_ir.py               Derive GoalShapeIR / TriggerProfileIR / SubtaskIR
 ├── dr_ducky.py                 Typed residual capsule model and proof skeleton synthesis
 ├── dr_ducky_executor.py        Lean-backed deterministic residual executor
-├── tactic_compiler.py          Template-based tactic compilation (v0)
 ├── tactic_lowering.py          Deterministic ActionIR -> Lean tactic lowering
 ├── censor.py                   Failure prediction network (Slot 5)
 └── arbiter.py                  SoM orchestrator
