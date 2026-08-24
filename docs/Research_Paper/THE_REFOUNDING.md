@@ -534,6 +534,20 @@ Each experiment is paired, budget-reported, and gates the next wave. Names are c
    EXP-RF-004/005 report.
 6. **`#print axioms` audit** on the 2026-08-24 Lean batch (including `bridge_curvature_bound`) is
    owed; until it runs, those results are cited proved-modulo-audit, never audited.
+7. **The residual is evidence, never the specification** (the anti-overfitting discipline for the
+   iterative loop). A failure autopsy *prioritizes*; it does not *warrant*. A design change is
+   admissible only with all three: (i) a mechanistic justification independent of the residual —
+   a native production of the tactic language, an information-preservation ordering argument, a
+   read off a mined norm; (ii) a population-level measurement over the full corpus, not the
+   failure set (grammar v2's warrant: 94.1% of 62,233 traced rw steps are multi-premise, 79.1%
+   of simp steps multi-hint, simpa 3.3% of all 338,888 steps — the 48 autopsy rows merely
+   surfaced these); (iii) out-of-sample validation (the 005a split discipline: changes derived
+   from Mathlib½B failures are validated cross-corpus and on untouched splits). Parameterization
+   is always by rank/read/norm, never by theorem identity. The loop's universe-redefinition step
+   is population re-estimation over the residual distribution (norms, censors, IDF re-mined) —
+   by construction never a per-theorem patch. Corollary boundary: have/refine/obtain (≈17% of
+   corpus steps) are term-construction forms deliberately OUTSIDE the premise-pool grammar —
+   Ducky/LeanExpr territory, not productions to be chased by form-mining.
 
 ---
 
