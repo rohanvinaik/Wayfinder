@@ -1519,8 +1519,21 @@ def _accessible_lemmas(
     accessible_theorem_id: int | None = None,
     max_lemmas: int = 8,
 ) -> list[str]:
-    if conn is None or accessible_theorem_id is None:
+    if conn is None:
         return []
+    if accessible_theorem_id is None:
+        # "No site" is not "no premises" (the c5eb44c disposition, ported):
+        # a siteless goal has no circularity hazard, so the pool is the
+        # library universe selected by anchor evidence — IDF-ranked, and
+        # empty (abstain) when the goal carries no nominal evidence. This
+        # un-blinds the premise program families off-site (MiniF2F closed
+        # 3/40 through Ducky while this returned [] unconditionally).
+        from src.resolution import library_premise_pool
+
+        try:
+            return library_premise_pool(conn, goal_text)[:max_lemmas]
+        except sqlite3.Error:  # a connection without the network schema
+            return []
     premise_ids = list(get_accessible_premises(conn, accessible_theorem_id))
     if not premise_ids:
         return []
@@ -1539,6 +1552,35 @@ def _bank_priority(capsule: GoalCapsule, bank: str) -> float:
         if prior.name == bank and not prior.suppressed:
             return float(prior.weight)
     return 0.0
+
+
+# Named code: a SUPPRESSED bank is a different "no" from an absent one.
+# Absent = the capsule has no opinion (neutral weight, programs generate);
+# suppressed = the capsule's filtering layer fenced the bank (programs are
+# NOT generated — Wesker layer 2 at the generation seam, the paper's §3.2
+# discipline finally enforced on the premise program families).
+BANK_SUPPRESSED = "suppressed"
+_NEUTRAL_BANK_WEIGHT = 0.5
+
+
+def bank_weight(capsule: GoalCapsule, bank: str) -> float | str:
+    """The capsule's opinion of a bank, with absence ≠ suppression."""
+    for prior in capsule.bank_priors:
+        if prior.name == bank:
+            return BANK_SUPPRESSED if prior.suppressed else float(prior.weight)
+    return _NEUTRAL_BANK_WEIGHT
+
+
+def program_score(base: float, weight: float) -> float:
+    """Inter-family governance of a program's rank score.
+
+    The within-family lattice (base) keeps encoding premise rank order —
+    that part is legitimately mechanical. The capsule's bank weight scales
+    it across families: neutral (0.5) leaves the base untouched, a favored
+    bank rises, a disfavored one sinks. Pure and total; suppression is
+    handled upstream by not generating at all.
+    """
+    return round(base * (0.7 + 0.6 * weight), 6)
 
 
 def _program_id(bank: str, name: str) -> str:
@@ -2277,9 +2319,17 @@ def build_ducky_programs(
         if not _bank_allowed(bank, allowed_engine_names=allowed_engine_names,
                              allowed_backend_families=allowed_backend_families):
             return
+        # The capsule's filtering layer governs generation: a suppressed
+        # bank generates nothing (its validated suppression previously
+        # never reached these program families), and the bank weight
+        # scales the within-family rank score across families.
+        weight = bank_weight(capsule, bank)
+        if weight == BANK_SUPPRESSED:
+            return
         _add_program(programs, seen, bank=bank, specialist=specialist,
                      name=name, tactics=tactics, rationale=rationale,
-                     score=score, disabled_tactics=disabled_tactics, **kwargs)
+                     score=program_score(score, weight),
+                     disabled_tactics=disabled_tactics, **kwargs)
 
     for idx, lemma in enumerate(space.accessible_lemmas[:12]):
         base_score = 0.82 - idx * 0.015

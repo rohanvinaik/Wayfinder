@@ -523,6 +523,22 @@ def _try_dr_ducky(
 
     row = _live_dr_ducky_row(goal, state)
     capsule = build_goal_capsule(row)
+
+    # Fence transport: the goal's censor verdict reaches Ducky's program
+    # generation. A family fenced on this signature (same family key, same
+    # signature — the warrant transports exactly) is not generated inside
+    # the capsule either; only the head-tactic families translate.
+    disabled: set[str] | None = None
+    if env.censor_fences:
+        from src.censor_store import fenced_families, slice_signature
+        from src.structural_reads import read_goal
+
+        reads = read_goal(goal)
+        fences = fenced_families(reads.goal_bucket, slice_signature(reads), env.censor_fences)
+        head_tactics = fences & {"rw", "simp", "exact", "apply"}
+        if head_tactics:
+            disabled = set(head_tactics)
+
     result = run_ducky_on_goal(
         goal,
         theorem_id=state.theorem_id,
@@ -533,6 +549,7 @@ def _try_dr_ducky(
         row_overrides=row,
         max_programs=cfg.dr_ducky_max_programs,
         max_rounds=cfg.dr_ducky_max_rounds,
+        disabled_tactics=disabled,
     )
     winning = result.winning_program or {}
     if not (result.closed or result.progressed):

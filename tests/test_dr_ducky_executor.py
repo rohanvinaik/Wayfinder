@@ -5,11 +5,15 @@ import unittest
 
 from src.dr_ducky import build_goal_capsule
 from src.dr_ducky_executor import (
+    BANK_SUPPRESSED,
     DuckyProgram,
+    _accessible_lemmas,
     _build_closer_programs,
+    bank_weight,
     build_ducky_programs,
     build_ducky_symbolic_frontier,
     execute_ducky_program,
+    program_score,
     run_ducky_on_goal,
 )
 from src.nav_contracts import LeanFeedback, TacticResult
@@ -562,6 +566,107 @@ class TestDrDuckyExecutor(unittest.TestCase):
         self.assertTrue(progress)
         self.assertEqual(state.close_provenance[-1], "dr_ducky")
         self.assertIn("n = 0", state.open_goals)
+
+
+class BankGovernanceTest(unittest.TestCase):
+    """Wave C: the capsule's filtering layer finally governs the firehose."""
+
+    def _capsule(self, goal: str = "⊢ CategoryTheory.IsIso f"):
+        return build_goal_capsule(
+            {
+                "theorem_id": "T",
+                "last_goal": goal,
+                "last_goal_bucket": "other",
+                "residual_bucket": "single_goal_near_miss",
+                "goals_closed": 0,
+                "goals_remaining": 1,
+                "attempts": 0,
+                "remaining_goals_snapshot": [goal],
+            }
+        )
+
+    def test_absent_bank_is_neutral_not_zero(self):
+        # Absence ≠ suppression: a bank the capsule holds no opinion on
+        # must not silently starve its program families.
+        capsule = self._capsule()
+        known = {p.name for p in capsule.bank_priors}
+        self.assertNotIn("no_such_bank", known)
+        self.assertEqual(bank_weight(capsule, "no_such_bank"), 0.5)
+
+    def test_suppressed_bank_returns_the_named_code(self):
+        capsule = self._capsule()
+        suppressed = [p.name for p in capsule.bank_priors if p.suppressed]
+        if not suppressed:
+            self.skipTest("capsule shape produced no suppressed banks")
+        self.assertEqual(bank_weight(capsule, suppressed[0]), BANK_SUPPRESSED)
+
+    def test_program_score_neutral_weight_preserves_base(self):
+        self.assertEqual(program_score(0.8, 0.5), 0.8)
+
+    def test_program_score_monotone_in_weight_and_base(self):
+        self.assertLess(program_score(0.8, 0.0), program_score(0.8, 0.5))
+        self.assertLess(program_score(0.8, 0.5), program_score(0.8, 1.0))
+        self.assertLess(program_score(0.5, 0.5), program_score(0.8, 0.5))
+
+    def test_suppressed_banks_generate_no_premise_programs(self):
+        # An abstract structural goal suppresses the numeric banks; the
+        # arith-flavored premise chains must not be generated at all.
+        capsule = self._capsule()
+        suppressed = {p.name for p in capsule.bank_priors if p.suppressed}
+        if not suppressed:
+            self.skipTest("capsule shape produced no suppressed banks")
+        programs = build_ducky_programs(
+            capsule,
+            theorem_id="T",
+            goal_text="⊢ CategoryTheory.IsIso f",
+            lean=None,
+            conn=None,
+        )
+        for prog in programs:
+            self.assertNotIn(prog.bank, suppressed, prog.program_id)
+
+
+class SitelessPremisePoolTest(unittest.TestCase):
+    """Wave C: 'no site' is not 'no premises' inside the capsule either."""
+
+    def _network(self):
+        from src.proof_network import init_db
+
+        conn = init_db(":memory:")
+        conn.execute("INSERT INTO entities (id, name) VALUES (2, 'Nat.add_comm')")
+        conn.execute("UPDATE entities SET entity_type='lemma' WHERE id=2")
+        for aid, label in [(1, "ns:Nat"), (2, "name:add")]:
+            conn.execute("INSERT INTO anchors (id, label) VALUES (?,?)", (aid, label))
+        for aid in (1, 2):
+            conn.execute(
+                "INSERT INTO entity_anchors (entity_id, anchor_id) VALUES (2,?)", (aid,)
+            )
+        conn.commit()
+        return conn
+
+    def test_siteless_goal_draws_the_library_pool(self):
+        conn = self._network()
+        pool = _accessible_lemmas(
+            "External.no_site",
+            "Nat.add a b = Nat.add b a",
+            conn,
+            accessible_theorem_id=None,
+        )
+        self.assertEqual(pool, ["Nat.add_comm"])
+
+    def test_no_anchor_evidence_abstains(self):
+        conn = self._network()
+        self.assertEqual(
+            _accessible_lemmas("T", "∀ ε > 0, True", conn, accessible_theorem_id=None),
+            [],
+        )
+
+    def test_schemaless_connection_fails_closed(self):
+        conn = sqlite3.connect(":memory:")
+        self.assertEqual(
+            _accessible_lemmas("T", "Nat.add a b", conn, accessible_theorem_id=None),
+            [],
+        )
 
 
 if __name__ == "__main__":
