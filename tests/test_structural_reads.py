@@ -255,8 +255,23 @@ class DeterministicLaneOrderTest(unittest.TestCase):
         order = deterministic_lane_order(TAIL_NONE, False, True)
         self.assertEqual(
             order,
-            ["structural_core", "symbolic_rw", "symbolic_exact", "symbolic_simp", "dr_ducky"],
+            [
+                "structural_core",
+                "symbolic_rw",
+                "symbolic_exact",
+                "symbolic_simp",
+                "symbolic_simpa",
+                "symbolic_rw_chain",
+                "symbolic_simp_set",
+                "dr_ducky",
+            ],
         )
+
+    def test_composite_families_run_after_their_singles(self):
+        # A single that closes makes its chain redundant — never vice versa.
+        order = deterministic_lane_order(TAIL_NONE, False, True)
+        self.assertLess(order.index("symbolic_rw"), order.index("symbolic_rw_chain"))
+        self.assertLess(order.index("symbolic_simp"), order.index("symbolic_simp_set"))
 
     def test_tail_goal_reaches_ducky_before_any_rewriting(self):
         # The round-4 preemption fix: all four lost solves were dr_ducky

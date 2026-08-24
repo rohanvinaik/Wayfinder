@@ -58,6 +58,14 @@ FAMILY_OF_LANE = {
     "symbolic_simp": "simp",
     "cosine_apply": "apply",
     "symbolic_apply": "apply",
+    # v2 composite families carry their OWN keys: a fence mined on
+    # single-rw failures asserts nothing about chains (the chain exists
+    # precisely to close where singles fail) — spine-sourcing forbids
+    # applying negative evidence beyond its derivation. Until their own
+    # spines are mined, no fence matches → conservative keep.
+    "symbolic_rw_chain": "rw_chain",
+    "symbolic_simp_set": "simp_set",
+    "symbolic_simpa": "simpa",
     "structural_core": "structural",
     "solver_bootstrap": "structural",
     "interleaved_bootstrap": "structural",

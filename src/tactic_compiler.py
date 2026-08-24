@@ -22,6 +22,19 @@ every one of them is deterministic:
     simp  → bare simp first, then simp [top1] only (top-5 hinted simp
             underperforms top-1 in benchmarks — more hints hurt acceptance)
 
+v2 adds the composite forms the traced corpus actually uses (the
+EXP-RF-005b residual autopsy: 33/48 short-proof failures had their true
+premises at IDF rank 1–4 while the v1 grammar could not utter the true
+FORM — `rw [A, B]` chains, `simp [A, B]` sets, and the `simpa` family,
+which was absent entirely, 7 true-tactic hits). The v1 single-hint simp
+lesson was cosine-era evidence: noisy hints hurt; rank-correct symbolic
+hints ARE the true form. Each v2 form is its own family so the censor
+store can fence it on its own observed spine, never on the singles':
+
+    rw_chain → ordered two-lemma rewrite chains over the top ranks
+    simp_set → two- and three-hint simp over the top ranks
+    simpa    → bare simpa, then simpa using/[] per premise
+
 The statistical layer above this module chooses WHICH premises and WHICH
 family to feed it (cosine ranking, ExecSelector, family classifier). The
 grammar itself never depends on that layer.
@@ -110,6 +123,76 @@ def compile_simp(premises: list[str]) -> list[TacticCandidate]:
     return candidates
 
 
+def compile_rw_chain(
+    premises: list[str],
+    goal_target: str = "",
+    max_premises: int = 3,
+) -> list[TacticCandidate]:
+    """Ordered two-lemma rewrite chains — the dominant true form v1 missed.
+
+    `rw [A, B]` requires A to fire first, so order matters and both orders
+    are emitted, rank-first. The chain is atomic where sequential single
+    rewrites wander: the intermediate state never re-enters lane scheduling.
+    """
+    candidates: list[TacticCandidate] = []
+    top = premises[:max_premises]
+    for i, a in enumerate(top):
+        for j, b in enumerate(top):
+            if i == j:
+                continue
+            candidates.append(
+                TacticCandidate(
+                    text=f"rw [{a}, {b}]", family="rw_chain", premises_used=[a, b]
+                )
+            )
+    return candidates
+
+
+def compile_simp_set(premises: list[str]) -> list[TacticCandidate]:
+    """Two- and three-hint simp over the top ranks.
+
+    Supersedes the v1 single-hint ceiling for the symbolic lane: the
+    cosine-era finding ("more hints hurt") measured noisy hints; the
+    autopsy's true proofs use exactly these named-lemma sets.
+    """
+    candidates: list[TacticCandidate] = []
+    if len(premises) >= 2:
+        candidates.append(
+            TacticCandidate(
+                text=f"simp [{premises[0]}, {premises[1]}]",
+                family="simp_set",
+                premises_used=list(premises[:2]),
+            )
+        )
+    if len(premises) >= 3:
+        candidates.append(
+            TacticCandidate(
+                text=f"simp [{premises[0]}, {premises[1]}, {premises[2]}]",
+                family="simp_set",
+                premises_used=list(premises[:3]),
+            )
+        )
+    return candidates
+
+
+def compile_simpa(premises: list[str], max_premises: int = 3) -> list[TacticCandidate]:
+    """The simpa family — absent from v1 entirely (7 true-tactic hits).
+
+    Bare simpa first (closes `simp`-normal goals against a hypothesis),
+    then per premise: `simpa using p` (transport p through simp into the
+    goal) before `simpa [p]` (p as a simp hint).
+    """
+    candidates = [TacticCandidate(text="simpa", family="simpa")]
+    for p in premises[:max_premises]:
+        candidates.append(
+            TacticCandidate(text=f"simpa using {p}", family="simpa", premises_used=[p])
+        )
+        candidates.append(
+            TacticCandidate(text=f"simpa [{p}]", family="simpa", premises_used=[p])
+        )
+    return candidates
+
+
 def compile_tactic(
     family: str,
     premises: list[str],
@@ -129,6 +212,12 @@ def compile_tactic(
         candidates = compile_apply(premises, max_premises=max_premises)
     elif family == "simp":
         candidates = compile_simp(premises)
+    elif family == "rw_chain":
+        candidates = compile_rw_chain(premises, goal_target)
+    elif family == "simp_set":
+        candidates = compile_simp_set(premises)
+    elif family == "simpa":
+        candidates = compile_simpa(premises)
     else:
         return []
     for c in candidates:

@@ -602,6 +602,9 @@ def deterministic_lane_order(
     symbolic = ["symbolic_rw", "symbolic_exact", "symbolic_simp"]
     if apply_enabled:
         symbolic.append("symbolic_apply")
+    # The v2 composite families run after the singles: cheaper forms first,
+    # and a single that closes makes its chain redundant — never vice versa.
+    symbolic.extend(["symbolic_simpa", "symbolic_rw_chain", "symbolic_simp_set"])
     lanes = ["structural_core"]
     if ducky_enabled and tail_regime_code:
         lanes.append("dr_ducky")

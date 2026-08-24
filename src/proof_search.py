@@ -872,7 +872,7 @@ def _symbolic_rank_premises(
     if not premise_names:
         return None, "none"
 
-    if family in ("rw", "simp"):
+    if family in ("rw", "simp", "rw_chain", "simp_set"):
         from src.rw_scoper import scope_for_rw
 
         scope = scope_for_rw(clean_goal, premise_names, max_premises=max_premises)
@@ -1661,7 +1661,15 @@ def _try_lane(
         return _try_structural_fallback(goal, goal_idx, state, env)
     elif lane in ("solver_bootstrap", "structural"):
         return _try_structural_fallback(goal, goal_idx, state, env)
-    elif lane in ("symbolic_rw", "symbolic_exact", "symbolic_simp", "symbolic_apply"):
+    elif lane in (
+        "symbolic_rw",
+        "symbolic_exact",
+        "symbolic_simp",
+        "symbolic_apply",
+        "symbolic_simpa",
+        "symbolic_rw_chain",
+        "symbolic_simp_set",
+    ):
         return _try_symbolic_family(
             lane.removeprefix("symbolic_"),
             goal,

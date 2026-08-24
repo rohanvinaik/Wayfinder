@@ -13,7 +13,10 @@ from src.tactic_compiler import (
     compile_exact,
     compile_from_predictions,
     compile_rw,
+    compile_rw_chain,
     compile_simp,
+    compile_simp_set,
+    compile_simpa,
     compile_tactic,
 )
 
@@ -62,6 +65,54 @@ class CompileTacticTest(unittest.TestCase):
     def test_confidence_is_stamped_on_all_candidates(self):
         for cand in compile_tactic("apply", ["P1"], confidence=0.7):
             self.assertEqual(cand.confidence, 0.7)
+
+
+class CompileV2FormsTest(unittest.TestCase):
+    """The composite forms the autopsy demanded (EXP-RF-005b §9):
+    33/48 short-proof failures had in-beam premises whose true form
+    (`rw [A, B]`, `simp [A, B]`, `simpa`) v1 could not utter."""
+
+    def test_rw_chain_emits_ordered_pairs_rank_first(self):
+        texts = [c.text for c in compile_rw_chain(["A", "B", "C"])]
+        self.assertEqual(texts[0], "rw [A, B]")
+        self.assertIn("rw [B, A]", texts)  # order matters — both emitted
+        self.assertEqual(len(texts), 6)  # 3P2 ordered pairs, no self-pairs
+        self.assertNotIn("rw [A, A]", texts)
+
+    def test_rw_chain_needs_two_premises(self):
+        self.assertEqual(compile_rw_chain(["A"]), [])
+        self.assertEqual(compile_rw_chain([]), [])
+
+    def test_simp_set_two_then_three_hints(self):
+        texts = [c.text for c in compile_simp_set(["A", "B", "C", "D"])]
+        self.assertEqual(texts, ["simp [A, B]", "simp [A, B, C]"])
+
+    def test_simp_set_needs_two_premises(self):
+        # The single-hint form belongs to v1's compile_simp — no duplication.
+        self.assertEqual(compile_simp_set(["A"]), [])
+
+    def test_simpa_bare_then_using_before_hint(self):
+        texts = [c.text for c in compile_simpa(["A"])]
+        self.assertEqual(texts, ["simpa", "simpa using A", "simpa [A]"])
+
+    def test_simpa_without_premises_still_offers_bare(self):
+        self.assertEqual([c.text for c in compile_simpa([])], ["simpa"])
+
+    def test_dispatch_through_compile_tactic(self):
+        for family, needle in (
+            ("rw_chain", "rw [A, B]"),
+            ("simp_set", "simp [A, B]"),
+            ("simpa", "simpa using A"),
+        ):
+            texts = [c.text for c in compile_tactic(family, ["A", "B"])]
+            self.assertIn(needle, texts, family)
+
+    def test_families_are_their_own_censor_keys(self):
+        # A fence mined on single-rw failures asserts nothing about chains.
+        for cand in compile_rw_chain(["A", "B"]):
+            self.assertEqual(cand.family, "rw_chain")
+        for cand in compile_simpa(["A"]):
+            self.assertEqual(cand.family, "simpa")
 
 
 class CompileFromPredictionsTest(unittest.TestCase):
