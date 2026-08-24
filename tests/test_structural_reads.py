@@ -16,10 +16,16 @@ from src.structural_reads import (
     DESTRUCTIVE,
     READ_DIMENSIONS,
     SILENT,
+    TAIL_BOUNDED_WITNESS,
+    TAIL_COMPACT_ARITH,
+    TAIL_NONE,
     ContextNorms,
     SurfaceNorms,
+    atomic_sweep_tactics,
     count_hypotheses,
+    deterministic_lane_order,
     discriminates,
+    goal_tail_regime,
     goal_target,
     hamming,
     interference,
@@ -181,6 +187,91 @@ class InterferenceVerdictTest(unittest.TestCase):
 
     def test_all_orthogonal_is_silent_not_zero_score(self):
         self.assertEqual(interference(supports=0, opposes=0), SILENT)
+
+
+class AtomicSweepTest(unittest.TestCase):
+    """Close-before-unpack: the sweep exists exactly where decomposers would
+    fire, and nowhere else (no risk → no duplicate attempts)."""
+
+    def test_no_decomposition_risk_means_no_sweep(self):
+        self.assertEqual(atomic_sweep_tactics("⊢ a = b"), [])
+        self.assertEqual(atomic_sweep_tactics(""), [])
+
+    def test_iff_target_gets_the_full_sweep(self):
+        # The autopsy witness: constructor split `↔` goals whose true proof
+        # was one bare simp. simp must lead the sweep.
+        sweep = atomic_sweep_tactics("⊢ P ↔ Q")
+        self.assertEqual(sweep[0], "simp")
+        self.assertIn("omega", sweep)
+
+    def test_forall_and_exists_targets_carry_risk(self):
+        self.assertTrue(atomic_sweep_tactics("⊢ ∀ x : Nat, x = x"))
+        self.assertTrue(atomic_sweep_tactics("⊢ ∃ n : ℕ, n > 3"))
+
+    def test_numeric_suppression_removes_decision_procedures_only(self):
+        sweep = atomic_sweep_tactics("⊢ P ↔ Q", suppress_numeric=True)
+        self.assertIn("simp", sweep)
+        for t in ("norm_num", "omega", "decide"):
+            self.assertNotIn(t, sweep)
+
+    def test_risk_is_read_on_the_target_not_the_hypotheses(self):
+        # A hypothesis may mention ∀ while the target is atomic — no risk.
+        goal = "h : ∀ x, P x\n⊢ Q"
+        self.assertEqual(atomic_sweep_tactics(goal), [])
+
+
+class TailRegimeTest(unittest.TestCase):
+    """The §4.1b law-4 escalation read — named codes, abstract-domain veto."""
+
+    def test_compact_concrete_arithmetic_is_tail_regime(self):
+        self.assertEqual(goal_tail_regime("⊢ 2 + 2 = 4"), TAIL_COMPACT_ARITH)
+
+    def test_bounded_nat_witness_is_tail_regime(self):
+        self.assertEqual(
+            goal_tail_regime("⊢ ∃ n : Nat, n * n = 16"), TAIL_BOUNDED_WITNESS
+        )
+
+    def test_abstract_domain_vetoes(self):
+        self.assertEqual(
+            goal_tail_regime("⊢ CategoryTheory.Functor.map f = 2 • g"), TAIL_NONE
+        )
+
+    def test_abstract_symbolic_goal_is_not_tail(self):
+        # No numerals, no concrete-type surface: the bulk phase owns it.
+        self.assertEqual(goal_tail_regime("⊢ f x = g x"), TAIL_NONE)
+        self.assertEqual(goal_tail_regime(""), TAIL_NONE)
+
+    def test_large_arith_target_stays_bulk(self):
+        # Size is read against the MINED norm — a sprawling arithmetic
+        # target is normalization territory, not a capsule close.
+        big = "⊢ " + " + ".join(f"a{i} * 3" for i in range(20)) + " = 0"
+        self.assertEqual(goal_tail_regime(big), TAIL_NONE)
+
+
+class DeterministicLaneOrderTest(unittest.TestCase):
+    """The scheduler as a total pure function of the routing read."""
+
+    def test_bulk_goal_keeps_rewriting_before_ducky(self):
+        order = deterministic_lane_order(TAIL_NONE, False, True)
+        self.assertEqual(
+            order,
+            ["structural_core", "symbolic_rw", "symbolic_exact", "symbolic_simp", "dr_ducky"],
+        )
+
+    def test_tail_goal_reaches_ducky_before_any_rewriting(self):
+        # The round-4 preemption fix: all four lost solves were dr_ducky
+        # closes whose goals were rewritten out of capsule form first.
+        order = deterministic_lane_order(TAIL_COMPACT_ARITH, False, True)
+        self.assertLess(order.index("dr_ducky"), order.index("symbolic_rw"))
+        self.assertEqual(order[0], "structural_core")
+
+    def test_ducky_disabled_never_schedules_her(self):
+        for code in (TAIL_NONE, TAIL_COMPACT_ARITH, TAIL_BOUNDED_WITNESS):
+            self.assertNotIn("dr_ducky", deterministic_lane_order(code, True, False))
+
+    def test_apply_lane_is_config_gated(self):
+        self.assertIn("symbolic_apply", deterministic_lane_order(TAIL_NONE, True, True))
+        self.assertNotIn("symbolic_apply", deterministic_lane_order(TAIL_NONE, False, True))
 
 
 if __name__ == "__main__":

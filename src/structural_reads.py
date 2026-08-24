@@ -505,3 +505,110 @@ def interference(supports: int, opposes: int, support_min: int = 2, oppose_min: 
     if supports > 0 and opposes > 0:
         return AMBIGUOUS
     return SILENT
+
+
+# ---------------------------------------------------------------------------
+# Routing reads — the scheduler consuming the vocabulary (§4.2's third use).
+#
+# EXP-RF-005b's residual autopsy found one disease with two symptoms: the
+# progress-greedy step loop destroys atomic closability. (1) intros/
+# constructor decompose goals whose true proof is one whole-goal closer —
+# 8 of 79 Mathlib½B failures had bare-simp/simpa truths that never met the
+# un-decomposed goal; (2) bulk rewriting mutates tail-regime goals out of
+# Dr. Ducky's capsule form — all four retrieval-live solve losses were prior
+# dr_ducky closes (30→227 and 46→612 attempt blowups). Both fixes are reads
+# consumed by the scheduler: close-before-unpack (the Ducky paper's §7.2
+# structural-bank policy, promoted global) and §4.1b law-4 escalation
+# (regime identification routes to the tail executor BEFORE bulk rewriting).
+# ---------------------------------------------------------------------------
+
+# Decomposers the structural lane fires on sight: intros (∀/→ targets),
+# constructor (↔), left/right (∨), use/⟨⟩ (∃). A target carrying none of
+# these markers reaches the closers intact under the existing phase order,
+# so the sweep would only duplicate attempts there.
+DECOMPOSER_RISK_MARKERS = ("∀", "∃", "↔", "∨", "→", "Exists")
+
+# The whole-goal closers, cheapest decision procedures first. Each is total
+# (fails cleanly), and each can close a quantified/iff goal outright — the
+# forms the decomposers would otherwise split.
+ATOMIC_SWEEP = ("simp", "norm_num", "omega", "decide", "simp_all", "aesop")
+_NUMERIC_SWEEP_TACTICS = frozenset({"norm_num", "omega", "decide"})
+
+# Tail-regime codes (named, never booleans — two regimes route the same
+# way today but carry different capsule expectations).
+TAIL_BOUNDED_WITNESS = "bounded_witness"
+TAIL_COMPACT_ARITH = "compact_arith"
+TAIL_NONE = ""
+
+
+def atomic_sweep_tactics(goal_text: str, suppress_numeric: bool = False) -> list[str]:
+    """Closers to try on the INTACT goal before any decomposer mutates it.
+
+    Close-before-unpack: returns the sweep only when the target carries
+    decomposition risk; [] otherwise (no risk → the existing order already
+    reaches the closers intact, and the sweep would double the attempts).
+    The sweep accepts full closes only — partial progress stays with the
+    ordinary phases so no tactic fires twice in one visit.
+    """
+    target = goal_target(sanitize_goal_text(goal_text or ""))
+    if not target or not any(m in target for m in DECOMPOSER_RISK_MARKERS):
+        return []
+    if suppress_numeric:
+        return [t for t in ATOMIC_SWEEP if t not in _NUMERIC_SWEEP_TACTICS]
+    return list(ATOMIC_SWEEP)
+
+
+def goal_tail_regime(goal_text: str) -> str:
+    """Which Dr. Ducky tail regime, if any, this goal belongs to (named code).
+
+    The §4.1b law-4 escalation read: a goal the capsule machinery closes
+    cheaply must reach the tail executor BEFORE bulk rewriting can mutate it
+    out of capsule form. Abstract-domain markers veto (her paper's own
+    suppression discipline); size is read against the MINED norm, never a
+    fresh constant.
+    """
+    clean = sanitize_goal_text(goal_text or "")
+    target = goal_target(clean)
+    if not target or any(m in target for m in ABSTRACT_MARKERS):
+        return TAIL_NONE
+    has_numeral = bool(_NUMERAL_RE.search(target))
+    concrete = any(m in clean for m in CONCRETE_TYPE_MARKERS) or any(
+        m in target for m in ("Nat.", "ℕ", "Int.", "ℤ")
+    )
+    if (target.startswith("∃") or target.startswith("Exists")) and concrete and has_numeral:
+        return TAIL_BOUNDED_WITNESS
+    structure = read_structure(target, classify_goal_bucket(clean))
+    size = read_size(len(target.split()))
+    numerals = read_numerals(len(_NUMERAL_RE.findall(target)))
+    arith = any(m in target for m in ARITH_MARKERS)
+    # Concreteness witnesses: STRUCTURE's decidable/concrete pole, or a
+    # numeral surface above the mined boundary (a bare `2 + 2 = 4` carries
+    # no type ascription for STRUCTURE to read, but its numerals do).
+    if arith and size.sign <= 0 and (structure.sign == -1 or numerals.sign == 1):
+        return TAIL_COMPACT_ARITH
+    return TAIL_NONE
+
+
+def deterministic_lane_order(
+    tail_regime_code: str, apply_enabled: bool, ducky_enabled: bool
+) -> list[str]:
+    """The deterministic path's lane order as a total pure function.
+
+    Tail-regime goals run dr_ducky immediately after structural setup —
+    before the symbolic rewrite families can mutate the goal out of capsule
+    form; every other goal keeps the bulk-first order (rewriting is the
+    correct majority-phase machinery there).
+    """
+    symbolic = ["symbolic_rw", "symbolic_exact", "symbolic_simp"]
+    if apply_enabled:
+        symbolic.append("symbolic_apply")
+    lanes = ["structural_core"]
+    if ducky_enabled and tail_regime_code:
+        lanes.append("dr_ducky")
+        lanes.extend(symbolic)
+    elif ducky_enabled:
+        lanes.extend(symbolic)
+        lanes.append("dr_ducky")
+    else:
+        lanes.extend(symbolic)
+    return lanes

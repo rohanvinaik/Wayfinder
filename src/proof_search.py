@@ -28,6 +28,11 @@ from src.lean_interface import LeanKernel
 from src.nav_contracts import NavOutput, TacticResult
 from src.proof_navigator import ProofNavigator
 from src.resolution import Candidate, SearchContext, resolve
+from src.structural_reads import (
+    atomic_sweep_tactics,
+    deterministic_lane_order,
+    goal_tail_regime,
+)
 
 _LOGGER = logging.getLogger(__name__)
 _EXEC_SELECTOR_CACHE: dict[str, tuple[Any, Any] | None] = {}
@@ -1235,6 +1240,17 @@ def _try_structural_fallback(
                 _close_goal(goal, goal_idx, tactic, result.new_goals, state, "structural_core")
                 return True
 
+    # Phase 0: atomic closer sweep — close-before-unpack (the EXP-RF-005b
+    # autopsy fix). Whole-goal closers meet the INTACT goal before intros/
+    # constructor can destroy one-shot closability; full closes only, so no
+    # tactic double-fires when the ordinary phases run after a miss.
+    for tactic in atomic_sweep_tactics(goal, suppress_numeric):
+        result = env.lean.try_tactic(goal, tactic)
+        state.attempts += 1
+        if result.success and not result.new_goals:
+            _close_goal(goal, goal_idx, tactic, [], state, "atomic_sweep")
+            return True
+
     # Phase 1: intros (greedy — introduces ALL binders at once)
     result = env.lean.try_tactic(goal, "intros")
     state.attempts += 1
@@ -2013,13 +2029,17 @@ def _search_step(
             # The thesis path: every lane on this list is symbolic —
             # structural setup, IDF-ranked family lanes lowered through the
             # pure tactic grammar, and (optionally) the Dr. Ducky residual
-            # VM. No encoder, no navigator, no classifier anywhere.
-            lane_order.append("structural_core")
-            lane_order.extend(["symbolic_rw", "symbolic_exact", "symbolic_simp"])
-            if cfg.cosine_apply_enabled:
-                lane_order.append("symbolic_apply")
-            if cfg.dr_ducky_enabled:
-                lane_order.append("dr_ducky")
+            # VM. No encoder, no navigator, no classifier anywhere. Order is
+            # a pure function of the goal's routing read: tail-regime goals
+            # reach the capsule executor before bulk rewriting can mutate
+            # them out of capsule form (the round-4 preemption fix).
+            lane_order.extend(
+                deterministic_lane_order(
+                    goal_tail_regime(goal),
+                    cfg.cosine_apply_enabled,
+                    cfg.dr_ducky_enabled,
+                )
+            )
         if mode not in ("learned_only", "deterministic"):
             # Interleaved bootstrap is a structural policy replacement, not an
             # extra post-structural lane. If appended after structural_core, the
