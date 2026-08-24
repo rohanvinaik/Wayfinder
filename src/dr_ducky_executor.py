@@ -1979,6 +1979,24 @@ def _rewrite_lemmas(space: _BindingSpace) -> list[str]:
     return [lemma for lemma in space.accessible_lemmas if _is_rewrite_like_lemma(lemma)]
 
 
+def _destructurable_local_facts(space: _BindingSpace) -> list[str]:
+    """Local facts whose type an ⟨,⟩-obtain can split: existentials and
+    conjunctions. The EXP-RF-008 hole source — the obtain/rcases band's
+    deterministic candidate space."""
+    out: list[str] = []
+    for expr, typ in space.local_facts:
+        clean = sanitize_goal_text(typ)
+        if clean.startswith("∃") or clean.startswith("Exists") or " ∧ " in clean:
+            out.append(expr)
+    return out
+
+
+def _any_local_facts(space: _BindingSpace) -> list[str]:
+    """Every local fact expression, derived projections included — the
+    forward-chaining argument space for have-skeletons."""
+    return [expr for expr, _typ in space.local_facts]
+
+
 def _hole_candidates(hole: ProofHoleSpec, space: _BindingSpace) -> list[str]:
     if hole.hole_kind == "matching_local_fact":
         candidates = _matching_local_facts(space)
@@ -1994,6 +2012,10 @@ def _hole_candidates(hole: ProofHoleSpec, space: _BindingSpace) -> list[str]:
         candidates = list(space.accessible_lemmas)
     elif hole.hole_kind == "rewrite_lemma":
         candidates = _rewrite_lemmas(space)
+    elif hole.hole_kind == "destructurable_local_fact":
+        candidates = _destructurable_local_facts(space)
+    elif hole.hole_kind == "any_local_fact":
+        candidates = _any_local_facts(space)
     elif hole.hole_kind == "witness_term":
         candidates = list(space.witness_terms)
     elif hole.hole_kind == "bounded_nat_literal":

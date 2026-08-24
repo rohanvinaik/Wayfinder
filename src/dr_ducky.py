@@ -1368,6 +1368,8 @@ def build_proof_skeletons(
             "loop_circuit_break": ["recursive_bridge"],
             "recursive_bridge": ["recursive_bridge"],
             "local_fact_pair": ["witness_construction"],
+            "context_destructure": ["term_transport"],
+            "forward_chain": ["have_chain"],
         }.get(skeleton_kind, ["projected_tactics"])
         skeletons.append(
             ProofSkeleton(
@@ -1553,6 +1555,59 @@ def build_proof_skeletons(
         add("trivial_close", "fixed_close", "local_fact_selector", "atomic_fact_engine", ["trivial"], "Trivial proposition closure.", extra=0.08)
         add("decide_close", "fixed_close", "local_fact_selector", "atomic_fact_engine", ["decide"], "Decision-procedure close.", extra=0.07)
         add("infer_instance_close", "fixed_close", "local_fact_selector", "atomic_fact_engine", ["infer_instance"], "Close via typeclass search.", extra=0.07)
+
+    # Term-construction skeletons — the EXP-RF-008 band (have/obtain/rcases,
+    # ≈17% of corpus steps; THE_REFOUNDING §10.7's required deliverable).
+    # Detective-style throughout: fixed template, typed holes, deterministic
+    # source spaces, compatibility decided by Lean execution — never free-form.
+    add(
+        "obtain_destructure",
+        "context_destructure",
+        "local_fact_selector",
+        "atomic_fact_engine",
+        ["obtain ⟨w_ducky, hw_ducky⟩ := {fact}"],
+        "Split a local existential/conjunction into usable components; the "
+        "post-progress finisher sweep exploits the enriched context.",
+        holes=[_make_hole("fact", "destructurable_local_fact", "local_context", max_candidates=6)],
+        extra=0.1,
+    )
+    add(
+        "obtain_destructure_exploit",
+        "context_destructure",
+        "local_fact_selector",
+        "atomic_fact_engine",
+        ["obtain ⟨w_ducky, hw_ducky⟩ := {fact}", "simp_all"],
+        "Destructure then immediately exploit the components against the goal.",
+        holes=[_make_hole("fact", "destructurable_local_fact", "local_context", max_candidates=6)],
+        extra=0.105,
+    )
+    add(
+        "have_forward_simpa",
+        "forward_chain",
+        "context_forward",
+        "context_transport",
+        ["have h_ducky := {lemma} {fact}", "simpa using h_ducky"],
+        "One modus-ponens step: apply an accessible lemma to a local fact, "
+        "then normalize the derived fact into the goal.",
+        holes=[
+            _make_hole("lemma", "accessible_apply_lemma", "accessible_premises", max_candidates=4),
+            _make_hole("fact", "any_local_fact", "local_context", max_candidates=4),
+        ],
+        extra=0.09,
+    )
+    add(
+        "have_forward_exact",
+        "forward_chain",
+        "context_forward",
+        "context_transport",
+        ["have h_ducky := {lemma} {fact}", "exact h_ducky"],
+        "One modus-ponens step whose conclusion IS the goal.",
+        holes=[
+            _make_hole("lemma", "accessible_apply_lemma", "accessible_premises", max_candidates=4),
+            _make_hole("fact", "any_local_fact", "local_context", max_candidates=4),
+        ],
+        extra=0.085,
+    )
 
     # Premise- and context-driven skeletons.
     add(

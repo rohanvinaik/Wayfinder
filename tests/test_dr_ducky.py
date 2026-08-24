@@ -193,5 +193,72 @@ class TestDrDucky(unittest.TestCase):
         self.assertTrue(any(program.backend_family == "rosette_proof_dsl" for program in capsule.proof_dsl_programs))
 
 
+class TermConstructionSkeletonTest(unittest.TestCase):
+    """EXP-RF-008: the have/obtain band as typed skeletons (paper §5.5–5.7).
+
+    Detective-style discipline pinned: fixed templates, typed holes,
+    deterministic source spaces — compatibility is decided by Lean
+    execution, never by free-form generation."""
+
+    GOAL = "h : ∃ n : Nat, n > 3 ∧ n < 10\nhk : P q\n⊢ Q"
+
+    def _capsule(self, goal=None):
+        from src.dr_ducky import build_goal_capsule
+
+        return build_goal_capsule(
+            {
+                "theorem_id": "T",
+                "last_goal": goal or self.GOAL,
+                "last_goal_bucket": "atomic_prop",
+                "residual_bucket": "single_goal_near_miss",
+                "goals_closed": 0,
+                "goals_remaining": 1,
+                "attempts": 0,
+                "remaining_goals_snapshot": [goal or self.GOAL],
+            }
+        )
+
+    def test_term_construction_skeletons_exist_with_their_kinds(self):
+        capsule = self._capsule()
+        by_id = {s.skeleton_id: s for s in capsule.proof_skeletons}
+        self.assertIn("obtain_destructure", by_id)
+        self.assertIn("have_forward_simpa", by_id)
+        self.assertEqual(by_id["obtain_destructure"].skeleton_kind, "context_destructure")
+        self.assertEqual(by_id["have_forward_simpa"].skeleton_kind, "forward_chain")
+        self.assertEqual(by_id["have_forward_simpa"].certificate_kinds, ["have_chain"])
+
+    def test_obtain_instantiates_only_on_destructurable_facts(self):
+        from src.dr_ducky_executor import build_ducky_programs
+
+        programs = build_ducky_programs(
+            self._capsule(), theorem_id="T", goal_text=self.GOAL, lean=None, conn=None
+        )
+        obtain = [p for p in programs if p.tactics[0].startswith("obtain")]
+        self.assertTrue(obtain)
+        self.assertIn("obtain ⟨w_ducky, hw_ducky⟩ := h", {p.tactics[0] for p in obtain})
+        # hk : P q is not an ∃/∧ — it must never be destructured.
+        for p in obtain:
+            self.assertNotIn(":= hk", p.tactics[0])
+
+    def test_no_destructurable_context_yields_no_obtain(self):
+        from src.dr_ducky_executor import build_ducky_programs
+
+        goal = "hk : P q\n⊢ Q"
+        programs = build_ducky_programs(
+            self._capsule(goal), theorem_id="T", goal_text=goal, lean=None, conn=None
+        )
+        self.assertFalse([p for p in programs if p.tactics[0].startswith("obtain")])
+
+    def test_have_forward_requires_a_premise_source(self):
+        # The lemma hole is required; without a network connection there is
+        # no accessible-premise space, so the skeleton must not instantiate.
+        from src.dr_ducky_executor import build_ducky_programs
+
+        programs = build_ducky_programs(
+            self._capsule(), theorem_id="T", goal_text=self.GOAL, lean=None, conn=None
+        )
+        self.assertFalse([p for p in programs if p.tactics[0].startswith("have")])
+
+
 if __name__ == "__main__":
     unittest.main()
