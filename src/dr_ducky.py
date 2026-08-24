@@ -4,6 +4,10 @@ import re
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
+from src.dr_ducky_bounded_search import (
+    append_bounded_search_skeletons,
+    bounded_nat_search_bank_prior,
+)
 from src.hard_data_tags import (
     classify_goal_bucket,
     classify_reasoning_gap_family,
@@ -44,6 +48,7 @@ _BANK_ENGINE_MAP: dict[str, str] = {
     "solver_dispatch": "ArithEngine",
     "witness_constructor": "WitnessEngine",
     "canonical_witness": "WitnessEngine",
+    "bounded_nat_search": "WitnessEngine",
     "recursive_unfold_one": "RecursiveInvariantEngine",
     "loop_breaker": "RecursiveInvariantEngine",
     "eventual_filter_normalizer": "FiniteFilterEngine",
@@ -979,6 +984,9 @@ def infer_bank_priors(
         add("witness_constructor", 0.87, "Existential structure suggests canonical witness search.")
     if "canonical_object_witness" in pressures or spec.reasoning_gap_family == "witness_construction_close":
         add("canonical_witness", 0.83, "Domain structure suggests a small canonical witness family.")
+    bounded_prior = bounded_nat_search_bank_prior(spec)
+    if bounded_prior is not None:
+        add(bounded_prior.name, bounded_prior.weight, bounded_prior.rationale)
     if spec.goal_bucket == "forall" or "binder_introduction" in pressures:
         add("binder_instantiation", 0.82, "Universal residuals often reduce under a controlled intro/instantiation pass.")
     if spec.goal_bucket == "iff":
@@ -1606,6 +1614,7 @@ def build_proof_skeletons(
             add("unionfind_rootd_rw_simpa", "recursive_bridge", "recursive_unfold_one", "recursive_circuit_breaker", ["rw [Batteries.UnionFind.rootD]", "simpa"], "Expose one recursive layer then attempt immediate closure.", extra=0.1)
             add("unionfind_root_rw", "recursive_bridge", "recursive_unfold_one", "recursive_circuit_breaker", ["rw [Batteries.UnionFind.root]"], "Expose one structural root step without entering blind recursive expansion.", extra=0.09)
 
+    skeletons.extend(append_bounded_search_skeletons(spec, priors))
     skeletons.sort(key=lambda item: (-item.priority, len(item.tactic_templates), item.skeleton_id))
     return skeletons
 

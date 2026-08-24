@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import logging
 import re
 import sqlite3
 from collections import deque
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
+from src.cas_engine import cas_solve_goal
 from src.dr_ducky import (
     EngineCertificate,
     GoalCapsule,
@@ -17,6 +19,10 @@ from src.dr_ducky import (
     ProofShadowLedger,
     ProofSkeleton,
     build_goal_capsule,
+)
+from src.dr_ducky_bounded_search import (
+    bounded_nat_literal_candidates,
+    bounded_nat_tuple_candidates,
 )
 from src.hard_data_tags import classify_goal_bucket, sanitize_goal_text
 from src.nav_contracts import TacticResult
@@ -110,6 +116,7 @@ _ENGINE_BY_BANK: dict[str, str] = {
     "solver_dispatch": "ArithEngine",
     "witness_constructor": "WitnessEngine",
     "canonical_witness": "WitnessEngine",
+    "bounded_nat_search": "WitnessEngine",
     "recursive_unfold_one": "RecursiveInvariantEngine",
     "loop_breaker": "RecursiveInvariantEngine",
     "membership_exposure": "FiniteFilterEngine",
@@ -1464,6 +1471,20 @@ def _split_equality(text: str) -> tuple[str, str] | None:
     return left.strip(), right.strip()
 
 
+def _cas_solver_programs(goal_text: str, max_chains: int = 8) -> list[str]:
+    """SymPy CAS closer chains for arithmetic goals ([] when CAS cannot help).
+
+    CAS is advisory: a sympy failure, timeout, or a signal-handler error
+    (``cas_solve_goal`` uses SIGALRM, which is main-thread-only) must never
+    kill the Ducky lane — degrade to the empty tier instead.
+    """
+    try:
+        return cas_solve_goal(goal_text)[:max_chains]
+    except Exception as exc:
+        logging.getLogger(__name__).debug("CAS solver tier degraded: %s", exc)
+        return []
+
+
 def _is_arith_goal(goal_text: str) -> bool:
     text = _goal_target_text(goal_text)
     markers = ("<", "≤", ">", "≥", "|", "+", "-", "*", "/", "^", "Int.", "Nat.", "Real.", "Rat.", "factorial", "choose")
@@ -1933,6 +1954,10 @@ def _hole_candidates(hole: ProofHoleSpec, space: _BindingSpace) -> list[str]:
         candidates = _rewrite_lemmas(space)
     elif hole.hole_kind == "witness_term":
         candidates = list(space.witness_terms)
+    elif hole.hole_kind == "bounded_nat_literal":
+        candidates = bounded_nat_literal_candidates(hole.max_candidates)
+    elif hole.hole_kind == "bounded_nat_tuple":
+        candidates = bounded_nat_tuple_candidates(max_candidates=hole.max_candidates)
     else:
         candidates = []
     return _unique_strings(candidates)[: hole.max_candidates]
@@ -2496,6 +2521,22 @@ def build_ducky_programs(
             f"Two-step composition: {' then '.join(ctactics)}",
             cscore, certificate_shape="tactic_composition",
         )
+
+    # ---------------------------------------------------------------
+    # CAS tier — SymPy-derived obstruction-clearing chains, nlinarith
+    # hint injection, and witness have-chains for arithmetic goals.
+    # Validated on the COEC gap rerun (scripts/rerun_tractable_gaps.py).
+    # The solver_dispatch bank keeps this tier suppressed in abstract
+    # domains via the standard numeric-solver suppression hints.
+    # ---------------------------------------------------------------
+    cas_buckets = {"equality", "inequality", "other"}
+    if capsule.specification.goal_bucket in cas_buckets or _is_arith_goal(goal_text):
+        for idx, chain in enumerate(_cas_solver_programs(goal_text)):
+            _add_if_allowed(
+                "solver_dispatch", "human_calculator", f"cas_chain_{idx}",
+                [chain], f"CAS-derived closer chain #{idx + 1}",
+                0.85 - idx * 0.012, certificate_shape="cas_solver",
+            )
 
     for idx, lemma in enumerate(space.accessible_lemmas[:4]):
         _add_if_allowed(
