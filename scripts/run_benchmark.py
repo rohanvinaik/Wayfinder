@@ -371,6 +371,7 @@ def _run_search_loop(
                     # channel is reported wherever the positive one is.
                     "censor_drops": result.censor_drops,
                     "censor_drop_count": len(result.censor_drops),
+                    "premise_pool_counts": result.premise_pool_counts,
                 }
             )
         )

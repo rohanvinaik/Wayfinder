@@ -130,6 +130,47 @@ def build_symbolic_query(
     )
 
 
+def library_premise_pool(
+    conn: sqlite3.Connection,
+    goal_text: str,
+    limit: int = 200,
+) -> list[str]:
+    """The premise pool for a goal with NO site: the library universe, by evidence.
+
+    The accessible-premises pool is a site-indexed anti-circularity constraint
+    (a theorem replayed at its Mathlib site must not use later lemmas). An
+    EXTERNAL goal — MiniF2F, a fresh conjecture — has no site and no
+    circularity hazard: every proved lemma in the network is legitimately
+    available (its environment is the whole library; cf. LeanExpr.environment).
+
+    "No site" is therefore NOT "no premises" — conflating them is the
+    determined-empty/cannot-determine error. But an unconstrained pool is only
+    honest when EVIDENCE selects from it: this pool is the lemma entities
+    sharing at least one anchor with the goal, scored by summed anchor IDF,
+    deterministic tie-break by name. A goal whose tokens match no anchor gets
+    an EMPTY pool — no evidence, no candidates, the lane abstains — never an
+    unranked dump of the library.
+    """
+    query = build_symbolic_query(conn, goal_text)
+    if not query.prefer_anchors:
+        return []
+    placeholders = ",".join("?" for _ in query.prefer_anchors)
+    rows = conn.execute(
+        f"""
+        SELECT e.name, SUM(COALESCE(ai.idf_value, 1.0)) AS score
+        FROM entity_anchors ea
+        JOIN entities e ON e.id = ea.entity_id
+        LEFT JOIN anchor_idf ai ON ai.anchor_id = ea.anchor_id
+        WHERE ea.anchor_id IN ({placeholders}) AND e.entity_type = 'lemma'
+        GROUP BY ea.entity_id
+        ORDER BY score DESC, e.name ASC
+        LIMIT ?
+        """,
+        [*query.prefer_anchors, limit],
+    ).fetchall()
+    return [name for name, _score in rows]
+
+
 def symbolic_rank_premises(
     conn: sqlite3.Connection,
     goal_text: str,

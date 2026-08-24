@@ -166,6 +166,9 @@ class SearchResult:
     # The abstention ledger (THE_REFOUNDING §7.3): every censor-gate lane
     # removal with its warrant — the negative channel, auditable in every report.
     censor_drops: list = field(default_factory=list)
+    # Premise-pool dispositions (site / library / none) per symbolic invocation —
+    # which candidate-space policy the retrieval actually ran under.
+    premise_pool_counts: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -255,6 +258,8 @@ class _SearchState:
     _last_pathology_tags: list[str] = field(default_factory=list)
     # The abstention ledger: every censor-gate removal, with its warrant key.
     _censor_drops: list[dict] = field(default_factory=list)
+    # Premise-pool dispositions per symbolic-lane invocation: site / library / none.
+    _premise_pool_counts: dict[str, int] = field(default_factory=dict)
 
 
 _METAVAR_RE = re.compile(r"\?[A-Za-z][A-Za-z0-9_.]*")
@@ -821,40 +826,52 @@ def _symbolic_rank_premises(
     accessible_theorem_id: int | None,
     family: str,
     max_premises: int = 30,
-) -> list[str] | None:
-    """Deterministic premise ranking over the accessible pool — no encoder.
+) -> tuple[list[str] | None, str]:
+    """Deterministic premise ranking — no encoder. Returns (ranked, pool_kind).
 
-    Same accessible-premise pool and the same rw/simp scope filter as the
-    cosine ranker; the ranking step is IDF-weighted anchor intersection
-    (src.resolution.symbolic_rank_premises) instead of embedding cosine.
-    Requires env.conn (the proof network DB).
+    Two candidate-space policies, dispositioned by whether the goal has a
+    site (THE_REFOUNDING §2's μ-relativity, made explicit):
+
+    - ``site``    — the goal is a network entity: the accessible-premises
+      pool, the anti-circularity constraint of replay benchmarks.
+    - ``library`` — the goal has NO site (an external goal — MiniF2F, a
+      fresh conjecture): no circularity is possible, so the pool is the
+      library universe selected by anchor evidence
+      (resolution.library_premise_pool). "No site" is not "no premises".
+    - ``none``    — no pool could be built (no DB, or no anchor evidence);
+      the lane abstains.
+
+    Ranking is IDF-weighted anchor intersection either way; rw/simp get the
+    same scope filter in both regimes.
     """
     if env.conn is None or not env.id_to_name:
-        return None
+        return None, "none"
     clean_goal = _sanitize_goal_text(goal)
 
     from src.proof_network import get_accessible_premises
+    from src.resolution import library_premise_pool, symbolic_rank_premises
 
-    premise_names: list[str] = []
     if accessible_theorem_id is not None:
         premise_ids = get_accessible_premises(env.conn, accessible_theorem_id)
         premise_names = [env.id_to_name[pid] for pid in premise_ids if pid in env.id_to_name]
+        pool_kind = "site"
+    else:
+        premise_names = library_premise_pool(env.conn, clean_goal)
+        pool_kind = "library"
     if not premise_names:
-        return None
+        return None, "none"
 
     if family in ("rw", "simp"):
         from src.rw_scoper import scope_for_rw
 
         scope = scope_for_rw(clean_goal, premise_names, max_premises=max_premises)
         if not scope.all_symbols:
-            return None
+            return None, "none"
         candidates = scope.all_symbols
     else:
         candidates = premise_names
 
-    from src.resolution import symbolic_rank_premises
-
-    return symbolic_rank_premises(env.conn, clean_goal, candidates, max_premises=max_premises)
+    return symbolic_rank_premises(env.conn, clean_goal, candidates, max_premises=max_premises), pool_kind
 
 
 def _try_symbolic_family(
@@ -877,7 +894,8 @@ def _try_symbolic_family(
         return False
     state._expensive_tried.add(cache_key)
 
-    ranked = _symbolic_rank_premises(goal, env, accessible_theorem_id, family)
+    ranked, pool_kind = _symbolic_rank_premises(goal, env, accessible_theorem_id, family)
+    state._premise_pool_counts[pool_kind] = state._premise_pool_counts.get(pool_kind, 0) + 1
     if not ranked:
         return False
     if not env.allow_self_application and state.theorem_id:
@@ -2489,6 +2507,7 @@ def search(
         state_loop_penalty_count=state._state_loop_penalty_count,
         replanner_trigger_count=state._replanner_trigger_count,
         censor_drops=list(state._censor_drops),
+        premise_pool_counts=dict(state._premise_pool_counts),
     )
 
 

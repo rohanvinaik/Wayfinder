@@ -135,6 +135,63 @@ class SymbolicLaneTest(unittest.TestCase):
         self.assertEqual(len(lean.submitted), count)
 
 
+class LibraryPoolTest(unittest.TestCase):
+    """The site/library pool disposition: 'no site' is NOT 'no premises'.
+
+    A siteless goal (external corpus — MiniF2F, a fresh conjecture) has no
+    circularity hazard, so the pool is the library universe selected by
+    anchor evidence; a goal with no anchor evidence gets NO pool — never an
+    unranked dump of the library.
+    """
+
+    def test_library_pool_ranks_by_anchor_evidence(self):
+        from src.resolution import library_premise_pool
+
+        conn = _make_network()
+        pool = library_premise_pool(conn, GOAL)
+        self.assertEqual(pool[0], "Nat.add_comm")  # Nat+add anchors, highest IDF sum
+        self.assertIn("Nat.mul_one", pool)  # shares only the Nat anchor
+        self.assertNotIn("TestThm.goal_thm", pool)  # no anchors -> no evidence
+
+    def test_no_anchor_evidence_means_no_pool(self):
+        from src.resolution import library_premise_pool
+
+        conn = _make_network()
+        self.assertEqual(library_premise_pool(conn, "⊢ ∀ ε > 0, True"), [])
+
+    def test_siteless_goal_closes_through_the_library_pool(self):
+        conn = _make_network()
+        lean = _FakeLean(succeed_on={"exact Nat.add_comm"})
+        env = _make_env(conn, lean)
+        state = _SearchState(open_goals=[GOAL], theorem_id="External.no_site")
+        closed = _try_symbolic_family(
+            "exact", GOAL, 0, state, env, accessible_theorem_id=None, beam_width=2
+        )
+        self.assertTrue(closed)
+        self.assertEqual(state._premise_pool_counts, {"library": 1})
+
+    def test_site_pool_still_governs_when_a_site_exists(self):
+        conn = _make_network()
+        lean = _FakeLean()
+        env = _make_env(conn, lean)
+        state = _SearchState(open_goals=[GOAL], theorem_id="TestThm.goal_thm")
+        _try_symbolic_family("exact", GOAL, 0, state, env, accessible_theorem_id=1, beam_width=1)
+        self.assertEqual(state._premise_pool_counts, {"site": 1})
+
+    def test_siteless_goal_without_evidence_abstains(self):
+        conn = _make_network()
+        lean = _FakeLean()
+        env = _make_env(conn, lean)
+        goal = "⊢ ∀ ε > 0, True"
+        state = _SearchState(open_goals=[goal], theorem_id="External.no_site")
+        closed = _try_symbolic_family(
+            "exact", goal, 0, state, env, accessible_theorem_id=None, beam_width=1
+        )
+        self.assertFalse(closed)
+        self.assertEqual(lean.submitted, [])  # abstained: no Lean call without evidence
+        self.assertEqual(state._premise_pool_counts, {"none": 1})
+
+
 class DeterministicSearchStepTest(unittest.TestCase):
     def test_full_step_with_no_pipeline_closes_goal(self):
         conn = _make_network()
