@@ -669,5 +669,65 @@ class SitelessPremisePoolTest(unittest.TestCase):
         )
 
 
+class SlateDiversityTest(unittest.TestCase):
+    """The skeleton frontier must survive the premise firehose.
+
+    Measured on pass 1b: zero term-construction firings across 2,000
+    theorems because the firehose's score lattice (0.80-1.03) crowded the
+    skeleton priorities (~0.5) out of every top-24 slot. The reserve
+    guarantees the designed source (paper §5.5) representation on the
+    slate; both sources keep their internal order."""
+
+    def _fed_network(self):
+        from src.proof_network import init_db
+
+        conn = init_db(":memory:")
+        conn.execute("INSERT INTO entities (id, name) VALUES (1, 'Site.thm')")
+        # 12 premises sharing goal tokens → nonzero token score → the
+        # firehose generates its full per-lemma program family.
+        for i in range(2, 14):
+            conn.execute(
+                "INSERT INTO entities (id, name) VALUES (?, ?)",
+                (i, f"Foo.bar_lemma_{i}"),
+            )
+            conn.execute(
+                "INSERT INTO accessible_premises (theorem_id, premise_id) VALUES (1, ?)",
+                (i,),
+            )
+        conn.commit()
+        return conn
+
+    def test_skeleton_holed_programs_survive_a_fed_firehose(self):
+        # atomic_prop target: the reserve guarantees the SOURCE a slate
+        # share, not every family — on richer buckets (equality) higher-
+        # extra skeletons legitimately outrank obtain within the reserve.
+        conn = self._fed_network()
+        goal = "h : ∃ n : Nat, Foo.bar n\nhk : Foo.bar q\n⊢ Foo.bar r"
+        row = {
+            "theorem_id": "Site.thm",
+            "last_goal": goal,
+            "last_goal_bucket": "atomic_prop",
+            "residual_bucket": "single_goal_near_miss",
+            "goals_closed": 0,
+            "goals_remaining": 1,
+            "attempts": 0,
+            "remaining_goals_snapshot": [goal],
+        }
+        progs = build_ducky_programs(
+            build_goal_capsule(row),
+            theorem_id="Site.thm",
+            goal_text=goal,
+            lean=None,
+            conn=conn,
+            accessible_theorem_id=1,
+            max_programs=24,
+        )
+        self.assertEqual(len(progs), 24)
+        # The firehose is genuinely fed (premise programs present)...
+        self.assertTrue(any("Foo.bar_lemma" in p.tactics[0] for p in progs))
+        # ...and the destructure skeleton still holds a slate slot.
+        self.assertTrue(any(p.tactics[0].startswith("obtain ⟨") for p in progs))
+
+
 if __name__ == "__main__":
     unittest.main()

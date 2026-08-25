@@ -2299,6 +2299,7 @@ def build_ducky_programs(
         holographic_premises=holographic_premises,
     )
     programs: list[DuckyProgram] = list(frontier["programs"])
+    skeleton_program_ids = {program.program_id for program in programs}
     seen: set[tuple[str, ...]] = {tuple(_unique_strings(program.tactics)) for program in programs}
     space = _build_binding_space(lean, theorem_id, goal_text, conn, accessible_theorem_id,
                                  holographic_premises=holographic_premises)
@@ -2658,7 +2659,24 @@ def build_ducky_programs(
         )
 
     programs.sort(key=lambda item: (-item.score, len(item.tactics), item.program_id))
-    return programs[:max_programs]
+    slate = programs[:max_programs]
+
+    # Slate diversity: the skeleton frontier is the DESIGNED program source
+    # (the paper's §5.5 typed holes); the premise firehose was bolted on
+    # later with its own score lattice, and the two scales are
+    # incommensurable — unreserved, the firehose floods every slot and the
+    # skeleton layer never executes (measured: zero term-construction
+    # firings across a full-2000 pass; the top-24 cut fell at 0.800 while
+    # skeleton priorities live near 0.5). Reserve a third of the slate for
+    # the best skeleton-instantiated programs, each source keeping its own
+    # internal order — the ModelAtlas diversity guarantee, transported.
+    reserve = max(max_programs // 3, 2)
+    skeleton_ranked = [p for p in programs if p.program_id in skeleton_program_ids]
+    in_slate = {p.program_id for p in slate}
+    guaranteed = [p for p in skeleton_ranked[:reserve] if p.program_id not in in_slate]
+    if guaranteed:
+        slate = slate[: max(max_programs - len(guaranteed), 0)] + guaranteed
+    return slate
 
 
 def _goal_shape_score(goal_text: str, goal_bucket: str) -> float:
