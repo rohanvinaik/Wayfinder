@@ -669,6 +669,45 @@ class SitelessPremisePoolTest(unittest.TestCase):
         )
 
 
+class FenceGranularityTest(unittest.TestCase):
+    """Loop pass-2's measured counterexample, pinned: a lane-family fence
+    must NOT disable Dr. Ducky's internal programs. The fence's spine
+    observed compile_exact over the IDF pool; her exact-headed local-fact
+    programs are a different action class — negative evidence never
+    transports across granularity (THE_REFOUNDING §10.8)."""
+
+    def test_lane_exact_fence_does_not_mutilate_her_programs(self):
+        from src.censor_store import censor_key, slice_signature
+        from src.structural_reads import read_goal
+
+        goal = "h : P q\n⊢ P q"
+        reads = read_goal(goal)
+        key = censor_key(reads.goal_bucket, slice_signature(reads))
+        lean = _FakeLean(
+            {
+                (goal, "exact h"): TacticResult(
+                    success=True, tactic="exact h", premises=[], new_goals=[],
+                    error_message="",
+                    feedback=LeanFeedback(stage="tactic_exec", category="ok",
+                                          messages=[], raw_error=""),
+                )
+            }
+        )
+        state = _SearchState(open_goals=[goal], theorem_id="T")
+        env = _SearchEnv(
+            conn=None, lean=lean, anchor_id_map=None, max_candidates=8,
+            censor_fences={key: {"exact"}},  # the lane-family fence
+        )
+        cfg = SearchConfig(dr_ducky_enabled=True, dr_ducky_max_programs=24)
+        progress = _try_lane(
+            "dr_ducky", goal, 0, nav_output=None, state=state, env=env,
+            context=SearchContext(accessible_theorem_id=None), cfg=cfg,
+        )
+        self.assertTrue(progress)
+        self.assertEqual(state.close_provenance[-1], "dr_ducky")
+        self.assertEqual(state.open_goals, [])
+
+
 class SlateDiversityTest(unittest.TestCase):
     """The skeleton frontier must survive the premise firehose.
 
