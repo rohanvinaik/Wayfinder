@@ -1,0 +1,62 @@
+# Wayfinder — the DETERMINISTIC PATH (the thesis configuration).
+#
+# Runs the full proof search with ZERO neural components: no navigator
+# checkpoint, no sentence encoder, no family classifier, no selector.
+# Every step is symbolic and auditable:
+#
+#   goal text --tokens--> anchor dictionary        (set intersection)
+#             --IDF----> accessible-premise ranking (proof network)
+#             --grammar-> Lean tactic candidates    (src/tactic_compiler)
+#             --kernel--> verified proof steps      (Pantograph)
+#
+# plus the structural bootstrap and (optionally) the Dr. Ducky residual
+# VM — both already deterministic. The statistical layer (cosine lanes,
+# learned navigation, classifiers) is REMOVED, not disabled-but-loaded:
+# run_benchmark skips checkpoint loading entirely in this mode.
+#
+# Usage:
+#   python scripts/run_benchmark.py --config configs/wayfinder_deterministic.yaml
+#   (the --checkpoint argument is accepted but never loaded)
+
+data:
+  nav_train: data/nav_training.jsonl
+  nav_eval: data/nav_eval.jsonl
+  proof_network_db: data/proof_network_v3.db
+  anchor_labels: data/anchor_labels.json
+
+# --- Search: the deterministic thesis path ---
+search:
+  collect_trace: true   # pass-1b: the pass-2 mining corpus (censors, norms, Ducky-regime read)
+  search_mode: deterministic
+  budget: 600
+  hammer_delegation: false      # hammer gating reads navigator output; no navigator here
+  accessible_premises: true
+  max_candidates_per_step: 8
+  hammer_timeout: 60
+  cosine_rw_beam: 5             # reused as the symbolic lane beam width
+  dr_ducky_enabled: true        # the deterministic residual VM belongs on this path
+  dr_ducky_max_programs: 24
+  dr_ducky_max_rounds: 3
+  dr_ducky_goal_limit: 3
+  norm_then_close_enabled: true
+
+# --- Lean kernel (Lane A) ---
+lean:
+  backend: pantograph
+  project_root: data/lean_project
+  imports: ["Mathlib"]
+
+axle:
+  enabled: false
+
+evaluation:
+  benchmark_theorems: data/minif2f_test.jsonl
+  mathlib_test_split: data/mathlib_test.jsonl
+
+logging:
+  run_dir: runs/
+
+invariants:
+  eval_data_frozen: true
+  single_inference_per_state: true   # trivially satisfied: zero inferences per state
+  scoring_auditable: true
