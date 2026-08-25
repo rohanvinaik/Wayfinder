@@ -465,6 +465,15 @@ Each experiment is paired, budget-reported, and gates the next wave. Names are c
 
 - **EXP-DET-001** (defined in THE_DETERMINISTIC_CORE): the deterministic path, bare, on the frozen
   2,000 split — the pre-refounding baseline of record.
+  **MEASURED 2026-08 (post-refounding + wiring pass, as loop pass 1; `runs/loop_pass1_full2000.json`):
+  1,028/2,000 raw = honest (51.4%; 57.1% of the 1,799 started; 201 replay-infra skips/crashes,
+  ledgered separately)** against the neural stack's EXP-058 baseline of 1,277 (63.8%) on the same
+  frozen split — the zero-neural system reaches 80.5% of the encoder stack's solve count with no
+  per-state inference, every close warranted and auditable. The wiring-pass machinery at scale:
+  atomic_sweep 182 goal-closes, simp_set 366, rw_chain 126, simpa 61, dr_ducky 100; site pools
+  live 12,209× (none 636×). Expensive-closer yield remains a lower bound pending the upstream
+  TryThis fix (Wayfinder#45). The residual — 716 progressed + 55 blocked_unproven — is loop
+  pass 2's re-defined universe (§10.7 population re-estimation).
 - **EXP-RF-002 — the bulk/tail identification**: re-analyze EXP-058 + hard-run traces as a
   σ-trajectory; locate the knee; confirm the structural-majority = bulk reading against
   `proof_knee`'s corpus measurement. Analysis-only.
