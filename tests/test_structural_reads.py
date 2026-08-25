@@ -18,6 +18,7 @@ from src.structural_reads import (
     SILENT,
     TAIL_BOUNDED_WITNESS,
     TAIL_COMPACT_ARITH,
+    TAIL_MINED_CELL,
     TAIL_NONE,
     ContextNorms,
     SurfaceNorms,
@@ -247,6 +248,14 @@ class TailRegimeTest(unittest.TestCase):
         big = "⊢ " + " + ".join(f"a{i} * 3" for i in range(20)) + " = 0"
         self.assertEqual(goal_tail_regime(big), TAIL_NONE)
 
+    def test_mined_cell_routes_regardless_of_markers(self):
+        # A REAL dr_ducky-close goal from the pass-1c traced corpus whose
+        # (bucket, signature) sits in a mined concentration cell — no
+        # concrete-type marker, no numeral, invisible to the marker
+        # heuristics, routed by the population data (§10.7: cells are
+        # mined, never hand-edited).
+        self.assertEqual(goal_tail_regime("∃ x, f✝ ≤ 𝓝 x"), TAIL_MINED_CELL)
+
 
 class DeterministicLaneOrderTest(unittest.TestCase):
     """The scheduler as a total pure function of the routing read."""
@@ -281,8 +290,12 @@ class DeterministicLaneOrderTest(unittest.TestCase):
         self.assertEqual(order[0], "structural_core")
 
     def test_ducky_disabled_never_schedules_her(self):
-        for code in (TAIL_NONE, TAIL_COMPACT_ARITH, TAIL_BOUNDED_WITNESS):
+        for code in (TAIL_NONE, TAIL_COMPACT_ARITH, TAIL_BOUNDED_WITNESS, TAIL_MINED_CELL):
             self.assertNotIn("dr_ducky", deterministic_lane_order(code, True, False))
+
+    def test_mined_cell_code_routes_ducky_first(self):
+        order = deterministic_lane_order(TAIL_MINED_CELL, False, True)
+        self.assertLess(order.index("dr_ducky"), order.index("symbolic_rw"))
 
     def test_apply_lane_is_config_gated(self):
         self.assertIn("symbolic_apply", deterministic_lane_order(TAIL_NONE, True, True))

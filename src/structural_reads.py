@@ -538,7 +538,26 @@ _NUMERIC_SWEEP_TACTICS = frozenset({"norm_num", "omega", "decide"})
 # way today but carry different capsule expectations).
 TAIL_BOUNDED_WITNESS = "bounded_witness"
 TAIL_COMPACT_ARITH = "compact_arith"
+TAIL_MINED_CELL = "mined_cell"
 TAIL_NONE = ""
+
+# Signature cells where dr_ducky progress CONCENTRATES, mined from the
+# pass-1c traced corpus (scripts/mine_ducky_regime.py, 2026-08-25:
+# 36,495 steps, 100 dr_ducky progress steps; floors min_closes=3,
+# min_ratio=3.0; these 5 cells carry 19% of her close population at
+# lifts 3.7–33×; the remaining 81% is diffuse across 52 cells — no
+# concentration, no reroute). Cells are DATA: re-mine when the corpus
+# changes, never hand-edit — the §10.7 answer to the round-4 preemption
+# victims, replacing any temptation to tune markers to theorem names.
+MINED_DUCKY_CELLS: frozenset[tuple[str, tuple[int, ...]]] = frozenset(
+    {
+        ("exists", (1, 0, 0, 0, 0, 0, 1, 1, 1, 0)),
+        ("exists", (1, 0, 0, 0, -1, 0, -1, 0, 0, 0)),
+        ("exists", (1, 0, 0, 0, -1, 1, 0, 0, 0, 0)),
+        ("equality", (0, 0, 0, 0, -1, 0, 0, 1, 1, 0)),
+        ("equality", (0, 0, 0, 0, -1, 0, -1, 1, 0, 0)),
+    }
+)
 
 
 def atomic_sweep_tactics(goal_text: str, suppress_numeric: bool = False) -> list[str]:
@@ -569,7 +588,16 @@ def goal_tail_regime(goal_text: str) -> str:
     """
     clean = sanitize_goal_text(goal_text or "")
     target = goal_target(clean)
-    if not target or any(m in target for m in ABSTRACT_MARKERS):
+    if not target:
+        return TAIL_NONE
+    # The mined cells outrank the marker heuristics: a goal whose full
+    # signature sits where her closes measurably concentrate routes to the
+    # capsule executor regardless of surface markers (this is what catches
+    # the ENNReal/Measure-style victims the markers read as '').
+    goal_reads = read_goal(clean)
+    if (goal_reads.goal_bucket, goal_reads.signature()) in MINED_DUCKY_CELLS:
+        return TAIL_MINED_CELL
+    if any(m in target for m in ABSTRACT_MARKERS):
         return TAIL_NONE
     has_numeral = bool(_NUMERAL_RE.search(target))
     concrete = any(m in clean for m in CONCRETE_TYPE_MARKERS) or any(
