@@ -362,6 +362,11 @@ def _run_search_loop(
                     "close_provenance": prov,
                     "final_closer": final_closer,
                     "temporal_trace": getattr(result, "temporal_trace", []),
+                    # collect_trace runs: the per-step trace IS the mining
+                    # corpus (censors/norms/regime reads) — the collection
+                    # existed and this writer silently dropped it (the
+                    # measured-but-unconsumed defect class, again).
+                    "step_trace": getattr(result, "step_trace", []),
                     "attempts": result.attempts,
                     "goals_closed": result.goals_closed,
                     "goals_remaining": result.goals_remaining,
