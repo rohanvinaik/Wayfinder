@@ -63,23 +63,24 @@ async def main() -> None:
         pid, tid, arm = sub["project_id"], sub["theorem_id"], sub["arm"]
         entry = dict(sub)
         try:
+            # The house pattern (wayfinder_mcp.aristotle_result): refresh,
+            # skip RUNNING, get_files → tar.gz, extract, count sorries.
             project = await aristotlelib.Project.from_id(pid)
-            status = str(project.status)
-            entry["status"] = status
-            if "complete" in status.lower() or "solved" in status.lower():
-                dest = args.proof_dir / f"{sub['project_name']}.lean"
-                try:
-                    await project.download_files(str(dest.parent), overwrite=True)
-                except TypeError:
-                    await project.download_files(str(dest.parent))
-                texts = [
-                    p.read_text()
-                    for p in dest.parent.glob(f"{sub['project_name']}*")
-                    if p.is_file()
-                ] or [
-                    p.read_text() for p in dest.parent.glob("*.lean") if p.is_file()
+            await project.refresh()
+            entry["status"] = project.status.name
+            if project.status != aristotlelib.ProjectStatus.RUNNING:
+                dest = args.proof_dir / f"{sub['project_name']}"
+                dest.mkdir(parents=True, exist_ok=True)
+                tar_path = dest / "result.tar.gz"
+                await project.get_files(tar_path)
+                import tarfile
+
+                with tarfile.open(tar_path) as tf:
+                    tf.extractall(dest)
+                leans = list(dest.rglob("Residual.lean")) or [
+                    p for p in dest.rglob("*.lean") if p.is_file()
                 ]
-                proof = "\n".join(texts)
+                proof = "\n".join(p.read_text() for p in leans)
                 entry["has_sorry"] = "sorry" in proof
                 entry["self_citation"] = cites_original(proof, tid)
                 entry["solved_raw"] = bool(proof) and not entry["has_sorry"]
