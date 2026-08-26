@@ -159,6 +159,11 @@ class SearchResult:
     # Per-step trace for dataset harvesting (populated when collect_trace=True)
     # Each entry: {step, goal_before, lane, tactic, progress, new_goals}
     step_trace: list[dict] = field(default_factory=list)
+    # Dr. Ducky program-level telemetry (collect_trace only): one entry per
+    # lane invocation with every program TRIED — the diagnosis surface the
+    # ±3 marginal-flicker band demands (design against measured program
+    # outcomes, never blind slate iteration).
+    ducky_telemetry: list[dict] = field(default_factory=list)
     # Apply trigger/lane instrumentation
     trigger_fire_count: int = 0
     trigger_reject_count: int = 0
@@ -263,6 +268,7 @@ class _SearchState:
     _last_pathology_tags: list[str] = field(default_factory=list)
     # The abstention ledger: every censor-gate removal, with its warrant key.
     _censor_drops: list[dict] = field(default_factory=list)
+    _ducky_telemetry: list[dict] = field(default_factory=list)
     # Premise-pool dispositions per symbolic-lane invocation: site / library / none.
     _premise_pool_counts: dict[str, int] = field(default_factory=dict)
 
@@ -544,6 +550,31 @@ def _try_dr_ducky(
         max_programs=cfg.dr_ducky_max_programs,
         max_rounds=cfg.dr_ducky_max_rounds,
     )
+    if cfg.collect_trace:
+        # The program-level diagnosis surface: every program she tried,
+        # compact. Same discipline as step_trace — collected AND serialized
+        # (the pass-1b lesson: verify both seams).
+        state._ducky_telemetry.append(
+            {
+                "goal": goal[:200],
+                "closed": result.closed,
+                "progressed": result.progressed,
+                "programs_considered": result.programs_considered,
+                "tried": [
+                    {
+                        "program_id": str(t.get("program_id", ""))[:80],
+                        "skeleton_id": str(t.get("skeleton_id", ""))[:60],
+                        "bank": str(t.get("bank", ""))[:30],
+                        "script": str(t.get("script", "") or "; ".join(t.get("tactics", []) or []))[:160],
+                        "round": t.get("round"),
+                        "progressed": t.get("progressed"),
+                        "closed": t.get("closed"),
+                        "error": str(t.get("first_failure_error", "") or "")[:120],
+                    }
+                    for t in (result.tried_programs or [])
+                ],
+            }
+        )
     winning = result.winning_program or {}
     if not (result.closed or result.progressed):
         return False
@@ -2565,6 +2596,7 @@ def search(
         state_loop_penalty_count=state._state_loop_penalty_count,
         replanner_trigger_count=state._replanner_trigger_count,
         censor_drops=list(state._censor_drops),
+        ducky_telemetry=list(state._ducky_telemetry),
         premise_pool_counts=dict(state._premise_pool_counts),
     )
 

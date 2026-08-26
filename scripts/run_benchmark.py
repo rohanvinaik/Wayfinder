@@ -367,6 +367,7 @@ def _run_search_loop(
                     # existed and this writer silently dropped it (the
                     # measured-but-unconsumed defect class, again).
                     "step_trace": getattr(result, "step_trace", []),
+                    "ducky_telemetry": getattr(result, "ducky_telemetry", []),
                     "attempts": result.attempts,
                     "goals_closed": result.goals_closed,
                     "goals_remaining": result.goals_remaining,

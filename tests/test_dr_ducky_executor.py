@@ -669,6 +669,50 @@ class SitelessPremisePoolTest(unittest.TestCase):
         )
 
 
+class DuckyTelemetryTest(unittest.TestCase):
+    """The diagnosis surface: collect_trace runs record every program she
+    tried, and SearchResult carries it (both seams — the pass-1b lesson)."""
+
+    def test_collect_trace_records_tried_programs_on_state(self):
+        goal = "h : P q\n⊢ P q"
+        lean = _FakeLean(
+            {
+                (goal, "exact h"): TacticResult(
+                    success=True, tactic="exact h", premises=[], new_goals=[],
+                    error_message="",
+                    feedback=LeanFeedback(stage="tactic_exec", category="ok",
+                                          messages=[], raw_error=""),
+                )
+            }
+        )
+        state = _SearchState(open_goals=[goal], theorem_id="T")
+        env = _SearchEnv(conn=None, lean=lean, anchor_id_map=None, max_candidates=8)
+        cfg = SearchConfig(dr_ducky_enabled=True, dr_ducky_max_programs=24,
+                           collect_trace=True)
+        progress = _try_lane(
+            "dr_ducky", goal, 0, nav_output=None, state=state, env=env,
+            context=SearchContext(accessible_theorem_id=None), cfg=cfg,
+        )
+        self.assertTrue(progress)
+        self.assertEqual(len(state._ducky_telemetry), 1)
+        entry = state._ducky_telemetry[0]
+        self.assertTrue(entry["closed"])
+        self.assertTrue(entry["tried"], "every tried program must be recorded")
+        winner = [t for t in entry["tried"] if t["closed"]]
+        self.assertTrue(winner)
+        self.assertIn("exact h", winner[0]["script"])
+
+    def test_untraced_runs_stay_lean(self):
+        goal = "h : P q\n⊢ P q"
+        lean = _FakeLean({})
+        state = _SearchState(open_goals=[goal], theorem_id="T")
+        env = _SearchEnv(conn=None, lean=lean, anchor_id_map=None, max_candidates=8)
+        cfg = SearchConfig(dr_ducky_enabled=True, collect_trace=False)
+        _try_lane("dr_ducky", goal, 0, nav_output=None, state=state, env=env,
+                  context=SearchContext(accessible_theorem_id=None), cfg=cfg)
+        self.assertEqual(state._ducky_telemetry, [])
+
+
 class ComposedPlanSeamsTest(unittest.TestCase):
     """EXP-RF-008 slice 2's three repaired seams, pinned:
     (1) hole-bearing certificates are SELF-PROJECTING at the construction
