@@ -2731,7 +2731,25 @@ def build_ducky_programs(
     # the best skeleton-instantiated programs, each source keeping its own
     # internal order — the ModelAtlas diversity guarantee, transported.
     reserve = max(max_programs // 3, 2)
-    skeleton_ranked = [p for p in programs if p.program_id in skeleton_program_ids]
+    # The reserve is for programs ONLY the skeleton layer can produce —
+    # multi-step / hole-bearing plans. Pass-3c telemetry measured the
+    # naive reserve saturating with fixed one-liner closers (simp/aesop/
+    # positivity, 741 tries each per run) that DUPLICATE the atomic sweep
+    # and solver bootstrap, while the plan programs it exists to protect
+    # recorded ZERO executions across 771 theorems.
+    # "Only the skeleton layer can produce" made precise: multi-step
+    # plans, or heads no other lane's vocabulary contains (the sweep,
+    # bootstrap, and grammar lanes all utter simp/exact/rw/solver heads
+    # themselves — a reserve slot spent there is a duplicate).
+    _DISTINCTIVE_HEADS = ("obtain", "rcases", "rwa", "have", "calc", "lift", "use")
+    skeleton_ranked = [
+        p for p in programs
+        if p.program_id in skeleton_program_ids
+        and (
+            len(p.tactics) >= 2
+            or p.tactics[0].split(" ", 1)[0].rstrip("!?") in _DISTINCTIVE_HEADS
+        )
+    ]
     in_slate = {p.program_id for p in slate}
     guaranteed = [p for p in skeleton_ranked[:reserve] if p.program_id not in in_slate]
     if guaranteed:

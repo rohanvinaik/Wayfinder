@@ -779,6 +779,43 @@ class ComposedPlanSeamsTest(unittest.TestCase):
              "simpa using hw_ducky"],
         )
 
+    def test_reserve_admits_only_distinctive_machinery(self):
+        # Pass-3c telemetry: the naive reserve saturated with one-liner
+        # closers duplicating the sweep/bootstrap (741 tries each) while
+        # plan programs recorded ZERO executions in 771 theorems. The
+        # reserve admits only what no other lane can utter: multi-step
+        # plans or distinctive heads (obtain/rcases/rwa/have/calc/lift/use).
+        from src.proof_network import init_db
+
+        conn = init_db(":memory:")
+        conn.execute("INSERT INTO entities (id, name) VALUES (1, 'Site.thm')")
+        for i in range(2, 10):
+            conn.execute(
+                "INSERT INTO entities (id, name) VALUES (?, ?)", (i, f"Foo.bar_eq_lemma_{i}")
+            )
+            conn.execute(
+                "INSERT INTO accessible_premises (theorem_id, premise_id) VALUES (1, ?)",
+                (i,),
+            )
+        conn.commit()
+        goal = "h : Foo.bar a ∧ Foo.bar b\nheq : a = b\n⊢ Foo.bar c"
+        row = {
+            "theorem_id": "Site.thm", "last_goal": goal,
+            "last_goal_bucket": "atomic_prop",
+            "residual_bucket": "single_goal_near_miss",
+            "goals_closed": 0, "goals_remaining": 1, "attempts": 0,
+            "remaining_goals_snapshot": [goal],
+        }
+        progs = build_ducky_programs(
+            build_goal_capsule(row), theorem_id="Site.thm", goal_text=goal,
+            lean=None, conn=conn, accessible_theorem_id=1, max_programs=24,
+        )
+        distinctive = [p for p in progs if p.tactics[0].startswith(("obtain", "have", "rwa"))]
+        self.assertTrue(
+            distinctive,
+            "a hypothesis-rich goal must carry distinctive skeleton machinery on the slate",
+        )
+
     def test_plan_program_reaches_the_slate_end_to_end(self):
         conn, capsule = self._fixture()
         progs = build_ducky_programs(capsule, theorem_id="Site.thm", goal_text=self.GOAL,
