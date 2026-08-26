@@ -608,6 +608,12 @@ Each experiment is paired, budget-reported, and gates the next wave. Names are c
    commit are part of its provenance; re-mine after positive-channel changes) — but it is
    UNMEASURED, and this entry exists partly to record that the loop caught its own author
    asserting a warrant transport the spine did not support.
+   **Resolution (the correctness pass, 2026-08-26): with the transport removed and the
+   current-regime store, the treated arm restored delta EXACTLY 0 — identical 13-solve sets,
+   46,829 lane-removals under warrant paying 9.6 attempts/theorem (136.8 → 127.2, a 7% budget
+   refund on the residual, the hardest corpus the system faces) at zero solve cost. Loop pass 2
+   final: +13 closes (11 via Dr. Ducky — the slate-diversity fix made her the residual's
+   dominant closer), cumulative 1,041/2,000 (52.05%) at zero neural components.**
 ---
 
 ## 11. Status Ledger
