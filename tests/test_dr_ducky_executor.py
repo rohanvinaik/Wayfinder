@@ -779,12 +779,14 @@ class ComposedPlanSeamsTest(unittest.TestCase):
              "simpa using hw_ducky"],
         )
 
-    def test_reserve_admits_only_distinctive_machinery(self):
-        # Pass-3c telemetry: the naive reserve saturated with one-liner
-        # closers duplicating the sweep/bootstrap (741 tries each) while
-        # plan programs recorded ZERO executions in 771 theorems. The
-        # reserve admits only what no other lane can utter: multi-step
-        # plans or distinctive heads (obtain/rcases/rwa/have/calc/lift/use).
+    def test_reserve_keeps_her_fixed_closers(self):
+        # TOMBSTONE of a falsified design: pass-3d measured the
+        # "distinctive-only" reserve at −10 solves — her fixed closers
+        # (aesop/simp_all under multi-round + post-progress finishers)
+        # are NOT duplicates of other lanes; they were the census's most
+        # productive programs, and evicting them dropped them off the
+        # slate. The naive source-reserve stands; this pin fails if a
+        # future filter evicts them again.
         from src.proof_network import init_db
 
         conn = init_db(":memory:")
@@ -810,10 +812,20 @@ class ComposedPlanSeamsTest(unittest.TestCase):
             build_goal_capsule(row), theorem_id="Site.thm", goal_text=goal,
             lean=None, conn=conn, accessible_theorem_id=1, max_programs=24,
         )
-        distinctive = [p for p in progs if p.tactics[0].startswith(("obtain", "have", "rwa"))]
+        closers = [
+            p for p in progs
+            if not p.bindings and len(p.tactics) == 1 and p.skeleton_id
+        ]
+        distinctive = [
+            p for p in progs if p.bindings or (p.skeleton_id and len(p.tactics) >= 2)
+        ]
+        self.assertTrue(
+            closers,
+            "her fixed closers must hold slate seats — evicting them measured −10 (pass-3d)",
+        )
         self.assertTrue(
             distinctive,
-            "a hypothesis-rich goal must carry distinctive skeleton machinery on the slate",
+            "the distinctive half must also be seated — starving it measured 0 plan executions",
         )
 
     def test_plan_program_reaches_the_slate_end_to_end(self):

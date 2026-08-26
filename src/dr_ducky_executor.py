@@ -2737,21 +2737,32 @@ def build_ducky_programs(
     # positivity, 741 tries each per run) that DUPLICATE the atomic sweep
     # and solver bootstrap, while the plan programs it exists to protect
     # recorded ZERO executions across 771 theorems.
-    # "Only the skeleton layer can produce" made precise: multi-step
-    # plans, or heads no other lane's vocabulary contains (the sweep,
-    # bootstrap, and grammar lanes all utter simp/exact/rw/solver heads
-    # themselves — a reserve slot spent there is a duplicate).
-    _DISTINCTIVE_HEADS = ("obtain", "rcases", "rwa", "have", "calc", "lift", "use")
-    skeleton_ranked = [
-        p for p in programs
-        if p.program_id in skeleton_program_ids
-        and (
-            len(p.tactics) >= 2
-            or p.tactics[0].split(" ", 1)[0].rstrip("!?") in _DISTINCTIVE_HEADS
-        )
-    ]
+    # COMPOSITE reserve, shaped by two measured failure modes:
+    # pass-3b (−2): the slice-2 skeleton flood let hole-bearing programs
+    # outrank her fixed closers within the naive reserve; pass-3d (−10):
+    # evicting the closers outright — they are her measured value at the
+    # margin (aesop: 363/741 progresses under her multi-round context).
+    # Half the reserve guarantees her top FIXED CLOSERS (hole-less
+    # skeleton programs), half guarantees DISTINCTIVE machinery
+    # (multi-step or hole-bearing) — the designed depth. Neither half may
+    # evict the other.
+    skeleton_ranked = [p for p in programs if p.program_id in skeleton_program_ids]
+    closers = [p for p in skeleton_ranked if not p.bindings and len(p.tactics) == 1]
+    distinctive = [p for p in skeleton_ranked if p.bindings or len(p.tactics) >= 2]
+    half = max(reserve // 2, 1)
+    picks: list[DuckyProgram] = []
+    seen_ids: set[str] = set()
+    for pool, quota in ((closers, half), (distinctive, reserve - half)):
+        taken = 0
+        for p in pool:
+            if taken >= quota:
+                break
+            if p.program_id not in seen_ids:
+                picks.append(p)
+                seen_ids.add(p.program_id)
+                taken += 1
     in_slate = {p.program_id for p in slate}
-    guaranteed = [p for p in skeleton_ranked[:reserve] if p.program_id not in in_slate]
+    guaranteed = [p for p in picks if p.program_id not in in_slate]
     if guaranteed:
         slate = slate[: max(max_programs - len(guaranteed), 0)] + guaranteed
     return slate

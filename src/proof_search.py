@@ -554,11 +554,32 @@ def _try_dr_ducky(
         # The program-level diagnosis surface: every program she tried,
         # compact. Same discipline as step_trace — collected AND serialized
         # (the pass-1b lesson: verify both seams).
+        # Binding-space summary at her entry: the live-instantiation
+        # preconditions (pass-3d: plans instantiate on text-parsed fixture
+        # spaces but never on live entries — this makes the difference
+        # readable instead of guessed).
+        from src.dr_ducky_executor import _build_binding_space, _destructurable_local_facts, _hypothesis_names
+
+        try:
+            _space = _build_binding_space(
+                env.lean, state.theorem_id, goal, env.conn, context.accessible_theorem_id
+            )
+            space_summary = {
+                "bindings": len(_space.local_bindings),
+                "facts": len(_space.local_facts),
+                "destructurable": len(_destructurable_local_facts(_space)),
+                "hyp_names": len(_hypothesis_names(_space)),
+                "lemmas": len(_space.accessible_lemmas),
+                "binding_types_sample": [t[:60] for _n, t in _space.local_bindings[:3]],
+            }
+        except Exception as exc:  # noqa: BLE001 — telemetry must never break the lane
+            space_summary = {"error": type(exc).__name__}
         state._ducky_telemetry.append(
             {
                 "goal": goal[:200],
                 "closed": result.closed,
                 "progressed": result.progressed,
+                "space": space_summary,
                 "programs_considered": result.programs_considered,
                 "tried": [
                     {
