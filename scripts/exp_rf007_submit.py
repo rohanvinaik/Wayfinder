@@ -91,19 +91,24 @@ async def main() -> None:
             try:
                 proj_dir = _project_dir(base, name, pair["statement"])
                 project = None
-                for attempt in range(8):  # 429-aware: Aristotle rate-limits creation bursts
+                # Aristotle enforces a CONCURRENT-project cap (plus burst
+                # 429s): the submitter is therefore a slot scheduler —
+                # wait for in-flight proofs to finish, then fire the next.
+                for attempt in range(48):  # up to ~8h of patient slot-waiting
                     try:
                         project = await aristotlelib.Project.create_from_directory(prompt, proj_dir)
                         break
                     except Exception as exc:  # noqa: BLE001
-                        if "429" in str(exc):
-                            wait = 300
-                            print(f"  429 on {tid}/{arm} — backing off {wait}s (attempt {attempt + 1}/8)")
+                        msg = str(exc)
+                        if "429" in msg or "too many projects" in msg.lower():
+                            wait = 600
+                            print(f"  slots full ({tid}/{arm}) — waiting {wait}s "
+                                  f"(attempt {attempt + 1}/48)", flush=True)
                             await asyncio.sleep(wait)
                             continue
                         raise
                 if project is None:
-                    print(f"  giving up on {tid}/{arm} after sustained 429s; resume later")
+                    print(f"  giving up on {tid}/{arm} after ~8h without a free slot; resume later")
                     return
             finally:
                 shutil.rmtree(base, ignore_errors=True)
