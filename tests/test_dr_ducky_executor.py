@@ -669,6 +669,26 @@ class SitelessPremisePoolTest(unittest.TestCase):
         )
 
 
+class ReferableFactsTest(unittest.TestCase):
+    """Hole sources feed only names a tactic can utter: hygiene-marked
+    (`C✝`) and instance binders parse-fail outright — measured as the
+    dominant parse-error class in the pass-3d plan telemetry."""
+
+    def test_hygiene_marked_and_instance_facts_are_excluded(self):
+        from src.dr_ducky_executor import _any_local_facts, _BindingSpace, _destructurable_local_facts
+
+        space = _BindingSpace(
+            target_text="Q",
+            local_facts=[("h", "∃ n, P n"), ("C✝", "Type u"), ("inst✝", "Group G"),
+                         ("hk", "A ∧ B"), ("inst✝¹.1", "Mul G")],
+            local_bindings=[("h", "∃ n, P n"), ("C✝", "Type u")],
+            accessible_lemmas=[],
+            witness_terms=[],
+        )
+        self.assertEqual(_any_local_facts(space), ["h", "hk"])
+        self.assertEqual(_destructurable_local_facts(space), ["h", "hk"])
+
+
 class DuckyTelemetryTest(unittest.TestCase):
     """The diagnosis surface: collect_trace runs record every program she
     tried, and SearchResult carries it (both seams — the pass-1b lesson)."""

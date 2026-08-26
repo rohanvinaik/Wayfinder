@@ -2021,16 +2021,26 @@ def _destructurable_local_facts(space: _BindingSpace) -> list[str]:
     deterministic candidate space."""
     out: list[str] = []
     for expr, typ in space.local_facts:
+        if not _referable(expr):
+            continue
         clean = sanitize_goal_text(typ)
         if clean.startswith("∃") or clean.startswith("Exists") or " ∧ " in clean:
             out.append(expr)
     return out
 
 
+def _referable(expr: str) -> bool:
+    """A fact expression a tactic can actually NAME: no hygiene marks
+    (`C✝` parse-fails outright — measured as the dominant parse-error
+    class in the pass-3d plan telemetry), no instance binders."""
+    head = expr.split(".", 1)[0]
+    return "✝" not in expr and not head.startswith("inst") and bool(head)
+
+
 def _any_local_facts(space: _BindingSpace) -> list[str]:
-    """Every local fact expression, derived projections included — the
-    forward-chaining argument space for have-skeletons."""
-    return [expr for expr, _typ in space.local_facts]
+    """Every REFERABLE local fact expression, derived projections included —
+    the forward-chaining argument space for have-skeletons."""
+    return [expr for expr, _typ in space.local_facts if _referable(expr)]
 
 
 def _hypothesis_names(space: _BindingSpace) -> list[str]:
