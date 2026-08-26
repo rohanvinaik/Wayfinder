@@ -255,13 +255,12 @@ class MathEngine:
     backend_family = "symbolic_vm"
 
     def eligible_banks(self, capsule: GoalCapsule) -> list[str]:
-        banks: list[str] = []
-        for prior in capsule.bank_priors:
-            if prior.suppressed:
-                continue
-            if _ENGINE_BY_BANK.get(prior.name) == self.engine_name:
-                banks.append(prior.name)
-        return _unique_strings(banks)
+        # Delegates to _engine_banks — this was a duplicate implementation
+        # that silently lacked the always-on-bank exemption, so the CLASS
+        # path (the one the frontier actually calls) filtered every
+        # context_forward/local_fact_selector skeleton on buckets whose
+        # priors omitted those banks. One implementation of the job.
+        return _engine_banks(capsule, self.engine_name)
 
     def eligible_skeletons(self, capsule: GoalCapsule, bank: str) -> list[ProofSkeleton]:
         return [
@@ -1653,7 +1652,17 @@ def _add_program(
     projector_backend: str = "",
 ) -> None:
     normalized = tuple(_unique_strings(tactics))
-    if not normalized or normalized in seen:
+    if not normalized:
+        return
+    if normalized in seen:
+        # Duplicates keep the BEST score: with the always-on engines live,
+        # the frontier can seed a program at skeleton-tier score before
+        # the firehose offers the same tactics at a higher one — first-seen
+        # dedup then kept the worst copy and dropped it off the slate.
+        for existing in programs:
+            if tuple(existing.tactics) == normalized and existing.score < round(score, 3):
+                existing.score = round(score, 3)
+                break
         return
     blocked_tactics = {str(tactic).strip().lower() for tactic in (disabled_tactics or set()) if str(tactic).strip()}
     if blocked_tactics and any(_tactic_mentions_disabled(text, blocked_tactics) for text in normalized):
@@ -1768,13 +1777,29 @@ def _engine_registry() -> dict[str, MathEngine]:
     return {engine.engine_name: engine for engine in engines}
 
 
+# The always-on transport banks: build_proof_skeletons admits their
+# skeletons regardless of the capsule's bucket priors (the paper's
+# "always-on local calculator" set), so the ENGINE layer must see them
+# too — the two admission layers previously disagreed, and every
+# context_forward/local_fact_selector skeleton was silently engine-
+# filtered on buckets whose priors omitted those banks (found via the
+# EXP-RF-008 slice-2 zero-instantiation probe).
+_ALWAYS_ON_BANKS = ("structural_close", "context_forward", "local_fact_selector")
+
+
 def _engine_banks(capsule: GoalCapsule, engine_name: str) -> list[str]:
+    suppressed = {p.name for p in capsule.bank_priors if p.suppressed}
     banks: list[str] = []
     for prior in capsule.bank_priors:
         if prior.suppressed:
             continue
         if _ENGINE_BY_BANK.get(prior.name) == engine_name:
             banks.append(prior.name)
+    for bank in _ALWAYS_ON_BANKS:
+        if bank in suppressed:
+            continue
+        if _ENGINE_BY_BANK.get(bank) == engine_name:
+            banks.append(bank)
     return _unique_strings(banks)
 
 
@@ -1808,6 +1833,17 @@ def _certificate_from_skeleton(
     summary: str | None = None,
     projected_tactics: list[str] | None = None,
 ) -> EngineCertificate:
+    if projected_tactics is None and skeleton.holes and binding:
+        # A hole-bearing skeleton's certificate is SELF-PROJECTING: the
+        # instantiated templates ARE its executable form (the Detective
+        # homology). Placed at the construction seam so every producer —
+        # the module path, the class path, the DSL-binding branch —
+        # inherits it; certificate kinds owned by other producers'
+        # provenance contracts otherwise reject these at the projector.
+        try:
+            projected_tactics = [t.format(**binding) for t in skeleton.tactic_templates]
+        except (KeyError, IndexError):
+            projected_tactics = None
     return EngineCertificate(
         certificate_id=f"{engine_name}:{skeleton.skeleton_id}:{abs(hash((request.goal_text, tuple(sorted(binding.items()))))) % 10_000_000}",
         engine_name=engine_name,
@@ -1997,6 +2033,17 @@ def _any_local_facts(space: _BindingSpace) -> list[str]:
     return [expr for expr, _typ in space.local_facts]
 
 
+def _hypothesis_names(space: _BindingSpace) -> list[str]:
+    """Raw local hypothesis NAMES only — the targets of `rw ... at` and
+    `obtain ... :=` must be actual identifiers (never derived expressions
+    like `h.1`, never hygiene-marked `✝` or instance binders)."""
+    out: list[str] = []
+    for name, _typ in space.local_bindings:
+        if name and " " not in name and "✝" not in name and not name.startswith("inst"):
+            out.append(name)
+    return out
+
+
 def _hole_candidates(hole: ProofHoleSpec, space: _BindingSpace) -> list[str]:
     if hole.hole_kind == "matching_local_fact":
         candidates = _matching_local_facts(space)
@@ -2016,6 +2063,8 @@ def _hole_candidates(hole: ProofHoleSpec, space: _BindingSpace) -> list[str]:
         candidates = _destructurable_local_facts(space)
     elif hole.hole_kind == "any_local_fact":
         candidates = _any_local_facts(space)
+    elif hole.hole_kind == "hypothesis_name":
+        candidates = _hypothesis_names(space)
     elif hole.hole_kind == "witness_term":
         candidates = list(space.witness_terms)
     elif hole.hole_kind == "bounded_nat_literal":
@@ -2209,7 +2258,15 @@ def build_ducky_symbolic_frontier(
     engine_registry = _engine_registry()
     projector = ProofProjector(skeleton_lookup)
 
-    for engine_name in capsule.allowed_engines:
+    # The always-on transport banks' host engines run regardless of the
+    # capsule's bucket-authored allow-list (the same exemption the
+    # skeleton-admission and _engine_banks layers carry — all three
+    # layers must agree or always-on skeletons are silently filtered).
+    always_on_engines = [
+        e for e in dict.fromkeys(_ENGINE_BY_BANK.get(b) for b in _ALWAYS_ON_BANKS)
+        if e and e not in capsule.allowed_engines
+    ]
+    for engine_name in [*capsule.allowed_engines, *always_on_engines]:
         engine = engine_registry.get(engine_name)
         if engine is None:
             continue
@@ -2240,7 +2297,10 @@ def build_ducky_symbolic_frontier(
                     }
                 )
                 continue
-            score = _bank_priority(capsule, projected.bank)
+            weight = bank_weight(capsule, projected.bank)
+            # absence ≠ suppression, at the scoring seam too: an absent
+            # bank scores neutral, never 0.0-and-sorted-last.
+            score = 0.0 if isinstance(weight, str) else float(weight)
             program = _projected_to_program(projected, decision, score=score)
             program.engine_name = engine_name
             program.backend_family = certificate.backend_family

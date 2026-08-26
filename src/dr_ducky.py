@@ -1370,6 +1370,7 @@ def build_proof_skeletons(
             "local_fact_pair": ["witness_construction"],
             "context_destructure": ["term_transport"],
             "forward_chain": ["have_chain"],
+            "plan_chain": ["have_chain"],
         }.get(skeleton_kind, ["projected_tactics"])
         skeletons.append(
             ProofSkeleton(
@@ -1608,6 +1609,111 @@ def build_proof_skeletons(
         ],
         extra=0.085,
     )
+
+    # EXP-RF-008 slice 2 — COMPOSED-PLAN skeletons. Loop pass 3 measured
+    # the context-free form tier exhausted (rw_at as a lane: 27,431 tries,
+    # zero closes): the answer-key forms live MID-PLAN, enabling later
+    # steps. Each template below is warranted by a measured bigram of the
+    # EXP-RF-007 proof corpus (runs/promotion_candidates.json top_bigrams);
+    # later steps consume the names earlier steps introduce — the plan
+    # context a context-free production cannot carry.
+    add(
+        "have_chain_two",
+        "plan_chain",
+        "context_forward",
+        "context_transport",
+        [
+            "have h1_ducky := {lemma} {fact}",
+            "have h2_ducky := {lemma2} h1_ducky",
+            "exact h2_ducky",
+        ],
+        "Two chained modus-ponens steps (bigram have→have, 5 theorems).",
+        holes=[
+            _make_hole("lemma", "accessible_apply_lemma", "accessible_premises", max_candidates=3),
+            _make_hole("fact", "any_local_fact", "local_context", max_candidates=3),
+            _make_hole("lemma2", "accessible_apply_lemma", "accessible_premises", max_candidates=3),
+        ],
+        extra=0.095,
+    )
+    add(
+        "have_then_rw_goal",
+        "plan_chain",
+        "eq_sat",
+        "human_calculator",
+        ["have h_ducky := {lemma} {fact}", "rw [h_ducky]"],
+        "Derive an equation, rewrite the goal with it; the post-progress "
+        "finisher sweep closes (bigram have→rw, 2 theorems).",
+        holes=[
+            _make_hole("lemma", "accessible_apply_lemma", "accessible_premises", max_candidates=4),
+            _make_hole("fact", "any_local_fact", "local_context", max_candidates=4),
+        ],
+        extra=0.09,
+    )
+    add(
+        "have_then_rwa_hyp",
+        "plan_chain",
+        "context_forward",
+        "context_transport",
+        ["have h_ducky := {lemma} {fact}", "rwa [h_ducky] at {hyp}"],
+        "Derive an equation, rewrite a hypothesis with it, close from the "
+        "rewritten hypothesis (bigram have→rw-at, 3 theorems).",
+        holes=[
+            _make_hole("lemma", "accessible_apply_lemma", "accessible_premises", max_candidates=3),
+            _make_hole("fact", "any_local_fact", "local_context", max_candidates=3),
+            _make_hole("hyp", "hypothesis_name", "local_context", max_candidates=3),
+        ],
+        extra=0.09,
+    )
+    add(
+        "rw_at_then_destructure",
+        "plan_chain",
+        "local_fact_selector",
+        "atomic_fact_engine",
+        [
+            "rw [{lemma}] at {hyp}",
+            "obtain ⟨w_ducky, hw_ducky⟩ := {hyp}",
+            "simp_all",
+        ],
+        "Rewrite a hypothesis into destructurable form, split it, exploit "
+        "the components (bigram rw-at→obtain, 2 theorems).",
+        holes=[
+            _make_hole("lemma", "rewrite_lemma", "accessible_premises", max_candidates=3),
+            _make_hole("hyp", "hypothesis_name", "local_context", max_candidates=3),
+        ],
+        extra=0.085,
+    )
+    add(
+        "rwa_at_close",
+        "plan_chain",
+        "context_forward",
+        "context_transport",
+        ["rwa [{lemma}] at {hyp}"],
+        "Rewrite a hypothesis until it IS the goal (the pass-3 lane's form, "
+        "restored at plan granularity with binding-space hypothesis names).",
+        holes=[
+            _make_hole("lemma", "rewrite_lemma", "accessible_premises", max_candidates=4),
+            _make_hole("hyp", "hypothesis_name", "local_context", max_candidates=3),
+        ],
+        extra=0.08,
+    )
+    if spec.goal_bucket == "exists":
+        add(
+            "witness_transport",
+            "plan_chain",
+            "witness_constructor",
+            "witness_engine",
+            [
+                "obtain ⟨w_ducky, hw_ducky⟩ := {fact}",
+                "refine ⟨w_ducky, ?_⟩",
+                "simpa using hw_ducky",
+            ],
+            "Transport a witness from a local existential to the existential "
+            "goal (bigram obtain→refine-anon, 2 theorems).",
+            holes=[
+                _make_hole("fact", "destructurable_local_fact", "local_context", max_candidates=4),
+            ],
+            extra=0.11,
+        )
 
     # Premise- and context-driven skeletons.
     add(

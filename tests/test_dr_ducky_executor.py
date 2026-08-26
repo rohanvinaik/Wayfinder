@@ -669,6 +669,81 @@ class SitelessPremisePoolTest(unittest.TestCase):
         )
 
 
+class ComposedPlanSeamsTest(unittest.TestCase):
+    """EXP-RF-008 slice 2's three repaired seams, pinned:
+    (1) hole-bearing certificates are SELF-PROJECTING at the construction
+    seam (every producer path inherits it); (2) the CLASS eligibility path
+    delegates to _engine_banks (the always-on exemption — three layers
+    must agree); (3) plan programs reach the slate end-to-end."""
+
+    GOAL = "h : ∃ n : Nat, Foo.bar n\nhk : Foo.bar q\n⊢ ∃ m : Nat, Foo.bar m"
+
+    def _fixture(self):
+        from src.proof_network import init_db
+
+        conn = init_db(":memory:")
+        conn.execute("INSERT INTO entities (id, name) VALUES (1, 'Site.thm')")
+        for i in range(2, 8):
+            conn.execute(
+                "INSERT INTO entities (id, name) VALUES (?, ?)", (i, f"Foo.bar_lemma_{i}")
+            )
+            conn.execute(
+                "INSERT INTO accessible_premises (theorem_id, premise_id) VALUES (1, ?)",
+                (i,),
+            )
+        conn.commit()
+        row = {
+            "theorem_id": "Site.thm", "last_goal": self.GOAL,
+            "last_goal_bucket": "exists", "residual_bucket": "single_goal_near_miss",
+            "goals_closed": 0, "goals_remaining": 1, "attempts": 0,
+            "remaining_goals_snapshot": [self.GOAL],
+        }
+        return conn, build_goal_capsule(row)
+
+    def test_class_path_engines_include_always_on_hosts(self):
+        # The exists bucket authors only WitnessEngine; the always-on
+        # transport banks' host engine must still be eligible.
+        from src.dr_ducky_executor import ContextTransportEngine
+
+        _conn, capsule = self._fixture()
+        self.assertNotIn("ContextTransportEngine", capsule.allowed_engines)
+        banks = ContextTransportEngine().eligible_banks(capsule)
+        self.assertIn("context_forward", banks)
+        self.assertIn("local_fact_selector", banks)
+
+    def test_hole_bearing_certificates_are_self_projecting(self):
+        from src.dr_ducky_executor import (
+            _build_binding_space,
+            _build_shadow_ledger,
+            _instantiate_skeleton_certificates,
+            _make_engine_request,
+        )
+
+        conn, capsule = self._fixture()
+        space = _build_binding_space(None, "Site.thm", self.GOAL, conn, 1)
+        ledger = _build_shadow_ledger(space, theorem_id="Site.thm", goal_text=self.GOAL)
+        sk = next(s for s in capsule.proof_skeletons if s.skeleton_id == "witness_transport")
+        req = _make_engine_request(capsule=capsule, ledger=ledger,
+                                   engine_name="WitnessEngine", bank=sk.bank,
+                                   goal_text=self.GOAL)
+        certs = _instantiate_skeleton_certificates(sk, space, engine_name="WitnessEngine",
+                                                   request=req)
+        self.assertTrue(certs)
+        self.assertEqual(
+            certs[0].projected_tactics,
+            ["obtain ⟨w_ducky, hw_ducky⟩ := h", "refine ⟨w_ducky, ?_⟩",
+             "simpa using hw_ducky"],
+        )
+
+    def test_plan_program_reaches_the_slate_end_to_end(self):
+        conn, capsule = self._fixture()
+        progs = build_ducky_programs(capsule, theorem_id="Site.thm", goal_text=self.GOAL,
+                                     lean=None, conn=conn, accessible_theorem_id=1,
+                                     max_programs=24)
+        plans = [p for p in progs if len(p.tactics) >= 2 and "w_ducky" in " ".join(p.tactics)]
+        self.assertTrue(plans, "the witness-transport plan must hold a slate slot")
+
+
 class FenceGranularityTest(unittest.TestCase):
     """Loop pass-2's measured counterexample, pinned: a lane-family fence
     must NOT disable Dr. Ducky's internal programs. The fence's spine
