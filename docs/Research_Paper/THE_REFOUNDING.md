@@ -530,6 +530,22 @@ Each experiment is paired, budget-reported, and gates the next wave. Names are c
   the projector seam for the packet writers.
 - **EXP-RF-007 — the cheat-sheet fold**: Aristotle lane with vs without the rendered sheet on the
   residual set — closes the loop on the oldest measured gap in the project's notes.
+  **MEASURED 2026-08-26 (20 kernel-validated pairs, stride-sampled from the pass-2 residual;
+  fresh-name restatement + anti-self-citation instruction + post-hoc audit):** total ceiling —
+  **both arms 20/20, raw = honest exactly, zero self-citations, zero sorry-returns**; paired
+  proving times noise-dominated (median Δ −27s, spreads ±200s). Three findings: (i) the sheet's
+  CONTENT shows no measurable effect at a difficulty band the external prover finds easy — its
+  discriminating test needs a sample Aristotle finds hard, and this sample contained none;
+  (ii) the PIPELINE's preprocessing is unambiguously validated — kernel-elaborated statements
+  (env_inspect), local elaboration gating, minimal clean projects → 40/40 PROVED with zero
+  elaboration failures, the deterministic system as the discipline layer for the statistical
+  prover; (iii) **the "neither" set is EMPTY: the sampled Wayfinder-residual is entirely within
+  the industrial prover's reach — the residual is deep relative to Wayfinder's current
+  machinery, not absolutely deep** — and the 40 downloaded proofs (runs/exp_rf007_proofs/) are
+  worked multi-step chains for certified residual goals: the natural mining corpus for the
+  positive promotion loop (§10.7 discipline applies — forms mined at population level, never
+  theorem identity). Harness: scripts/exp_rf007_{build_sample,submit,collect}.py; the metered
+  service caps CONCURRENT projects (~15) — the submitter is a slot scheduler.
 - **EXP-RF-008 — Dr. Ducky's term-construction closure**: her skeleton machinery
   (ProofSkeleton typed holes → hole filling from local facts/premises/witness spaces →
   have/calc/witness lowering → warranted LeanExpr emission) measured on the residual band whose
