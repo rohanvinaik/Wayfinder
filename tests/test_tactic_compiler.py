@@ -13,6 +13,7 @@ from src.tactic_compiler import (
     compile_exact,
     compile_from_predictions,
     compile_rw,
+    compile_rw_at,
     compile_rw_chain,
     compile_simp,
     compile_simp_set,
@@ -76,7 +77,7 @@ class CompileV2FormsTest(unittest.TestCase):
         texts = [c.text for c in compile_rw_chain(["A", "B", "C"])]
         self.assertEqual(texts[0], "rw [A, B]")
         self.assertIn("rw [B, A]", texts)  # order matters — both emitted
-        self.assertEqual(len(texts), 6)  # 3P2 ordered pairs, no self-pairs
+        self.assertEqual(len(texts), 9)  # 3P2 ordered pairs + 3 v3 triples
         self.assertNotIn("rw [A, A]", texts)
 
     def test_rw_chain_needs_two_premises(self):
@@ -106,6 +107,32 @@ class CompileV2FormsTest(unittest.TestCase):
         ):
             texts = [c.text for c in compile_tactic(family, ["A", "B"])]
             self.assertIn(needle, texts, family)
+
+    def test_rw_at_rewrites_hypotheses_with_rwa_close_variant(self):
+        # The EXP-RF-007 promotion: hypothesis-side rewriting (7/20
+        # residual proofs; the grammar had never rewritten a hypothesis).
+        texts = [c.text for c in compile_rw_at(["A", "B"], ["h1", "h2"])]
+        self.assertIn("rw [A] at h1", texts)
+        self.assertIn("rwa [A] at h1", texts)  # closes when the hyp IS the goal
+        self.assertIn("rw [B] at h2", texts)
+        self.assertEqual(texts[0], "rw [A] at h1")  # rank-first ordering
+
+    def test_rw_at_needs_both_pools(self):
+        self.assertEqual(compile_rw_at(["A"], []), [])
+        self.assertEqual(compile_rw_at([], ["h"]), [])
+
+    def test_rw_chain_triples_from_top_three(self):
+        texts = [c.text for c in compile_rw_chain(["A", "B", "C"])]
+        self.assertIn("rw [A, B, C]", texts)  # the rank-ordered triple
+        self.assertIn("rw [B, A, C]", texts)  # adjacent swaps only
+        self.assertIn("rw [A, C, B]", texts)
+        self.assertNotIn("rw [C, B, A]", texts)  # never the full reversal
+        self.assertEqual(len(texts), 9)  # 6 pairs + 3 triples
+
+    def test_rw_at_dispatch_carries_hypotheses(self):
+        texts = [c.text for c in compile_tactic("rw_at", ["A"], hypotheses=["h"])]
+        self.assertIn("rw [A] at h", texts)
+        self.assertEqual(compile_tactic("rw_at", ["A"]), [])  # no hyps → no forms
 
     def test_families_are_their_own_censor_keys(self):
         # A fence mined on single-rw failures asserts nothing about chains.

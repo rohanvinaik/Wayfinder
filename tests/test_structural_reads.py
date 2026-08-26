@@ -272,6 +272,7 @@ class DeterministicLaneOrderTest(unittest.TestCase):
                 "symbolic_simpa",
                 "symbolic_rw_chain",
                 "symbolic_simp_set",
+                "symbolic_rw_at",
                 "dr_ducky",
             ],
         )

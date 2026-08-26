@@ -145,6 +145,45 @@ def compile_rw_chain(
                     text=f"rw [{a}, {b}]", family="rw_chain", premises_used=[a, b]
                 )
             )
+    # Rank-order triples (EXP-RF-007 promotion: rw#3/#4+ recur in the
+    # residual proofs and the corpus mode is 3+; v2 stopped at pairs).
+    # Bounded: the rank-ordered triple plus its two adjacent swaps.
+    if len(top) >= 3:
+        a, b, c = top[0], top[1], top[2]
+        for trip in ((a, b, c), (b, a, c), (a, c, b)):
+            candidates.append(
+                TacticCandidate(
+                    text=f"rw [{trip[0]}, {trip[1]}, {trip[2]}]",
+                    family="rw_chain",
+                    premises_used=list(trip),
+                )
+            )
+    return candidates
+
+
+def compile_rw_at(
+    premises: list[str],
+    hypotheses: list[str],
+    max_premises: int = 3,
+    max_hyps: int = 3,
+) -> list[TacticCandidate]:
+    """Hypothesis-side rewriting — the axis the grammar never had.
+
+    Promotion warrant (EXP-RF-007 proof corpus + §10.7): `rw [...] at h`
+    recurs in 7/20 residual proofs while the v1/v2 grammar only ever
+    rewrote the GOAL; corpus rw head share 18.4%. Forward orientation
+    per (premise, hypothesis) pair, rank-first; `rwa` variant closes
+    outright when the rewritten hypothesis IS the goal.
+    """
+    candidates: list[TacticCandidate] = []
+    for p in premises[:max_premises]:
+        for h in hypotheses[:max_hyps]:
+            candidates.append(
+                TacticCandidate(text=f"rw [{p}] at {h}", family="rw_at", premises_used=[p])
+            )
+            candidates.append(
+                TacticCandidate(text=f"rwa [{p}] at {h}", family="rw_at", premises_used=[p])
+            )
     return candidates
 
 
@@ -199,10 +238,13 @@ def compile_tactic(
     goal_target: str = "",
     confidence: float = 0.0,
     max_premises: int = 4,
+    hypotheses: list[str] | None = None,
 ) -> list[TacticCandidate]:
     """Compile ordered tactic candidates for one family.
 
     Unknown families return [] — the caller falls through to other lanes.
+    `hypotheses` feeds the hypothesis-side families (rw_at); goal-side
+    families ignore it.
     """
     if family == "rw":
         candidates = compile_rw(premises, goal_target, max_premises=max_premises)
@@ -214,6 +256,8 @@ def compile_tactic(
         candidates = compile_simp(premises)
     elif family == "rw_chain":
         candidates = compile_rw_chain(premises, goal_target)
+    elif family == "rw_at":
+        candidates = compile_rw_at(premises, hypotheses or [])
     elif family == "simp_set":
         candidates = compile_simp_set(premises)
     elif family == "simpa":

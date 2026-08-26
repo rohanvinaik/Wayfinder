@@ -66,6 +66,7 @@ FAMILY_OF_LANE = {
     "symbolic_rw_chain": "rw_chain",
     "symbolic_simp_set": "simp_set",
     "symbolic_simpa": "simpa",
+    "symbolic_rw_at": "rw_at",
     "structural_core": "structural",
     "solver_bootstrap": "structural",
     "interleaved_bootstrap": "structural",

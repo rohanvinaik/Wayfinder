@@ -882,7 +882,7 @@ def _symbolic_rank_premises(
     if not premise_names:
         return None, "none"
 
-    if family in ("rw", "simp", "rw_chain", "simp_set"):
+    if family in ("rw", "simp", "rw_chain", "simp_set", "rw_at"):
         from src.rw_scoper import scope_for_rw
 
         scope = scope_for_rw(clean_goal, premise_names, max_premises=max_premises)
@@ -948,8 +948,18 @@ def _try_ranked_family(
     from src.tactic_compiler import compile_tactic
 
     goal_target = extract_goal_target(goal) if family == "rw" else ""
+    hypotheses: list[str] = []
+    if family == "rw_at":
+        for line in goal.split("\n"):
+            if "⊢" in line:
+                break
+            if ":" in line:
+                name = line.split(":", 1)[0].strip()
+                if name and " " not in name and not name.endswith("✝"):
+                    hypotheses.append(name)
     candidates = compile_tactic(
-        family, ranked_top, goal_target, max_premises=max(len(ranked_top), 1)
+        family, ranked_top, goal_target,
+        max_premises=max(len(ranked_top), 1), hypotheses=hypotheses,
     )
     for cand in candidates:
         result = env.lean.try_tactic(goal, cand.text)
@@ -1679,6 +1689,7 @@ def _try_lane(
         "symbolic_simpa",
         "symbolic_rw_chain",
         "symbolic_simp_set",
+        "symbolic_rw_at",
     ):
         return _try_symbolic_family(
             lane.removeprefix("symbolic_"),
