@@ -90,7 +90,21 @@ async def main() -> None:
             base = Path(tempfile.mkdtemp(prefix="rf007_"))
             try:
                 proj_dir = _project_dir(base, name, pair["statement"])
-                project = await aristotlelib.Project.create_from_directory(prompt, proj_dir)
+                project = None
+                for attempt in range(8):  # 429-aware: Aristotle rate-limits creation bursts
+                    try:
+                        project = await aristotlelib.Project.create_from_directory(prompt, proj_dir)
+                        break
+                    except Exception as exc:  # noqa: BLE001
+                        if "429" in str(exc):
+                            wait = 300
+                            print(f"  429 on {tid}/{arm} — backing off {wait}s (attempt {attempt + 1}/8)")
+                            await asyncio.sleep(wait)
+                            continue
+                        raise
+                if project is None:
+                    print(f"  giving up on {tid}/{arm} after sustained 429s; resume later")
+                    return
             finally:
                 shutil.rmtree(base, ignore_errors=True)
             ledger["submissions"].append(
