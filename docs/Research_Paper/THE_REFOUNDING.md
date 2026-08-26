@@ -603,6 +603,19 @@ Each experiment is paired, budget-reported, and gates the next wave. Names are c
    what EXP-RF-008 measures, and "fully passing" means the loop's residual is empty of goals
    whose true proofs are utterable by her skeleton families. Form-mining must not chase it;
    Dr. Ducky must close it.
+   **Measured confirmation (loop pass 3, 2026-08-26): the context-free form tier is EXHAUSTED.**
+   The promotion loop's first harvest (grammar v3: hypothesis-side `rw_at` — 7/20 answer-key
+   recurrence, 18.4% corpus head share — plus rank-ordered rw triples) executed at full scale on
+   the 771-residual (the rw_at lane tried on 27,431 steps, ~3,000 Lean calls, +3.9
+   attempts/theorem) and closed ZERO: the solved set is byte-identical to pass 2's 13. The
+   diagnosis is the promotion loop reading its own limit: in the answer-key proofs these forms
+   appear MID-PLAN — a hypothesis rewrite's value is enabling a later step under a context the
+   proof has constructed — and a context-free grammar production over the IDF beam cannot
+   reproduce that. Isolated-form promotion saturated at grammar v2 (the one-shot-closable band);
+   what remains is COMPOSED-PLAN machinery: have-chains, destructure-then-exploit, calc — the
+   §5.5 skeleton depth this entry mandates. Every instrument now points at the same band. (The
+   rw_at lane's ~3k-failure spine is now minable — the next store re-mine fences it where
+   warranted; the two signs regulate each other by design.)
 
 8. **Negative evidence must not transport across GRANULARITY (measured, loop pass 2 — and the
    first attribution was WRONG; both are recorded).** Pass 2's treated arm broke the delta ≥ 0
