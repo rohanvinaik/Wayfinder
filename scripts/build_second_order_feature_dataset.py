@@ -41,7 +41,7 @@ def _stable_split(packet: dict[str, Any]) -> str:
 
 
 def _reshard_split(theorem_id: str, train_ratio: float = 0.8) -> str:
-    digest = hashlib.sha1(theorem_id.encode("utf-8")).hexdigest()
+    digest = hashlib.sha1(theorem_id.encode("utf-8"), usedforsecurity=False).hexdigest()
     bucket = int(digest[:8], 16) / 0xFFFFFFFF
     return "train" if bucket < train_ratio else "eval"
 

@@ -112,7 +112,7 @@ def _load_exec_selector(selector_path: str) -> tuple[Any, Any] | None:
             def score(self, x: "torch.Tensor") -> "torch.Tensor":
                 return torch.sigmoid(self.net(x).squeeze(-1))
 
-        ckpt = torch.load(selector_path, map_location="cpu", weights_only=False)
+        ckpt = torch.load(selector_path, map_location="cpu", weights_only=False)  # nosec B614 — own local checkpoint
         sel = _ExecSelector(ckpt.get("emb_dim", 384), ckpt.get("hidden", 256))
         sel.load_state_dict(ckpt["model_state_dict"])
         sel.eval()

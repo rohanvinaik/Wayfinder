@@ -2022,7 +2022,7 @@ class LeanKernel:
             project_root: Root of Lean project (for file resolution).
         """
         crash_retries = 0
-        prefix_hash = hashlib.md5("|".join(prefix_tactics).encode()).hexdigest()[:8]
+        prefix_hash = hashlib.md5("|".join(prefix_tactics).encode(), usedforsecurity=False).hexdigest()[:8]
         env_key = f"{file_path}:{theorem_full_name}:{prefix_hash}"
         self._current_env_key = env_key
         self._last_goal_feedback = None

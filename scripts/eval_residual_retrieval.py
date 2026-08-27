@@ -31,7 +31,7 @@ def _resolve_premise_ids(conn: sqlite3.Connection, premise_names: list[str]) -> 
         return set()
     ph = ",".join("?" * len(premise_names))
     rows = conn.execute(
-        f"SELECT id FROM entities WHERE name IN ({ph})",  # noqa: S608
+        f"SELECT id FROM entities WHERE name IN ({ph})",  # noqa: S608  # nosec B608 — "?" placeholders only; values bound
         premise_names,
     ).fetchall()
     return {r[0] for r in rows}

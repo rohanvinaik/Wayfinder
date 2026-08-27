@@ -30,7 +30,7 @@ def flip_decoder_signs(
 
     Returns summary of what was flipped.
     """
-    checkpoint = torch.load(input_path, map_location="cpu", weights_only=False)
+    checkpoint = torch.load(input_path, map_location="cpu", weights_only=False)  # nosec B614 — own local checkpoint
     rng = np.random.default_rng(seed)
 
     nav_state = checkpoint["modules"]["navigator"]

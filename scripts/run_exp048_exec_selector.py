@@ -76,7 +76,7 @@ class ExecSelector(nn.Module):
 def load_selector(
     ckpt_path: str, device: torch.device
 ) -> tuple[ExecSelector, SentenceTransformer, int]:
-    ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+    ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)  # nosec B614 — own local checkpoint
     emb_dim = ckpt.get("emb_dim", 384)
     hidden = ckpt.get("hidden", 256)
     encoder_name = ckpt.get("encoder", "all-MiniLM-L6-v2")

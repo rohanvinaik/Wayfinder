@@ -308,7 +308,7 @@ def _setup_training(
     checkpoint = None
     start_step = 0
     if resume_checkpoint is not None and resume_checkpoint.exists():
-        checkpoint = torch.load(resume_checkpoint, map_location=device, weights_only=False)
+        checkpoint = torch.load(resume_checkpoint, map_location=device, weights_only=False)  # nosec B614 — own local checkpoint
         start_step = checkpoint.get("step", 0)
 
     move_supervision_spec = _build_move_supervision(

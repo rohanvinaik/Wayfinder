@@ -98,7 +98,7 @@ def build_symbolic_query(
     if labels:
         placeholders = ",".join("?" for _ in labels)
         rows = conn.execute(
-            f"SELECT id FROM anchors WHERE label IN ({placeholders}) ORDER BY id",
+            f"SELECT id FROM anchors WHERE label IN ({placeholders}) ORDER BY id",  # nosec B608 — "?" placeholders only; values bound
             labels,
         ).fetchall()
         prefer_anchors = [row[0] for row in rows][:top_k_anchors]
@@ -147,7 +147,7 @@ def library_premise_pool(
         GROUP BY ea.entity_id
         ORDER BY score DESC, e.name ASC
         LIMIT ?
-        """,
+        """,  # nosec B608 — "?" placeholders only; values bound
         [*query.prefer_anchors, limit],
     ).fetchall()
     return [name for name, _score in rows]
@@ -179,7 +179,7 @@ def symbolic_rank_premises(
 
     placeholders = ",".join("?" for _ in premise_names)
     id_rows = conn.execute(
-        f"SELECT id, name FROM entities WHERE name IN ({placeholders})",
+        f"SELECT id, name FROM entities WHERE name IN ({placeholders})",  # nosec B608 — "?" placeholders only; values bound
         list(premise_names),
     ).fetchall()
     name_to_eid = {name: eid for eid, name in id_rows}
@@ -190,7 +190,7 @@ def symbolic_rank_premises(
         eid_placeholders = ",".join("?" for _ in eids)
         for eid, aid in conn.execute(
             f"SELECT entity_id, anchor_id FROM entity_anchors "
-            f"WHERE entity_id IN ({eid_placeholders})",
+            f"WHERE entity_id IN ({eid_placeholders})",  # nosec B608 — "?" placeholders only; values bound
             eids,
         ).fetchall():
             anchor_sets.setdefault(eid, set()).add(aid)

@@ -547,7 +547,7 @@ def main() -> None:
                 def score(self, x: "torch.Tensor") -> "torch.Tensor":
                     return torch.sigmoid(self.net(x).squeeze(-1))
 
-            ckpt = torch.load(args.selector, map_location="cpu", weights_only=False)
+            ckpt = torch.load(args.selector, map_location="cpu", weights_only=False)  # nosec B614 — own local checkpoint
             _emb_dim = ckpt.get("emb_dim", 384)
             _compat_dim = ckpt.get("compat_dim", 0)
             _in_dim = _emb_dim * 2 + 2 + _compat_dim

@@ -1912,7 +1912,7 @@ def _load_exec_apply_selector_cached(selector_path: str) -> tuple[Any, Any] | No
             def score(self, x: "torch.Tensor") -> "torch.Tensor":
                 return torch.sigmoid(self.net(x).squeeze(-1))
 
-        ckpt = torch.load(selector_path, map_location="cpu", weights_only=False)
+        ckpt = torch.load(selector_path, map_location="cpu", weights_only=False)  # nosec B614 — own local checkpoint
         emb_dim = ckpt.get("emb_dim", 384)
         compat_dim = ckpt.get("compat_dim", 0)
         in_dim = emb_dim * 2 + 2 + compat_dim
@@ -1941,7 +1941,7 @@ def _load_family_classifier_torch_cached(path: str) -> Any | None:
         from src.som_torch import SoMConfig as _SoMConfig
         from src.som_torch import SoMModel as _SoMModel
 
-        ckpt = torch.load(path, map_location="cpu", weights_only=False)
+        ckpt = torch.load(path, map_location="cpu", weights_only=False)  # nosec B614 — own local checkpoint
         som_cfg = _SoMConfig(**ckpt.get("config", {}))
         som_model = _SoMModel(som_cfg)
         som_model.load_state_dict(ckpt["model_state_dict"])
@@ -2324,7 +2324,7 @@ def search(
             import torch
             import torch.nn as nn
 
-            ckpt = torch.load(cfg.apply_trigger_path, map_location="cpu", weights_only=False)
+            ckpt = torch.load(cfg.apply_trigger_path, map_location="cpu", weights_only=False)  # nosec B614 — own local checkpoint
             _in_dim = ckpt["in_dim"]
             _hidden = ckpt["hidden"]
 

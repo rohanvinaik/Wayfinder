@@ -150,7 +150,7 @@ def load_learned_second_order_runtime(
     device: str = "cpu",
 ) -> LearnedSecondOrderRuntime:
     metadata = json.loads(metadata_path.read_text())
-    payload = torch.load(checkpoint_path, map_location=device)
+    payload = torch.load(checkpoint_path, map_location=device)  # nosec B614 — own local checkpoint
     cfg_payload = dict(payload["config"])
     cfg = SecondOrderSoMConfig(**cfg_payload)
     model = SecondOrderSoMNet(cfg)

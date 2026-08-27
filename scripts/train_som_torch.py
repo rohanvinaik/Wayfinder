@@ -381,7 +381,7 @@ def main() -> None:
     total_params = sum(p.numel() for p in model.parameters())
     logger.info("Model: %d parameters", total_params)
     if args.init_checkpoint:
-        ckpt = torch.load(args.init_checkpoint, map_location=device, weights_only=False)
+        ckpt = torch.load(args.init_checkpoint, map_location=device, weights_only=False)  # nosec B614 — own local checkpoint
         model.load_state_dict(ckpt["model_state_dict"])
         logger.info("Loaded init checkpoint: %s", args.init_checkpoint)
 

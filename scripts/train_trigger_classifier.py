@@ -79,7 +79,7 @@ def _ns_hash(ns: str) -> list[float]:
     """Hash namespace prefix into a fixed-size bucket vector."""
     vec = [0.0] * _NS_BUCKETS
     if ns:
-        h = int(hashlib.md5(ns.encode()).hexdigest(), 16) % _NS_BUCKETS
+        h = int(hashlib.md5(ns.encode(), usedforsecurity=False).hexdigest(), 16) % _NS_BUCKETS
         vec[h] = 1.0
     return vec
 

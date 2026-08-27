@@ -47,7 +47,7 @@ def _write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
 
 
 def _stable_fraction(key: str) -> float:
-    digest = hashlib.md5(key.encode("utf-8")).hexdigest()
+    digest = hashlib.md5(key.encode("utf-8"), usedforsecurity=False).hexdigest()
     return int(digest[:8], 16) / 0xFFFFFFFF
 
 

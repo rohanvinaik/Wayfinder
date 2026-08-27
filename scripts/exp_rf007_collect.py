@@ -76,7 +76,7 @@ async def main() -> None:
                 import tarfile
 
                 with tarfile.open(tar_path) as tf:
-                    tf.extractall(dest)
+                    tf.extractall(dest, filter="data")
                 leans = list(dest.rglob("Residual.lean")) or [
                     p for p in dest.rglob("*.lean") if p.is_file()
                 ]
