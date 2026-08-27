@@ -75,7 +75,7 @@ def main() -> None:
     import yaml
 
     from scripts.run_benchmark import canonicalize_theorem_id
-    from src.lean_interface import LeanKernel, LeanConfig
+    from src.lean_interface import LeanConfig, LeanKernel
 
     cfg = yaml.safe_load(open("configs/wayfinder_deterministic.yaml"))["lean"]
     lean = LeanKernel(LeanConfig(backend="pantograph", project_root=cfg["project_root"],
