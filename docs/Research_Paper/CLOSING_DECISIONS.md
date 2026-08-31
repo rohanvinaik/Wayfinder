@@ -127,7 +127,20 @@ the flicker band documented so nobody (including us) mistakes wobble for signal.
   counts iff its run's code passed the standing gate and the close is honest per the
   dispositions).
 
-**Decided:** ☐  **Done:** ☐
+**Decision taken (2026-08-31).** Union accounting is canon, and the inner rule resolved MORE
+permissively than sketched above: **the kernel owns the bank; run quality gates only the
+evidence.** A row banks iff its disposition is `closed_value` — the Wave-5 calculus already
+contained the whole policy (closed_value = value kill, banked forever; closed_suspect = run
+kill, never banked). A known-defect run's kernel-valid honest closes still bank (a defect in
+the run cannot un-check a proof), while the run is excluded from flicker-band and delta
+claims — the two-ledger rule, value-kill ≠ run-kill applied to search. Flicker is defined
+only against a standing bank (founding/disjoint-universe runs are machinery signal, not band
+evidence); the measured band is ≤3 drops / ≤1 gain per evidence run. Shipped:
+`scripts/loop_union.py` (banking consumes the `disposition` field, fails loudly on vocabulary
+drift; 12 hand pins in `tests/test_loop_union.py`) → `runs/loop_union.json`, the scoreboard of
+record: **1,042/2,000**. Canon text: THE_REFOUNDING §7.3, union-accounting paragraph.
+
+**Decided:** ☑  **Done:** ☑
 
 ---
 

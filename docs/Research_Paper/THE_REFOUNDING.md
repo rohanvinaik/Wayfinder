@@ -422,6 +422,27 @@ censor, with what κ) — so the negative channel is auditable exactly as the po
 degenerate censor regime (over-fencing) is visible in the report rather than silent in a solve-rate
 drop.
 
+**Union accounting (D3, decided 2026-08-31).** The iterative loop's official measure is the
+**union of every kernel-verified honest close across all passes**: a theorem banks iff some run's
+row carries the `closed_value` disposition, and a checked proof is checked forever. Three clauses,
+each inherited from machinery already in the canon rather than invented for the occasion:
+(i) **banking consumes the disposition calculus** (§7.1) — `closed_value` banks, `closed_suspect`
+never does, and the union script reads the computed field, never re-deriving honesty from raw
+flags (§7.2's consumed-signal law); (ii) **the two-ledger rule** — run quality gates the
+*evidence*, never the *bank*. A known-defect run's kernel-valid honest closes still enter the
+union (the kernel owns proof validity; a defect in the run cannot un-check a proof), while the
+run is excluded from flicker-band and delta claims, where it is contaminated as evidence about
+the machinery. This is the value-kill ≠ run-kill discipline (Detective ARCHITECTURE §0) applied
+to theorem search, and the same shape as the standing infra-vs-model ledger split;
+(iii) **the flicker band is documented beside the union** — re-measurement runs over a standing
+bank wobble by up to ±3 closes under any ordering change (measured across passes 2/3/3b/3c);
+single-run deltas inside that band are ordering noise, never machinery signal. Flicker is only
+*defined* against a standing bank: the founding run and new-lever passes over disjoint residuals
+cannot wobble, and their closes are machinery signal outside the band. Implementation:
+`scripts/loop_union.py` (pure counting core, hand-pinned by `tests/test_loop_union.py`);
+scoreboard of record: `runs/loop_union.json` — standing union **1,042/2,000** at zero neural
+components (1,028 from pass 1 + 14 distinct residual closes).
+
 ---
 
 ## 8. The Module Diff
