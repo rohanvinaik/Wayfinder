@@ -549,6 +549,17 @@ def _proof_lean(row: dict) -> str:
     return "\n".join(x for x in [imports, inlined, opens, "", _augmented_declaration(row)] if x) + "\n"
 
 
+def proofs_roots(modules: list[str]) -> str:
+    """The `roots = [...]` line for a proofs/ project whose files sit flat in the directory.
+
+    Lake's `globs` take module patterns (`Foo.*`), never a bare `*`, so a flat proof home lists
+    its modules explicitly; regenerated from the directory on every save. Sorted, de-duplicated,
+    blanks dropped, so the lakefile is deterministic in the directory's contents.
+    """
+    names = sorted({str(m).strip() for m in modules or [] if str(m).strip()})
+    return "roots = [" + ", ".join(f'"{n}"' for n in names) + "]"
+
+
 def _write_aristotle_project(row: dict, proj_dir: Path) -> Path:
     """Write a minimal standalone Lean project (v4.28.0, no manifest) into `proj_dir`.
 
@@ -594,11 +605,11 @@ def _save_solved_proof(row: dict, solved_lean: str) -> Path:
     toolchain = home / "lean-toolchain"
     if not toolchain.exists():
         toolchain.write_text(f"leanprover/lean4:{LEAN_VERSION}\n")
-    lakefile = home / "lakefile.toml"
-    if not lakefile.exists():
-        lakefile.write_text(_lakefile(f"{home.parent.name}_proofs", lib, 'globs = ["*"]'))
     proof_path = home / f"{theorem_id}.lean"
     proof_path.write_text(solved_lean)
+    # the lakefile lists every module in the home, regenerated so the project always builds
+    modules = [p.stem for p in home.glob("*.lean")]
+    (home / "lakefile.toml").write_text(_lakefile(f"{home.parent.name}_proofs", lib, proofs_roots(modules)))
     return proof_path
 
 
