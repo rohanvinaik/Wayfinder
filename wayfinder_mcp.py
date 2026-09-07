@@ -84,9 +84,17 @@ ANSATZ_THEOREMS = {"depletion_time", "pesin_band_rate_lower_bound"}  # Pesin/phy
 ARISTOTLE_INDEX = WF / "runs" / "aristotle" / "index.json"          # project_id → theorem context
 
 
-def _proof_home(theorem_id: str) -> Path:
-    """Route a finished proof to its owning repo's proofs/ project."""
-    return ANSATZ_PROOFS if theorem_id in ANSATZ_THEOREMS else SSL_PROOFS
+def _proof_home(row: dict) -> Path:
+    """Where a finished proof lands: the manifest row's own `proof_home`.
+
+    Each calling repo declares its proofs/ project on its manifest rows (an absolute path), so
+    every repo gets its own home. The legacy per-theorem routes (SSL / Ansatz) apply only to the
+    pre-existing manifests whose rows carry no `proof_home`.
+    """
+    declared = str(row.get("proof_home") or "").strip()
+    if declared:
+        return Path(declared).expanduser()
+    return ANSATZ_PROOFS if row.get("theorem_id") in ANSATZ_THEOREMS else SSL_PROOFS
 
 mcp = FastMCP("Wayfinder")
 
@@ -353,7 +361,7 @@ def prove(
             )
             verified, verify_detail = _verify_at_v428(candidate, theorem_id)
             if verified:
-                saved_to = str(_save_solved_proof(theorem_id, candidate))
+                saved_to = str(_save_solved_proof(row, candidate))
 
         # A skip means the initial goal never built (attempts=0). DIAGNOSE it — almost always the
         # STATEMENT doesn't elaborate. This is NEVER a residual and NEVER an Aristotle candidate; it
@@ -488,14 +496,16 @@ def _save_index(idx: dict) -> None:
     ARISTOTLE_INDEX.write_text(json.dumps(idx, indent=2))
 
 
-def _save_solved_proof(theorem_id: str, solved_lean: str) -> Path:
-    """Save a finished proof into its owning repo's clean proofs/ project (v4.28.0 env).
+def _save_solved_proof(row: dict, solved_lean: str) -> Path:
+    """Save a finished proof into the calling repo's clean proofs/ project (v4.28.0 env).
 
-    One proofs/ Lean project per repo (shared toolchain + lakefile, mathlib globbed); the solved
-    proof lands as `<theorem_id>.lean`. Verify with `lake env lean <file>` + `#print axioms`
-    (after `lake update && lake exe cache get` once per repo).
+    One proofs/ Lean project per repo (shared toolchain + lakefile, mathlib globbed), chosen by
+    the row's `proof_home`; the solved proof lands as `<theorem_id>.lean`. Verify with
+    `lake env lean <file>` + `#print axioms` (after `lake update && lake exe cache get` once per
+    repo).
     """
-    home = _proof_home(theorem_id)
+    theorem_id = str(row.get("theorem_id") or "thm")
+    home = _proof_home(row)
     home.mkdir(parents=True, exist_ok=True)
     lib = "Proofs"
     toolchain = home / "lean-toolchain"
@@ -584,7 +594,7 @@ async def send_to_aristotle(
     idx[project.project_id] = {
         "theorem_id": theorem_id,
         "project_name": name,
-        "home": str(_proof_home(theorem_id)),
+        "home": str(_proof_home(row)),
         "row": row,
     }
     _save_index(idx)
@@ -595,7 +605,7 @@ async def send_to_aristotle(
             "project_name": name,
             "project_id": project.project_id,
             "status": str(project.status),
-            "saves_to": str(_proof_home(theorem_id)),
+            "saves_to": str(_proof_home(row)),
             "note": "Fired and backgrounded — Aristotle is proving it server-side. "
                     "Collect with aristotle_result(project_id) later; no need to wait.",
         },
@@ -654,9 +664,12 @@ async def aristotle_result(project_id: str, destination: str = "") -> str:
     # On a finished proof, save it into its owning repo's clean proofs/ project (looked up by id).
     rec = _load_index().get(project_id, {})
     theorem_id = rec.get("theorem_id")
+    # the indexed manifest row carries the calling repo's `proof_home`; a legacy index entry
+    # without a row still routes by theorem id
+    row = rec.get("row") or ({"theorem_id": theorem_id} if theorem_id else None)
     saved_to = None
-    if n_sorry == 0 and theorem_id:
-        saved_to = str(_save_solved_proof(theorem_id, solved))
+    if n_sorry == 0 and row:
+        saved_to = str(_save_solved_proof(row, solved))
 
     return json.dumps(
         {
