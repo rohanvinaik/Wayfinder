@@ -127,6 +127,28 @@ def _resolved_config(collect_trace: bool = False, dest: Path | None = None) -> P
     return Path(fd.name)
 
 
+def _lean_imports(rows: list[dict]) -> list[str]:
+    """The Lean modules the search kernel must import for these manifest rows: the union of
+    every row's `imports` (`"import Foo"` → `Foo`), in first-seen order, `Mathlib` first when
+    present and as the fallback when no row declares any. Each calling repo's definitions live
+    in a module of the search project (built with `lake build`), named on the row's `imports`;
+    nothing is hard-coded here, so a project's own module reaches the kernel."""
+    seen: list[str] = []
+    for row in rows:
+        for line in row.get("imports") or []:
+            name = str(line).strip()
+            if name.startswith("import "):
+                name = name[len("import "):].strip()
+            if name and name not in seen:
+                seen.append(name)
+    if not seen:
+        return ["Mathlib"]
+    if "Mathlib" in seen:
+        seen.remove("Mathlib")
+        seen.insert(0, "Mathlib")
+    return seen
+
+
 def _manifest_ids(man: Path) -> list[str]:
     return [
         json.loads(ln)["theorem_id"]
@@ -306,7 +328,7 @@ def prove(
             "--checkpoint", str(CHECKPOINT),
             "--backend", "pantograph",
             "--lean-project", str(LEAN_PROJECT),
-            "--lean-imports", "Mathlib",
+            "--lean-imports", *_lean_imports([row]),
             "--theorems", str(one),
             "--limit", "1",
             "--search-mode", "full",
@@ -713,7 +735,9 @@ def prove_corpus(
     Poll progress / collect the result with `prove_corpus_status(output)`.
 
     Args:
-        theorems: JSONL corpus of theorem rows (theorem_id + goal_state/full_declaration).
+        theorems: JSONL corpus of theorem rows (theorem_id + goal_state/full_declaration). The
+            search kernel imports the union of the rows' `imports`; a calling repo's definitions
+            must be a module of the search project (`lake build` it there) named on its rows.
         limit: cap the number of theorems (None = all in the corpus).
         checkpoint: navigator checkpoint (default NAV-004 — the full-pipeline one).
         device: torch device ("mps", "cpu", "cuda").
@@ -728,7 +752,8 @@ def prove_corpus(
     ckpt = Path(checkpoint).expanduser().resolve()
     if not ckpt.exists():
         return f"error: checkpoint not found: {ckpt}"
-    n_total = sum(1 for ln in man.read_text().splitlines() if ln.strip())
+    manifest_rows = [json.loads(ln) for ln in man.read_text().splitlines() if ln.strip()]
+    n_total = len(manifest_rows)
     out = Path(output).expanduser().resolve() if output else (WF / "runs" / "corpus" / f"{man.stem}.json")
     out.parent.mkdir(parents=True, exist_ok=True)
     log = out.with_suffix(".log")
@@ -741,7 +766,7 @@ def prove_corpus(
         "--checkpoint", str(ckpt),
         "--backend", "pantograph",
         "--lean-project", str(LEAN_PROJECT),
-        "--lean-imports", "Mathlib",
+        "--lean-imports", *_lean_imports(manifest_rows),
         "--theorems", str(man),
         "--search-mode", "full",
         "--cosine-rw", "--cosine-rw-seq",
