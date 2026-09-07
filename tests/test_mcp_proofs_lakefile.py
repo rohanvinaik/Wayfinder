@@ -24,6 +24,7 @@ def test_save_solved_proof_regenerates_the_lakefile_from_the_directory(tmp_path)
     assert saved == home / "meanL_nonneg.lean"
     lakefile = (home / "lakefile.toml").read_text()
     assert 'roots = ["Pabkit", "meanL_nonneg"]' in lakefile
+    assert 'defaultTargets = ["Proofs"]' in lakefile  # a bare `lake build` (what CI runs) builds the library
     assert 'globs = ["*"]' not in lakefile
     assert (home / "lean-toolchain").read_text().strip() == f"leanprover/lean4:{m.LEAN_VERSION}"
     # a second save picks up the new module too

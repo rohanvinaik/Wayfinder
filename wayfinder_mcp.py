@@ -489,7 +489,7 @@ def _sane_project_name(theorem_id: str, row: dict) -> str:
 def _lakefile(package: str, lib: str, roots_or_globs: str) -> str:
     """A lakefile.toml requiring mathlib at LEAN_VERSION. No manifest (lake generates a consistent one)."""
     return (
-        f'name = "{package}"\nversion = "0.1.0"\n\n'
+        f'name = "{package}"\nversion = "0.1.0"\ndefaultTargets = ["{lib}"]\n\n'
         '[[require]]\nname = "mathlib"\n'
         'git = "https://github.com/leanprover-community/mathlib4.git"\n'
         f'rev = "{LEAN_VERSION}"\n\n'
