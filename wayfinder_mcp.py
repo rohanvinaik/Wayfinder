@@ -26,6 +26,7 @@ Wayfinder and Aristotle are separate, unrelated provers. This tool runs Wayfinde
 only. If Wayfinder leaves a residual goal open, that residual is what would be sent
 to Aristotle — this tool does not call it.
 """
+
 from __future__ import annotations
 
 import json
@@ -67,21 +68,20 @@ LEAN_PROJECT = WF / "data/lean_project"
 VERIFY_PROJECT = WF / "data/lean_project_v428"
 # The environment pin every emitted artifact carries (THE_REFOUNDING §5).
 VERIFY_ENV = read_environment_pin(VERIFY_PROJECT)
-DB = WF / "data/proof_network_v3.db"                          # absolute — kills the cwd DB error
-DEFAULT_MANIFEST = WF / "data/rerun_v427_manifest.jsonl"      # the 9 SSL/Ansatz/Socratic theorems
-LAKE_BIN = Path("/Users/rohanvinaik/.elan/bin/lake")          # elan shim (picks toolchain from lean-toolchain)
+DB = WF / "data/proof_network_v3.db"  # absolute — kills the cwd DB error
+DEFAULT_MANIFEST = WF / "data/rerun_v427_manifest.jsonl"  # the 9 SSL/Ansatz/Socratic theorems
+LAKE_BIN = Path("/Users/rohanvinaik/.elan/bin/lake")  # elan shim (picks toolchain from lean-toolchain)
 
 # Aristotle (separate hosted fallback prover; aristotlelib 2.1.0 = v3 API on the MCP host)
-ARISTOTLE_ENV = Path("/Users/rohanvinaik/semantic_probing/.env")   # ARISTOTLE_API_KEY lives here
-LEAN_VERSION = "v4.28.0"   # Aristotle solves at v4.28.0; submissions + saved proofs match it
+ARISTOTLE_ENV = Path("/Users/rohanvinaik/semantic_probing/.env")  # ARISTOTLE_API_KEY lives here
+LEAN_VERSION = "v4.28.0"  # Aristotle solves at v4.28.0; submissions + saved proofs match it
 # Where finished Aristotle proofs land — one clean proofs/ project per owning repo.
 SSL_PROOFS = Path(
-    "/Users/rohanvinaik/Projects/rohan-vinaik.github.io/papers/"
-    "Core Documents/Semantic_Specification_Learning/proofs"
+    "/Users/rohanvinaik/Projects/rohan-vinaik.github.io/papers/Core Documents/Semantic_Specification_Learning/proofs"
 )
 ANSATZ_PROOFS = Path("/Users/rohanvinaik/Projects/Ansatz/proofs")
 ANSATZ_THEOREMS = {"depletion_time", "pesin_band_rate_lower_bound"}  # Pesin/physics-bridge cores; rest → SSL
-ARISTOTLE_INDEX = WF / "runs" / "aristotle" / "index.json"          # project_id → theorem context
+ARISTOTLE_INDEX = WF / "runs" / "aristotle" / "index.json"  # project_id → theorem context
 
 
 def _proof_home(row: dict) -> Path:
@@ -95,6 +95,7 @@ def _proof_home(row: dict) -> Path:
     if declared:
         return Path(declared).expanduser()
     return ANSATZ_PROOFS if row.get("theorem_id") in ANSATZ_THEOREMS else SSL_PROOFS
+
 
 mcp = FastMCP("Wayfinder")
 
@@ -138,7 +139,7 @@ def _lean_imports(rows: list[dict]) -> list[str]:
         for line in row.get("imports") or []:
             name = str(line).strip()
             if name.startswith("import "):
-                name = name[len("import "):].strip()
+                name = name[len("import ") :].strip()
             if name and name not in seen:
                 seen.append(name)
     if not seen:
@@ -150,11 +151,7 @@ def _lean_imports(rows: list[dict]) -> list[str]:
 
 
 def _manifest_ids(man: Path) -> list[str]:
-    return [
-        json.loads(ln)["theorem_id"]
-        for ln in man.read_text().splitlines()
-        if ln.strip()
-    ]
+    return [json.loads(ln)["theorem_id"] for ln in man.read_text().splitlines() if ln.strip()]
 
 
 def _def_preamble(row: dict) -> str:
@@ -240,7 +237,10 @@ def _elaboration_probe(row: dict) -> tuple[bool, str]:
         fpath.write_text(probe)
         p = subprocess.run(
             [str(LAKE_BIN), "env", "lean", str(fpath)],
-            cwd=str(LEAN_PROJECT), capture_output=True, text=True, timeout=300,
+            cwd=str(LEAN_PROJECT),
+            capture_output=True,
+            text=True,
+            timeout=300,
         )
         out = p.stdout + p.stderr
         elaborates = p.returncode == 0 and "error:" not in out
@@ -265,7 +265,10 @@ def _verify_at_v428(lean_text: str, thm_name: str) -> tuple[bool, str]:
         fpath.write_text(probe)
         p = subprocess.run(
             [str(LAKE_BIN), "env", "lean", str(fpath)],
-            cwd=str(VERIFY_PROJECT), capture_output=True, text=True, timeout=420,
+            cwd=str(VERIFY_PROJECT),
+            capture_output=True,
+            text=True,
+            timeout=420,
         )
         out = p.stdout + p.stderr
         ok = p.returncode == 0 and "sorryAx" not in out
@@ -305,11 +308,7 @@ def prove(
     if not man.exists():
         return f"error: manifest not found: {man}"
 
-    rows = [
-        ln
-        for ln in man.read_text().splitlines()
-        if ln.strip() and json.loads(ln).get("theorem_id") == theorem_id
-    ]
+    rows = [ln for ln in man.read_text().splitlines() if ln.strip() and json.loads(ln).get("theorem_id") == theorem_id]
     if not rows:
         return f"error: '{theorem_id}' not in {man.name}. Available: {_manifest_ids(man)}"
 
@@ -323,25 +322,40 @@ def prove(
         one.write_text(json.dumps(run_row) + "\n")
         out = Path(td) / "result.json"
         cmd = [
-            str(VENV_PY), str(BENCH),
-            "--config", str(cfg),
-            "--checkpoint", str(CHECKPOINT),
-            "--backend", "pantograph",
-            "--lean-project", str(LEAN_PROJECT),
-            "--lean-imports", *_lean_imports([row]),
-            "--theorems", str(one),
-            "--limit", "1",
-            "--search-mode", "full",
-            "--cosine-rw",          # scope → MiniLM → top-k beam + Lean verify (the lemma-retrieval lane)
-            "--cosine-rw-seq",      # sequential bare-rewrite lane — the KEY closers in real runs
-            "--device", device,
-            "--output", str(out),
+            str(VENV_PY),
+            str(BENCH),
+            "--config",
+            str(cfg),
+            "--checkpoint",
+            str(CHECKPOINT),
+            "--backend",
+            "pantograph",
+            "--lean-project",
+            str(LEAN_PROJECT),
+            "--lean-imports",
+            *_lean_imports([row]),
+            "--theorems",
+            str(one),
+            "--limit",
+            "1",
+            "--search-mode",
+            "full",
+            "--cosine-rw",  # scope → MiniLM → top-k beam + Lean verify (the lemma-retrieval lane)
+            "--cosine-rw-seq",  # sequential bare-rewrite lane — the KEY closers in real runs
+            "--device",
+            device,
+            "--output",
+            str(out),
         ]
         env = {**os.environ, "PYTHONPATH": str(WF)}
         try:
             p = subprocess.run(
-                cmd, cwd=str(WF), capture_output=True, text=True,
-                timeout=timeout, env=env,
+                cmd,
+                cwd=str(WF),
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                env=env,
             )
         except subprocess.TimeoutExpired:
             return f"[timeout after {timeout}s] {theorem_id} — Wayfinder still searching"
@@ -352,19 +366,14 @@ def prove(
                 pass
 
         if not out.exists():
-            return (
-                f"no result file (exit {p.returncode}).\n"
-                f"{(p.stdout + p.stderr)[-1800:]}"
-            )
+            return f"no result file (exit {p.returncode}).\n{(p.stdout + p.stderr)[-1800:]}"
         r = json.loads(out.read_text())
         d = (r.get("details") or [{}])[0]
         # Persist the goal-ledger row: the accreting per-theorem source of
         # truth the cheat sheet renders from at hand-off time.
         try:
             GOAL_LEDGER.mkdir(parents=True, exist_ok=True)
-            (GOAL_LEDGER / f"{theorem_id}.json").write_text(
-                json.dumps({"detail": d, "manifest_row": row}, indent=2)
-            )
+            (GOAL_LEDGER / f"{theorem_id}.json").write_text(json.dumps({"detail": d, "manifest_row": row}, indent=2))
         except OSError:
             pass  # the ledger is an artifact, never a gate on the prove result
         proved = bool(d.get("success")) and bool(d.get("honest_success"))
@@ -397,15 +406,21 @@ def prove(
         if proved and verified:
             nxt = f"proved by Wayfinder, verified @v4.28 → saved to {saved_to}. No Aristotle needed."
         elif proved and not verified:
-            nxt = ("Wayfinder closed it but its tactic trace did not re-verify @v4.28 "
-                   "(non-linearizable) → send to Aristotle.")
+            nxt = (
+                "Wayfinder closed it but its tactic trace did not re-verify @v4.28 "
+                "(non-linearizable) → send to Aristotle."
+            )
         elif skipped and statement_elaborates is False:
-            nxt = ("SKIPPED: the STATEMENT DOES NOT ELABORATE (see statement_error). This is a broken "
-                   "declaration (missing instance / typo / undefined name) — FIX THE .lean + manifest and "
-                   "re-run prove(). NOT a residual, NOT a harness/onboarding bug, do NOT send to Aristotle.")
+            nxt = (
+                "SKIPPED: the STATEMENT DOES NOT ELABORATE (see statement_error). This is a broken "
+                "declaration (missing instance / typo / undefined name) — FIX THE .lean + manifest and "
+                "re-run prove(). NOT a residual, NOT a harness/onboarding bug, do NOT send to Aristotle."
+            )
         elif skipped:
-            nxt = ("SKIPPED though the statement elaborates → goal-resolution/harness issue "
-                   "(debug run_benchmark._resolve_initial_goal). NOT a residual, do NOT send to Aristotle.")
+            nxt = (
+                "SKIPPED though the statement elaborates → goal-resolution/harness issue "
+                "(debug run_benchmark._resolve_initial_goal). NOT a residual, do NOT send to Aristotle."
+            )
         else:
             nxt = "residual goal open → send to Aristotle (separate prover; not called here)."
 
@@ -416,7 +431,7 @@ def prove(
             "reconstructed_verified_v428": verified,
             "saved_to": saved_to,
             "close_lane": d.get("close_lane"),
-            "goals_closed": d.get("goals_closed"),        # subgoals Wayfinder cleared
+            "goals_closed": d.get("goals_closed"),  # subgoals Wayfinder cleared
             "goals_remaining": d.get("goals_remaining"),  # residual handed to Aristotle
             "attempts": d.get("attempts"),
             "time_s": r.get("efficiency", {}).get("avg_time_per_theorem_s"),
@@ -467,7 +482,7 @@ def _sane_project_name(theorem_id: str, row: dict) -> str:
     (`create_from_directory` → `project_dir.name`), so this is what shows in the
     dashboard and lets it be found later.
     """
-    stem = Path(row.get("file_path", "")).stem or "thm"      # e.g. proof_30
+    stem = Path(row.get("file_path", "")).stem or "thm"  # e.g. proof_30
     return re.sub(r"[^A-Za-z0-9._-]", "_", f"Wayfinder-{theorem_id}-{stem}")
 
 
@@ -482,11 +497,56 @@ def _lakefile(package: str, lib: str, roots_or_globs: str) -> str:
     )
 
 
+def split_imports(import_lines: list[str], local_modules: list[str]) -> dict[str, list[str]]:
+    """Partition a row's `import X` lines into the ones a standalone Mathlib project can satisfy
+    ("external", as import lines) and the calling repo's own modules ("local", bare names, in order).
+
+    Pure: `local_modules` is the list of module names that resolve to a file of the search project.
+    Blank entries and a missing `import` keyword are tolerated, as `_lean_imports` tolerates them.
+    """
+    external: list[str] = []
+    local: list[str] = []
+    for line in import_lines or []:
+        name = str(line or "").strip()
+        if name.startswith("import "):
+            name = name[len("import ") :].strip()
+        if not name:
+            continue
+        if name in local_modules:
+            if name not in local:
+                local.append(name)
+        else:
+            external.append(f"import {name}")
+    return {"external": external, "local": local}
+
+
+def strip_import_lines(source: str) -> str:
+    """A module's source with its `import` lines removed, so it can be inlined below other imports."""
+    kept = [ln for ln in source.splitlines() if not ln.strip().startswith("import ")]
+    return "\n".join(kept).strip("\n")
+
+
+def _local_module_file(name: str) -> Path | None:
+    """The search project's source file for a bare module name, if the module is local to it."""
+    for cand in (LEAN_PROJECT / "lib" / f"{name}.lean", LEAN_PROJECT / f"{name}.lean"):
+        if cand.exists():
+            return cand
+    return None
+
+
 def _proof_lean(row: dict) -> str:
-    """The Lean source for one theorem: imports + opens + local defs + the (sorry-bearing) declaration."""
-    imports = "\n".join(row.get("imports") or ["import Mathlib"])
+    """The Lean source for one theorem, standalone: external imports, then the calling repo's
+    definition modules inlined (a hosted prover's project cannot `import` them), then opens, local
+    defs and the (sorry-bearing) declaration.
+    """
+    lines = [str(x) for x in (row.get("imports") or ["import Mathlib"])]
+    names = [ln.strip().removeprefix("import ").strip() for ln in lines]
+    local_files = {n: f for n in names if n for f in [_local_module_file(n)] if f is not None}
+    parts = split_imports(lines, list(local_files))
+    imports = "\n".join(parts["external"] or ["import Mathlib"])
+    inlined = "\n\n".join(strip_import_lines(local_files[n].read_text()) for n in parts["local"])
     opens = "\n".join(row.get("opens") or [])
-    return "\n".join(x for x in [imports, opens, "", _augmented_declaration(row)] if x) + "\n"
+    return "\n".join(x for x in [imports, inlined, opens, "", _augmented_declaration(row)] if x) + "\n"
 
 
 def _write_aristotle_project(row: dict, proj_dir: Path) -> Path:
@@ -503,6 +563,7 @@ def _write_aristotle_project(row: dict, proj_dir: Path) -> Path:
 
 
 # ── Backgrounded-project index (project_id → theorem context) ───────────────────
+
 
 def _load_index() -> dict:
     if ARISTOTLE_INDEX.exists():
@@ -575,10 +636,7 @@ async def send_to_aristotle(
     man = Path(manifest).expanduser().resolve()
     if not man.exists():
         return f"error: manifest not found: {man}"
-    rows = [
-        ln for ln in man.read_text().splitlines()
-        if ln.strip() and json.loads(ln).get("theorem_id") == theorem_id
-    ]
+    rows = [ln for ln in man.read_text().splitlines() if ln.strip() and json.loads(ln).get("theorem_id") == theorem_id]
     if not rows:
         return f"error: '{theorem_id}' not in {man.name}. Available: {_manifest_ids(man)}"
     row = json.loads(rows[0])
@@ -605,9 +663,7 @@ async def send_to_aristotle(
     base = Path(tempfile.mkdtemp(prefix="aristotle_"))
     try:
         proj_dir = _write_aristotle_project(row, base / name)
-        project = await aristotlelib.Project.create_from_directory(
-            prompt or default_prompt, proj_dir
-        )
+        project = await aristotlelib.Project.create_from_directory(prompt or default_prompt, proj_dir)
     finally:
         shutil.rmtree(base, ignore_errors=True)  # tar already built; result lives server-side
 
@@ -629,7 +685,7 @@ async def send_to_aristotle(
             "status": str(project.status),
             "saves_to": str(_proof_home(row)),
             "note": "Fired and backgrounded — Aristotle is proving it server-side. "
-                    "Collect with aristotle_result(project_id) later; no need to wait.",
+            "Collect with aristotle_result(project_id) later; no need to wait.",
         },
         indent=2,
     )
@@ -658,26 +714,25 @@ async def aristotle_result(project_id: str, destination: str = "") -> str:
     await project.refresh()
     if project.status == aristotlelib.ProjectStatus.RUNNING:
         return json.dumps(
-            {"project_id": project_id, "status": "RUNNING",
-             "note": "still proving on Aristotle — call again later."},
+            {"project_id": project_id, "status": "RUNNING", "note": "still proving on Aristotle — call again later."},
             indent=2,
         )
 
-    dest = (
-        Path(destination).expanduser().resolve()
-        if destination
-        else WF / "runs" / "aristotle" / project_id
-    )
+    dest = Path(destination).expanduser().resolve() if destination else WF / "runs" / "aristotle" / project_id
     dest.mkdir(parents=True, exist_ok=True)
     tar_path = dest / "aristotle_result.tar.gz"
-    await project.get_files(tar_path)          # get_files writes the result tar.gz to this FILE path
+    await project.get_files(tar_path)  # get_files writes the result tar.gz to this FILE path
     with tarfile.open(tar_path) as tf:
         tf.extractall(dest)
     leans = list(dest.rglob("Residual.lean")) or [p for p in dest.rglob("*.lean") if p.is_file()]
     if not leans:
         return json.dumps(
-            {"project_id": project_id, "status": str(project.status),
-             "note": "no .lean returned", "downloaded_to": str(dest)},
+            {
+                "project_id": project_id,
+                "status": str(project.status),
+                "note": "no .lean returned",
+                "downloaded_to": str(dest),
+            },
             indent=2,
         )
     solved = leans[0].read_text()
@@ -761,18 +816,31 @@ def prove_corpus(
     cfg = _resolved_config(collect_trace=collect_trace, dest=out.with_suffix(".config.yaml"))
 
     cmd = [
-        str(VENV_PY), "-u", str(BENCH),
-        "--config", str(cfg),
-        "--checkpoint", str(ckpt),
-        "--backend", "pantograph",
-        "--lean-project", str(LEAN_PROJECT),
-        "--lean-imports", *_lean_imports(manifest_rows),
-        "--theorems", str(man),
-        "--search-mode", "full",
-        "--cosine-rw", "--cosine-rw-seq",
-        "--device", device,
-        "--per-theorem-timeout", str(per_theorem_timeout),
-        "--output", str(out),
+        str(VENV_PY),
+        "-u",
+        str(BENCH),
+        "--config",
+        str(cfg),
+        "--checkpoint",
+        str(ckpt),
+        "--backend",
+        "pantograph",
+        "--lean-project",
+        str(LEAN_PROJECT),
+        "--lean-imports",
+        *_lean_imports(manifest_rows),
+        "--theorems",
+        str(man),
+        "--search-mode",
+        "full",
+        "--cosine-rw",
+        "--cosine-rw-seq",
+        "--device",
+        device,
+        "--per-theorem-timeout",
+        str(per_theorem_timeout),
+        "--output",
+        str(out),
     ]
     if limit is not None:
         cmd += ["--limit", str(limit)]
@@ -782,7 +850,11 @@ def prove_corpus(
     env = {**os.environ, "PYTHONPATH": str(WF), "PYTHONUNBUFFERED": "1"}
     logf = open(log, "a" if resume else "w")
     proc = subprocess.Popen(
-        cmd, cwd=str(WF), env=env, stdout=logf, stderr=subprocess.STDOUT,
+        cmd,
+        cwd=str(WF),
+        env=env,
+        stdout=logf,
+        stderr=subprocess.STDOUT,
         start_new_session=True,  # detach so the run survives this MCP call returning
     )
     return json.dumps(
@@ -796,8 +868,8 @@ def prove_corpus(
             "output_jsonl": str(out.with_suffix(".jsonl")),
             "log": str(log),
             "note": "Background corpus run started (detached, resumable, watchdog-protected; cosine + "
-                    "collect_trace ON). Poll with prove_corpus_status(output_json). It runs after this "
-                    "call returns; resume an interrupted run with prove_corpus(..., resume=True).",
+            "collect_trace ON). Poll with prove_corpus_status(output_json). It runs after this "
+            "call returns; resume an interrupted run with prove_corpus(..., resume=True).",
         },
         indent=2,
     )
@@ -828,6 +900,7 @@ def prove_corpus_status(output: str) -> str:
     done = len(rows)
     solved = sum(1 for r in rows if r.get("honest_success") or r.get("success"))
     from collections import Counter
+
     lanes = Counter(r.get("close_lane") for r in rows)
     with_trace = sum(1 for r in rows if r.get("step_trace"))
     return json.dumps(
@@ -841,7 +914,7 @@ def prove_corpus_status(output: str) -> str:
             "last_theorem": rows[-1].get("theorem_id") if rows else None,
             "close_lanes": dict(lanes),
             "note": "complete=True once the final .json report lands. Re-call to poll. "
-                    "Resume an interrupted run: prove_corpus(theorems=..., resume=True, output=this path).",
+            "Resume an interrupted run: prove_corpus(theorems=..., resume=True, output=this path).",
         },
         indent=2,
     )
