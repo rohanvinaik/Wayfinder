@@ -20,6 +20,7 @@ import logging
 import sqlite3
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
@@ -32,6 +33,7 @@ logger = logging.getLogger(__name__)
 
 from scripts.benchmark_lane_b import run_lane_b
 from src.benchmark_residuals import augment_result_entry, summarize_residual_structure
+from src.benchmark_runctl import SearchTimeout, split_resume, theorem_watchdog
 from src.hard_data_tags import canonicalize_theorem_id
 from src.lean_interface import LeanConfig, LeanKernel
 from src.nav_model_factory import load_navigational_checkpoint
@@ -223,6 +225,35 @@ def _resolve_initial_goal(thm: dict, lean: LeanKernel) -> str | None:
     return None
 
 
+def _failure_entry(thm: dict, category: str, lane: str, t0: float, error: str) -> dict:
+    """The result row for a theorem whose search did not return (kernel crash or watchdog)."""
+    return augment_result_entry(
+        {
+            "theorem_id": thm["theorem_id"],
+            "source": thm["source"],
+            "success": False,
+            "success_category": category,
+            "close_lane": lane,
+            "close_provenance": [],
+            "final_closer": "",
+            "attempts": 0,
+            "goals_closed": 0,
+            "goals_remaining": 1,
+            "tactics_used": [],
+            "time_s": round(time.perf_counter() - t0, 3),
+            "crash_error": error[:300],
+        }
+    )
+
+
+def _recover_kernel(lean: LeanKernel) -> None:
+    """After a crash or a watchdog: restart the Pantograph server, or force a lazy re-init."""
+    try:
+        lean._restart_server()
+    except Exception:  # noqa: BLE001
+        lean._server = None  # force lazy re-init on the next theorem
+
+
 def _run_search_loop(
     theorems: list[dict],
     pipeline: Pipeline,
@@ -230,11 +261,23 @@ def _run_search_loop(
     lean: LeanKernel,
     cfg: SearchConfig,
     sentence_encoder: object | None = None,
+    per_theorem_timeout: int = 0,
+    on_result: Callable[[dict], None] | None = None,
 ) -> tuple[list[dict], int, int]:
-    """Run proof search on all theorems. Returns (results, raw_proved, total_attempts)."""
+    """Run proof search on all theorems. Returns (results, raw_proved, total_attempts).
+
+    `per_theorem_timeout` > 0 arms a SIGALRM watchdog per theorem: a hung kernel or an unbounded
+    search is recorded as `close_lane = "timeout"`, the server is restarted and the run goes on.
+    `on_result` receives every result row as it completes (the incremental .jsonl writer the MCP
+    server polls and resumes from)."""
     results: list[dict] = []
     raw_proved = 0
     total_attempts = 0
+
+    def _record(entry: dict) -> None:
+        results.append(entry)
+        if on_result is not None:
+            on_result(entry)
 
     # Build name→id map so search can filter to accessible premises
     name_to_id = _build_theorem_id_map(conn) if cfg.accessible_premises else {}
@@ -257,7 +300,7 @@ def _run_search_loop(
 
         if initial_goal is None:
             # Could not create goal state (universe polymorphism, missing theorem, etc.)
-            results.append(
+            _record(
                 augment_result_entry(
                     {
                         "theorem_id": thm["theorem_id"],
@@ -278,16 +321,28 @@ def _run_search_loop(
             continue
 
         try:
-            result = search(
-                theorem_id=thm["theorem_id"],
-                initial_goal=initial_goal,
-                pipeline=pipeline,
-                conn=conn,
-                lean=lean,
-                config=cfg,
-                accessible_theorem_id=accessible_id,
-                sentence_encoder=sentence_encoder,
+            with theorem_watchdog(per_theorem_timeout):
+                result = search(
+                    theorem_id=thm["theorem_id"],
+                    initial_goal=initial_goal,
+                    pipeline=pipeline,
+                    conn=conn,
+                    lean=lean,
+                    config=cfg,
+                    accessible_theorem_id=accessible_id,
+                    sentence_encoder=sentence_encoder,
+                )
+        except SearchTimeout as exc:
+            # The watchdog: a hung kernel or an unbounded search must NOT freeze the
+            # whole corpus run. Record a timeout row, restart the kernel, continue.
+            logger.warning(
+                "theorem %s exceeded the %ss watchdog; restarting server and skipping",
+                thm["theorem_id"],
+                per_theorem_timeout,
             )
+            _recover_kernel(lean)
+            _record(_failure_entry(thm, "timeout", "timeout", t0, str(exc)))
+            continue
         except Exception as exc:  # noqa: BLE001 — per-theorem isolation
             # A divergent tactic can crash the Pantograph server (e.g. a `whnf`
             # heartbeat timeout in the hammer lane). One bad goal must NOT take
@@ -297,29 +352,8 @@ def _run_search_loop(
                 thm["theorem_id"],
                 type(exc).__name__,
             )
-            try:
-                lean._restart_server()
-            except Exception:  # noqa: BLE001
-                lean._server = None  # force lazy re-init on the next theorem
-            results.append(
-                augment_result_entry(
-                    {
-                        "theorem_id": thm["theorem_id"],
-                        "source": thm["source"],
-                        "success": False,
-                        "success_category": "crashed",
-                        "close_lane": "crashed",
-                        "close_provenance": [],
-                        "final_closer": "",
-                        "attempts": 0,
-                        "goals_closed": 0,
-                        "goals_remaining": 1,
-                        "tactics_used": [],
-                        "time_s": round(time.perf_counter() - t0, 3),
-                        "crash_error": str(exc)[:300],
-                    }
-                )
-            )
+            _recover_kernel(lean)
+            _record(_failure_entry(thm, "crashed", "crashed", t0, str(exc)))
             continue
         elapsed = time.perf_counter() - t0
 
@@ -350,7 +384,7 @@ def _run_search_loop(
         # Lane sequence summary: e.g. "structural_core→solver_bootstrap" or "automation"
         lane_sequence = "→".join(dict.fromkeys(prov)) if prov else ""
 
-        results.append(
+        _record(
             augment_result_entry(
                 {
                     "theorem_id": thm["theorem_id"],
@@ -628,6 +662,9 @@ def run_benchmark(
     mode: str = "v1",
     cosine_rw: bool = False,
     cosine_rw_seq: bool = False,
+    per_theorem_timeout: int = 0,
+    resume_jsonl: Path | None = None,
+    details_jsonl: Path | None = None,
 ) -> dict:
     """Run proof search on benchmark theorems.
 
@@ -637,6 +674,10 @@ def run_benchmark(
         device: Compute device.
         limit: Max theorems to evaluate.
         mode: Runtime mode — "v1", "v2", or "v3".
+        per_theorem_timeout: SIGALRM watchdog seconds per theorem (0 = off; v1 loop only).
+        resume_jsonl: a prior per-theorem .jsonl to resume from — its rows for this corpus are
+            kept as results and their theorems skipped (v1 loop only).
+        details_jsonl: where to append every result row as it completes (v1 loop only).
     """
     if mode not in VALID_MODES:
         raise ValueError(f"Invalid mode {mode!r}, must be one of {VALID_MODES}")
@@ -659,29 +700,64 @@ def run_benchmark(
     print(f"  Budget: {cfg.budget}, Hammer: {cfg.hammer_delegation}")
     print(f"  Lean backend: {lean_cfg.backend}")
 
+    # Resume: keep the prior rows for this corpus, search only what is still pending.
+    prior: list[dict] = []
+    resuming = resume_jsonl is not None and resume_jsonl.exists()
+    if resuming:
+        with open(resume_jsonl) as f:
+            prior_rows = [json.loads(ln) for ln in f if ln.strip()]
+        theorems, prior = split_resume(theorems, prior_rows)
+        print(f"  Resuming: {len(prior)} theorem(s) already recorded, {len(theorems)} pending")
+
+    # Incremental writer: every result row lands in the .jsonl as it completes.
+    writer = None
+    on_result: Callable[[dict], None] | None = None
+    if details_jsonl is not None:
+        details_jsonl.parent.mkdir(parents=True, exist_ok=True)
+        writer = open(details_jsonl, "a" if resuming else "w")
+
+        def on_result(entry: dict) -> None:
+            writer.write(json.dumps(entry) + "\n")
+            writer.flush()
+
     start = time.time()
-    if mode == "v1":
-        results, raw_proved, total_attempts = _run_search_loop(
-            theorems, pipeline, conn, lean, cfg, sentence_encoder=encoder
-        )
-    elif mode == "v2":
-        results, raw_proved, total_attempts = _run_search_loop_v2(
-            theorems,
-            pipeline,
-            conn,
-            lean,
-            cfg,
-            config,
-        )
-    else:  # v3
-        results, raw_proved, total_attempts = _run_search_loop_v3(
-            theorems,
-            pipeline,
-            conn,
-            lean,
-            cfg,
-            config,
-        )
+    try:
+        if mode == "v1":
+            results, raw_proved, total_attempts = _run_search_loop(
+                theorems,
+                pipeline,
+                conn,
+                lean,
+                cfg,
+                sentence_encoder=encoder,
+                per_theorem_timeout=per_theorem_timeout,
+                on_result=on_result,
+            )
+        elif mode == "v2":
+            results, raw_proved, total_attempts = _run_search_loop_v2(
+                theorems,
+                pipeline,
+                conn,
+                lean,
+                cfg,
+                config,
+            )
+        else:  # v3
+            results, raw_proved, total_attempts = _run_search_loop_v3(
+                theorems,
+                pipeline,
+                conn,
+                lean,
+                cfg,
+                config,
+            )
+    finally:
+        if writer is not None:
+            writer.close()
+    if prior:
+        results = prior + results
+        raw_proved += sum(1 for r in prior if r.get("success"))
+        total_attempts += sum(int(r.get("attempts") or 0) for r in prior)
     conn.close()
     total_time = time.time() - start
 
@@ -959,6 +1035,18 @@ def main() -> None:
         action="store_true",
         help="Enable sequential bare rewrite lane; this replaces single-step cosine_rw in static lane order",
     )
+    parser.add_argument(
+        "--per-theorem-timeout",
+        type=int,
+        default=0,
+        help="SIGALRM watchdog seconds per theorem: a hung kernel is recorded as a timeout row and "
+        "the run continues (0 = off; v1 loop only)",
+    )
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Skip theorem_ids already recorded in <output>.jsonl and append to it (v1 loop only)",
+    )
     args = parser.parse_args()
 
     np.random.seed(args.seed)
@@ -982,6 +1070,8 @@ def main() -> None:
         config.setdefault("search", {})["cosine_rw_beam"] = args.cosine_rw_beam
     if args.cosine_rw_seq:
         config.setdefault("search", {})["cosine_rw_seq_enabled"] = True
+    output = args.output or Path("runs/benchmark_results.json")
+    detail_path = output.with_suffix(".jsonl")
     report = run_benchmark(
         config,
         args.checkpoint,
@@ -990,9 +1080,11 @@ def main() -> None:
         mode=args.mode,
         cosine_rw=args.cosine_rw or args.cosine_rw_seq,
         cosine_rw_seq=args.cosine_rw_seq,
+        per_theorem_timeout=args.per_theorem_timeout,
+        resume_jsonl=detail_path if args.resume else None,
+        details_jsonl=detail_path,
     )
 
-    output = args.output or Path("runs/benchmark_results.json")
     output.parent.mkdir(parents=True, exist_ok=True)
     with open(output, "w") as f:
         json.dump(report, f, indent=2)
