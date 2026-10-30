@@ -113,6 +113,10 @@ class DuckyProgramSeamTest(unittest.TestCase):
 
 
 class EnvironmentPinTest(unittest.TestCase):
+    @unittest.skipUnless(
+        Path("data/lean_project_v428/lean-toolchain").exists() and Path("data/lean_project/lean-toolchain").exists(),
+        "the Lean projects live under the gitignored data/",
+    )
     def test_real_project_pins_read(self):
         self.assertIn("v4.28.0", read_environment_pin("data/lean_project_v428"))
         self.assertIn("v4.27.0", read_environment_pin("data/lean_project"))
