@@ -244,7 +244,7 @@ def _complete(job: dict, fills: list[dict]) -> tuple[bool, list[str], str | None
     return res.accepted, res.reasons, file_text, res
 
 
-def _run_arm(arm_dir: Path, job: dict) -> dict:
+def _run_arm(arm_dir: Path, job: dict, *, lenient: bool = False, timeout: int = ARM_TIMEOUT_S) -> dict:
     arm_dir.mkdir(parents=True, exist_ok=True)
     for f in ("status.json", "fills.json", "samples.jsonl"):
         (arm_dir / f).unlink(missing_ok=True)
@@ -259,7 +259,7 @@ def _run_arm(arm_dir: Path, job: dict) -> dict:
         try:
             subprocess.run([sys.executable, "-m", "src.local_prover", str(arm_dir / "job.json")], cwd=str(WF),
                            env={**os.environ, "PYTHONPATH": str(WF)}, stdout=log,
-                           stderr=subprocess.STDOUT, timeout=ARM_TIMEOUT_S, check=False)  # fmt: skip
+                           stderr=subprocess.STDOUT, timeout=timeout, check=False)  # fmt: skip
         except subprocess.TimeoutExpired:
             pass
     status = json.loads((arm_dir / "status.json").read_text()) if (arm_dir / "status.json").exists() else {}
@@ -272,10 +272,16 @@ def _run_arm(arm_dir: Path, job: dict) -> dict:
         note for h in (status.get("holes") or {}).values()
         if not h.get("plan") and ("re-elaborate" in (note := h.get("note") or "") or "printed no statement" in note)
     ]  # fmt: skip
-    # every attempt that ran must have had the full budget (a long prompt must not shorten it)
-    short = [s["id"] for s in samples if s.get("budget") is not None and int(s["budget"]) != int(job["max_new_tokens"])]
+    # every attempt that ran must have had the full budget (a long prompt must not shorten it); in an
+    # escalation tier only first attempts must: a revision carries its failed answer in the prompt
+    full = [s for s in samples if not lenient or s.get("round") == 0]
+    short = [s["id"] for s in full if s.get("budget") is not None and int(s["budget"]) != int(job["max_new_tokens"])]
     infra = status.get("state") != "done" or any(outcomes.get(o) for o in INFRA) or bool(lifting) or bool(short)
-    closed, why = (False, ["infrastructure"]) if infra else _closed(job, fills)
+    if lenient and fills:  # an escalation tier's proof the gate accepts stands, whatever else went wrong
+        closed, why = _closed(job, fills)
+        infra = infra and not closed
+    else:
+        closed, why = (False, ["infrastructure"]) if infra else _closed(job, fills)
     model = (status.get("models") or {}).get(job["model"]) or {}
     return {
         "state": status.get("state"), "infra": infra, "closed": closed, "why": why, "lifting": lifting,
@@ -345,7 +351,8 @@ DEMO_SEED = 20261030
 
 def demo(exp: Path, model: str, limit: int | None, remote_only: bool = False, reverse: bool = False,
          pool_key: str = "", start: int = 0, escalate_from: str = "", corrections: int = 0,
-         cap: int = CAP, capped: str = "any") -> None:  # fmt: skip
+         cap: int = CAP, capped: str = "any", tier: str = "", revise: bool = False, samples: int = K,
+         fresh_uncapped: int = K, ctx: int = 0, fix: tuple[int, int] = (4, 2)) -> None:  # fmt: skip
     """The capacity run: the production lane on every residual — Wayfinder's holes to the local model,
     the completed file through the gate, each accepted proof saved with its provenance — in a seeded
     random order, so the tally at any point is an unbiased sample of the residual population. Same
@@ -362,7 +369,8 @@ def demo(exp: Path, model: str, limit: int | None, remote_only: bool = False, re
     (out / "records").mkdir(parents=True, exist_ok=True)
     (out / "proofs").mkdir(parents=True, exist_ok=True)
     if escalate_from:
-        return _escalate(exp, model, order, escalate_from, corrections, rows, cap, capped)
+        return _escalate(exp, model, order, escalate_from, corrections, rows, cap, capped, tier, revise, samples,
+                         fresh_uncapped, ctx, fix)
     for i, tid in enumerate(order, 1):
         rec_path = out / "records" / f"{tid}.json"
         prior = json.loads(rec_path.read_text()) if rec_path.exists() else None
@@ -411,17 +419,28 @@ def _hit_cap(arm_dir: Path) -> bool:
     return f.exists() and any(json.loads(x).get("stop_type") == "limit" for x in f.read_text().splitlines() if x)
 
 
+def _closeness(arm_dir: Path) -> int:
+    """How close the lower tier came: the fewest errors Lean reported on one of its proofs."""
+    wrong = [s for s in _jsonl(arm_dir / "samples.jsonl") if s.get("outcome") == "wrong_proof"]
+    return min((len(s.get("errors") or []) for s in wrong), default=99)
+
+
 def _escalate(exp: Path, model: str, order: list[str], below: str, corrections: int, rows: dict,
-              cap: int = CAP, capped: str = "any") -> None:  # fmt: skip
+              cap: int = CAP, capped: str = "any", tier: str = "", revise: bool = False, samples: int = K,
+              fresh_uncapped: int = K, ctx: int = 0, fix: tuple[int, int] = (4, 2)) -> None:  # fmt: skip
     """The next tier: `model` on every residual the `below` model tried and left open, with
     `corrections` self-correction rounds, rescanning while `below`'s streams still have theorems in
     progress — the ladder Wayfinder → small model → large model, all on this machine. `capped`
     splits the open residuals by whether any of `below`'s answers ran out of tokens ("only": a
     longer-cap retry; "none": everything else); a tier with its own `cap` gets its own directory."""
-    src, out = exp / "demo" / below / "records", exp / "demo" / (model if cap == CAP else f"{model}-cap{cap}")
+    name = tier or (model if cap == CAP else f"{model}-cap{cap}")
+    if name == below:
+        raise SystemExit(f"tier {name!r} would write over the tier it escalates from: name it with --tier")
+    src, out = exp / "demo" / below / "records", exp / "demo" / name
     (out / "records").mkdir(parents=True, exist_ok=True)
     (out / "proofs").mkdir(parents=True, exist_ok=True)
-    ctx = max(CTX, min(40960, cap + 8192))  # room for the prompt beside the full cap
+    ctx = ctx or max(CTX, min(40960, cap + 12288))  # room for a revision's prompt beside the full cap
+    timeout = max(ARM_TIMEOUT_S, 12 * 3600 if revise or cap > CAP else 0)
     done: set[str] = set()
     quiet = 0
     while True:
@@ -431,6 +450,8 @@ def _escalate(exp: Path, model: str, order: list[str], below: str, corrections: 
         if capped != "any":
             open_ = [t for t in open_ if _hit_cap(exp / "demo" / below / "arms" / t) == (capped == "only")]
         todo = [t for t in open_ if t not in done and not (out / "records" / f"{t}.json").exists()]
+        # revising is cheap where the lower tier's answers ran to completion: those first, closest first
+        todo.sort(key=lambda t: (_hit_cap(exp / "demo" / below / "arms" / t), _closeness(exp / "demo" / below / "arms" / t)))
         if not todo:
             # wait while a lower-tier claim is live; leave after two quiet looks (a stream may be
             # between theorems), so a stopped stream's leftover claim cannot hold this tier forever
@@ -443,11 +464,18 @@ def _escalate(exp: Path, model: str, order: list[str], below: str, corrections: 
         quiet = 0
         tid = todo[0]
         handoff = json.loads((exp / "handoffs" / f"{tid}.json").read_text())["handoff"]
-        job = _job(f"{tid}-{out.name}", rows[tid], handoff, model, whole=False, samples=K, cap=cap, ctx=ctx)
-        job.update(correction_rounds=corrections, fix_attempts=4, fix_samples=2)
-        arm = _run_arm(out / "arms" / tid, job)
+        hit_cap = _hit_cap(exp / "demo" / below / "arms" / tid)
+        fresh = samples if (hit_cap or not revise) else fresh_uncapped
+        job = _job(f"{tid}-{out.name}", rows[tid], handoff, model, whole=False, samples=fresh, cap=cap, ctx=ctx)
+        job.update(correction_rounds=corrections, fix_attempts=fix[0], fix_samples=fix[1])
+        if revise:  # the lower tier's rejected proofs, revised with Lean's errors (Goedel's self-correction)
+            below_arm = exp / "demo" / below / "arms" / tid
+            seeds = [{k: s.get(k) for k in ("id", "quant", "server", "model", "stop_type")}
+                     for s in _jsonl(below_arm / "samples.jsonl") if s.get("outcome") == "wrong_proof"]  # fmt: skip
+            job["seed"] = {"arm": str(below_arm), "samples": seeds}
+        arm = _run_arm(out / "arms" / tid, job, lenient=True, timeout=timeout)
         rec = {"theorem_id": tid, "holes": len(handoff["holes"]), "kept": handoff.get("closures_kept"), "arm": arm,
-               "escalated_from": below}  # fmt: skip
+               "escalated_from": below, "revised": revise, "fresh": fresh, "hit_cap_below": hit_cap}  # fmt: skip
         if arm["closed"]:
             fills = json.loads((out / "arms" / tid / "fills.json").read_text())
             ok, _, completed, res = _complete(job, fills)
@@ -524,6 +552,15 @@ def main() -> int:
     ap.add_argument("--cap", type=int, default=CAP, help="demo --escalate-from: tokens per answer")
     ap.add_argument("--capped", default="any", choices=["any", "only", "none"],
                     help="demo --escalate-from: the residuals where the lower tier ran out of tokens, or the rest")
+    ap.add_argument("--tier", default="", help="demo --escalate-from: this tier's directory under demo/")
+    ap.add_argument("--revise", action="store_true",
+                    help="demo --escalate-from: start from the lower tier's rejected proofs and Lean's errors")
+    ap.add_argument("--samples", type=int, default=K, help="demo --escalate-from: fresh first attempts per hole")
+    ap.add_argument("--fresh-uncapped", type=int, default=K,
+                    help="demo --escalate-from --revise: fresh attempts where the lower tier never ran out of tokens")
+    ap.add_argument("--ctx", type=int, default=0, help="demo --escalate-from: tokens of context per slot (0: cap + 12K)")
+    ap.add_argument("--fix", type=int, nargs=2, default=[4, 2], metavar=("PROOFS", "TRIES"),
+                    help="demo --escalate-from: per correction round, how many failed proofs and tries at each")
     args = ap.parse_args()
     exp = Path(args.dir)
     exp.mkdir(parents=True, exist_ok=True)
@@ -539,7 +576,8 @@ def main() -> int:
     elif args.phase == "demo":
         demo(exp, args.model, args.limit, remote_only=args.remote_only, reverse=args.reverse,
              pool_key=args.pool_key, start=args.start, escalate_from=args.escalate_from,
-             corrections=args.corrections, cap=args.cap, capped=args.capped)
+             corrections=args.corrections, cap=args.cap, capped=args.capped, tier=args.tier, revise=args.revise,
+             samples=args.samples, fresh_uncapped=args.fresh_uncapped, ctx=args.ctx, fix=tuple(args.fix))
     else:
         report(exp)
     return 0

@@ -262,6 +262,62 @@ class LiftFitTest(unittest.TestCase):
         self.assertIn("exact nt_wf_hole_1", checked)  # applied in the hole
 
 
+class ReviseTest(unittest.TestCase):
+    """A tier can start from an earlier tier's rejected proofs: each is checked again (a fix since
+    may make it pass), and the failures are revised with Lean's errors, Goedel's self-correction."""
+
+    STATEMENT = "theorem nt_wf_hole_1 : (2 : ℤ) = 2"
+
+    def _worker(self, seed_statement: str, raw: str, **job) -> tuple[lp.Worker, lp.Hole]:
+        import tempfile
+
+        root = Path(tempfile.mkdtemp())
+        seed_arm = root / "seed"
+        (seed_arm / "outputs").mkdir(parents=True)
+        (seed_arm / "outputs" / "h1-8b-r0-s1.txt").write_text(raw)
+        (seed_arm / "status.json").write_text(json.dumps({"holes": {"1": {"statement": seed_statement}}, "notes": []}))
+        decl = "theorem nt : (2 : ℤ) = 2 := by\n  -- WAYFINDER RESIDUAL 1: close this goal\n  sorry\n"
+        spec = {"run_id": "t", "theorem_id": "nt", "target": "nt", "status": "residual", "model": "goedel-v2-8b",
+                "file": "import Mathlib\n\n" + decl, "declaration": decl, "defs": [], "holes": [], "samples": 0,
+                "correction_rounds": 1, "fix_attempts": 1, "fix_samples": 1,
+                "seed": {"arm": str(seed_arm), "samples": [{"id": "h1-8b-r0-s1", "quant": "Q8_0", "server": "local"}]},
+                **job}  # fmt: skip
+        (root / "job.json").write_text(json.dumps(spec))
+        w = lp.Worker(root / "job.json")
+        hole = lp.Hole(index=1, goal="⊢ (2 : ℤ) = 2", statement=self.STATEMENT, name="nt_wf_hole_1")
+        w.holes = [hole]
+
+        def verify(_hole, content, _stop):
+            if content == "GOOD":
+                return {"outcome": "verified", "form": "inline", "fill": "rfl", "helpers": ""}
+            return {"outcome": "wrong_proof", "errors": ["1:1: nope"], "report": "REPORT", "n_errors": 1}
+
+        w.verify = verify
+        w.generate = mock.Mock(return_value={"outcome": "generated", "content": "GOOD", "stop_type": "eos"})
+        return w, hole
+
+    def _pool(self):
+        return SimpleNamespace(local=SimpleNamespace(spec=lp.MODELS["goedel-v2-8b"]), slots=2)
+
+    def test_a_seed_that_now_passes_closes_the_hole_without_sampling(self):
+        w, hole = self._worker(self.STATEMENT, "GOOD")
+        self.assertTrue(w.solve(hole, self._pool()))
+        w.generate.assert_not_called()
+        self.assertEqual(w.fills[0]["sample"], "h1-seed-h1-8b-r0-s1")
+
+    def test_a_rejected_seed_is_revised_with_its_errors(self):
+        w, hole = self._worker(self.STATEMENT, "BAD")
+        self.assertTrue(w.solve(hole, self._pool()))
+        messages = w.generate.call_args.args[1]
+        self.assertEqual(messages[-2], {"role": "assistant", "content": "BAD"})  # the failed proof
+        self.assertIn("REPORT", messages[-1]["content"])  # then Lean's errors, in Goedel's correction prompt
+
+    def test_answers_to_another_statement_are_not_revised(self):
+        w, hole = self._worker("theorem nt_wf_hole_1 : 2 = 2", "BAD")  # lifted over ℕ by the earlier tier
+        self.assertFalse(w.solve(hole, self._pool()))
+        w.generate.assert_not_called()
+
+
 class RenameTest(unittest.TestCase):
     def test_the_whole_statements_helper_takes_its_own_name(self):
         lemma = "set_option maxHeartbeats 400000 in\ntheorem kappa {n : ℕ} : n = n := by\n  rfl"

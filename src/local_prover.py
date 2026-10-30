@@ -442,6 +442,7 @@ class Hole:
     solved_by: str = ""
     note: str = ""
     outcomes: Counter = field(default_factory=Counter)
+    retyped: bool = False  # lifted from the typed print, the plain one not fitting the hole
 
 
 class Worker:
@@ -481,7 +482,7 @@ class Worker:
             self.status["updated_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
             self.status["holes"] = {
                 str(h.index): {"assessment": h.assessment, "plan": h.plan, "solved_by": h.solved_by, "note": h.note,
-                               "outcomes": dict(h.outcomes)}  # fmt: skip
+                               "outcomes": dict(h.outcomes), "statement": h.statement}  # fmt: skip
                 for h in self.holes
             }
             self.status["models"] = self.models
@@ -537,6 +538,7 @@ class Worker:
                     # cannot close the hole; the typed print says what the goal says
                     self.note(f"hole {hole.index}: the plain print does not fit its hole; lifted with types")
                     i, statement = usable[1]
+                    hole.retyped = True
                 hole.statement = statement if i == 0 else hf.untyped_name(statement, self.target, hole.index)
                 hole.name = hole.helper_name = hf.lifted_name(self.target, hole.index)
                 hole.binders = hf.binders(statement)
@@ -725,7 +727,7 @@ class Worker:
         self.publish()
 
     def run_round(self, hole: Hole, pool: Pool, attempts: list[tuple[int, list[dict], str | None]],
-                  failures: list[dict]) -> bool:  # fmt: skip
+                  failures: list[dict], seeds: list[tuple[str, list[dict], dict]] = ()) -> bool:  # fmt: skip
         """Sample every attempt (as many at once as the pool has slots), check each answer as it
         lands, and stop the rest the moment one is verified."""
         cancel = threading.Event()
@@ -739,6 +741,10 @@ class Worker:
             sid = f"h{hole.index}-{spec.name.removeprefix('goedel-v2-')}-r{rnd}-s{n}"
             fut = gen_pool.submit(self.generate, pool, messages, sid, cancel)
             jobs[fut] = ("gen", sid, rnd, messages, parent, None)
+        for seed_id, messages, gen in seeds:
+            sid = f"h{hole.index}-seed-{seed_id}"
+            (self.dir / "outputs" / f"{sid}.txt").write_text(gen["content"])  # a later tier may revise it in turn
+            jobs[gen_pool.submit(dict, gen)] = ("gen", sid, 0, messages, None, None)
         pending = set(jobs)
         solved = False
         while pending:
@@ -767,9 +773,10 @@ class Worker:
                     hole.solved_by = sid
                     quant, where = gen.get("quant") or spec.quant, gen.get("server") or "local"
                     host = "local llama.cpp" if where == "local" else f"llama.cpp on {where}"
-                    source = f"{spec.name} ({quant}, {host}), sample {sid}, run {self.job['run_id']}"
+                    author = gen.get("model") or spec.name  # a revised-from answer keeps its own model
+                    source = f"{author} ({quant}, {host}), sample {sid}, run {self.job['run_id']}"
                     with self.lock:
-                        self.fills.append({"hole": hole.index, "model": spec.name, "quant": quant, "sample": sid,
+                        self.fills.append({"hole": hole.index, "model": author, "quant": quant, "sample": sid,
                                            "round": rnd, "form": res["form"], "fill": res["fill"],
                                            "helpers": res["helpers"], "source": source})  # fmt: skip
                         self._write("fills.json", self.fills)
@@ -785,6 +792,7 @@ class Worker:
         self.publish(state="sampling", hole=hole.index, model=pool.local.spec.name)
         base = [{"role": "user", "content": ROUND0.format(statement=self.formal(hole))}]
         attempts: list[tuple[int, list[dict], str | None]] = [(0, base, None)] * int(self.job["samples"])
+        seeds = self.seeded(hole, base)
         failures: list[dict] = []
         for rnd in range(int(self.job["correction_rounds"]) + 1):
             if rnd > 0:
@@ -792,14 +800,46 @@ class Worker:
                 attempts = [
                     (rnd, _corrected(f, rnd), f["id"]) for f in fixable for _ in range(int(self.job["fix_samples"]))
                 ]
-            if not attempts:
+                seeds = []
+            if not attempts and not seeds:
                 return False
             failures = []
-            if self.run_round(hole, pool, attempts, failures):
+            if self.run_round(hole, pool, attempts, failures, seeds):
                 return True
             if self.stop.is_set():
                 return False
         return False
+
+    def seeded(self, hole: Hole, base: list[dict]) -> list[tuple[str, list[dict], dict]]:
+        """The answers an earlier tier gave this hole and Lean rejected, to revise rather than redo
+        (Goedel's self-correction starts from a failed proof and its errors). Only answers to the
+        same statement: none when the earlier tier lifted the hole differently."""
+        seed = self.job.get("seed") or {}
+        if not seed:
+            return []
+        arm = Path(seed["arm"])
+        try:
+            prior = json.loads((arm / "status.json").read_text())
+        except (OSError, ValueError):
+            return []
+        was = (prior.get("holes") or {}).get(str(hole.index)) or {}
+        if "statement" in was:
+            same = was["statement"] == hole.statement
+        else:  # an arm from before statements were recorded: the lift changed only if one fell back to types
+            note = f"hole {hole.index}: the plain print does not fit"
+            same = hole.retyped == any(n.startswith(note) for n in prior.get("notes") or [])
+        if not same:
+            self.note(f"hole {hole.index}: the earlier tier answered another statement; no answers to revise")
+            return []
+        out = []
+        for s in seed.get("samples") or []:
+            f = arm / "outputs" / f"{s['id']}.txt"
+            if str(s["id"]).startswith(f"h{hole.index}-") and f.exists():
+                gen = {"outcome": "generated", "content": f.read_text(), "stop_type": s.get("stop_type") or "eos",
+                       "quant": s.get("quant"), "server": s.get("server") or "local",
+                       "model": s.get("model")}  # fmt: skip
+                out.append((str(s["id"]), base, gen))
+        return out
 
     # ── serving a model ──
 
