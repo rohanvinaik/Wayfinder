@@ -18,6 +18,7 @@ axle = [
 dev = [
     "pytest>=7.0",
     "ruff>=0.1",
+    "mcp>=1.30",  # wayfinder_mcp's tests import the server
 ]
 
 [build-system]
