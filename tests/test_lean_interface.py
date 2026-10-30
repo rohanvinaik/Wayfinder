@@ -534,6 +534,20 @@ class TestPantographBackend(unittest.TestCase):
 class TestCrashRestart(unittest.TestCase):
     """Test crash detection and server restart."""
 
+    @staticmethod
+    def _stub_pantograph(server_module=None):
+        """PyPantograph stand-ins: a restart relaunches a mock, never a real Lean server."""
+        from unittest.mock import MagicMock, patch
+
+        return patch.dict(
+            "sys.modules",
+            {
+                "pantograph": MagicMock(),
+                "pantograph.server": server_module or MagicMock(),
+                "pantograph.expr": MagicMock(),
+            },
+        )
+
     def test_is_crash_error_broken_pipe(self):
         kernel = LeanKernel()
         self.assertTrue(kernel._is_crash_error(BrokenPipeError("pipe")))
@@ -561,14 +575,17 @@ class TestCrashRestart(unittest.TestCase):
         kernel = LeanKernel()
         # Populate caches with dummy data
         kernel._goal_states[("", "goal1")] = "state1"
+        kernel._goal_index[("", "goal1")] = 1
         kernel._tactic_cache[("", "goal1", "tac", 0)] = None
-        kernel._restart_server()
+        with self._stub_pantograph():
+            kernel._restart_server()
         self.assertEqual(len(kernel._goal_states), 0)
+        self.assertEqual(len(kernel._goal_index), 0)
         self.assertEqual(len(kernel._tactic_cache), 0)
 
     def test_pantograph_try_tactic_raises_on_crash(self):
         """_pantograph_try_tactic raises ServerCrashError on broken pipe."""
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import MagicMock
 
         # Create a real exception class for TacticFailure
         class MockTacticFailure(Exception):
@@ -586,13 +603,7 @@ class TestCrashRestart(unittest.TestCase):
         kernel._goal_states[("", "⊢ P")] = mock_state
         mock_server.goal_tactic.side_effect = BrokenPipeError("pipe closed")
 
-        with patch.dict(
-            "sys.modules",
-            {
-                "pantograph": MagicMock(),
-                "pantograph.server": mock_panto_server,
-            },
-        ):
+        with self._stub_pantograph(mock_panto_server):
             with self.assertRaises(ServerCrashError):
                 kernel._pantograph_try_tactic("⊢ P", "rfl")
 
@@ -608,8 +619,9 @@ class TestCrashRestart(unittest.TestCase):
         mock_server.goal_start.side_effect = BrokenPipeError("pipe closed")
         kernel._server = mock_server
 
-        with self.assertRaises(ServerCrashError):
-            kernel._get_or_create_goal("⊢ P")
+        with self._stub_pantograph():
+            with self.assertRaises(ServerCrashError):
+                kernel._get_or_create_goal("⊢ P")
 
 
 class TestReplayResult(unittest.TestCase):

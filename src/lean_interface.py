@@ -1458,10 +1458,12 @@ class LeanKernel:
 
         from pantograph.server import TacticFailure  # type: ignore[import-untyped]
 
+        # outside the try: a fault building the site is not a tactic failure to cache
+        site = self._site_for(goal_state, goal_id)
         try:
             state = self._get_or_create_goal(goal_state)
             server = self._ensure_server()
-            new_state = server.goal_tactic(state, tactic=tactic, site=self._site_for(goal_state, goal_id))
+            new_state = server.goal_tactic(state, tactic=tactic, site=site)
         except TacticFailure as e:
             fail_result = TacticResult(
                 success=False,
