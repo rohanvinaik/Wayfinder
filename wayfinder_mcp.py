@@ -16,10 +16,12 @@ Three steps, mirroring how proofs are actually produced:
     lifted to standalone lemmas, routed to Goedel-Prover-V2 8B or 32B running on this machine
     (src/local_prover.py); verified fills are applied through `fill_hole`'s path.
 
-`prove()` invokes `scripts/run_benchmark.py` — the real pipeline: one neural forward
-pass per proof state (encoder → navigator → ternary 6-bank direction) → proof-network
-premises (bank alignment / anchor IDF / spreading) → ordered lanes {structural, cosine,
-hammer, Dr. Ducky}, each Lean-verified through Pantograph — on a single theorem.
+`prove()` invokes `scripts/run_benchmark.py` on the deterministic path
+(`configs/wayfinder_deterministic.yaml`, zero neural components): the goal's tokens → the
+anchor dictionary (set intersection) → accessible-premise ranking by IDF over the proof network
+→ the pure tactic grammar → Dr. Ducky, every step Lean-verified through Pantograph. No navigator
+checkpoint, sentence encoder or cosine lane is loaded; `--checkpoint` is only a required
+argument of the CLI.
 
 This deliberately replaces the earlier reduced tools (a "triage" profiler and a
 replay-only "dr_ducky_solve"). Those did NOT run the prover. This does.
@@ -80,9 +82,11 @@ GOAL_LEDGER = WF / "runs/goal_ledger"
 
 VENV_PY = WF / ".venv/bin/python"
 BENCH = WF / "scripts/run_benchmark.py"
-CONFIG = WF / "configs/wayfinder.yaml"
-# Newest move-supervised checkpoint; 42% on mathlib_benchmark_50
-# (NAV-002 crashed Pantograph mid-run).
+# The deterministic thesis path: the search runs with zero neural components (THE_REFOUNDING;
+# EXP-DET-001, 1,028/2,000 Mathlib). The encoder stack's config (configs/wayfinder.yaml,
+# EXP-058) reproduces the frozen baseline through run_benchmark directly; the MCP does not run it.
+CONFIG = WF / "configs/wayfinder_deterministic.yaml"
+# run_benchmark requires `--checkpoint`; in deterministic mode it is recorded, never loaded.
 CHECKPOINT = WF / "models/NAV-004_step5000.pt"
 # v4.27.0 — Pantograph search env (REPL + premise DB match here)
 LEAN_PROJECT = WF / "data/lean_project"
@@ -576,18 +580,60 @@ def _build_handoff(row: dict, d: dict) -> dict:
     out["closures_kept"] = len(final.kept)
     out["closed_locally"] = len(final.filled)
     out["form"] = "revert" if best["revert"] else "direct"
+    if final.holes and not errors and not local.get("refuted_statement"):
+        # The search's steps can leave holes the closers cannot take although the statement itself
+        # falls to one (a step rewrote the goal into a harder form): try the whole statement once.
+        root_goal = tree.nodes[tree.roots[0]].goal if tree.roots else str(row.get("goal_state", ""))
+        whole = _close_whole(row, header, root_goal)
+        if whole is not None:
+            out.update(whole)
+            local["closed"].append({"goal": "the whole statement", "by": whole["prefix"][0]})
+            local["notes"].append("the search's steps left holes no closer took; one took the whole statement")
     if local.get("refuted_statement"):
         out["status"] = "refuted"
     elif errors or out["pp_type"] is None:
         out["status"] = "failed"
         out["errors"] = errors[:5]
-    elif not final.holes:
+    elif not out["holes"]:
         out["status"] = "closed"
-    elif not final.kept and not final.filled:
+    elif not out["closures_kept"] and not out["closed_locally"]:
         out["status"] = "bare"
     else:
         out["status"] = "residual"
     return out
+
+
+def _close_whole(row: dict, header: str, root_goal: str) -> dict | None:
+    """The finishing pass's closers on the undecomposed statement; the hand-off fields of the
+    one-step proof that compiles, or None."""
+    target = _lean_name(row)
+    battery = [rh.closers(rh.defs_mentioned(root_goal, _file_defs(row)), root_goal)]
+    probe = rh.triage_block(header.rstrip() + "\n  sorry\n", target, battery, heartbeats=1000000)
+    text = _file_with_declaration(row, probe.text)
+    run = _compile_v428(text, timeout=600)
+    if run["timed_out"]:
+        return None
+    outcome = rh.triage_outcomes(run["messages"], probe, text[: text.rindex(probe.text)].count("\n") + 1)
+    closer = outcome[0]["closed_by"] if outcome else None
+    if not closer:
+        return None
+    declaration = f"{header.rstrip()}\n  -- {rh.LOCAL_MARK}\n  {closer}\n"
+    text = _file_with_declaration(row, declaration)
+    run = _compile_v428(text + gate.probe_suffix(target))
+    if gate.errors_in(run["messages"]) or gate.uses_sorry(run["messages"]):
+        return None
+    return {
+        "file": text,
+        "declaration": declaration,
+        "pp_type": gate.checked_type(run["messages"], target),
+        "axioms": gate.axioms_from_messages(run["messages"], target),
+        "holes": [],
+        "prefix": [closer],
+        "kept_provenance": [],
+        "closures_kept": 0,
+        "closed_locally": 1,
+        "form": "direct",
+    }
 
 
 def _handoff_prompt(theorem_id: str, name: str, handoff: dict) -> str:
@@ -686,20 +732,21 @@ def prove(
     device: str = "mps",
     timeout: int = 900,
 ) -> str:
-    """Prove ONE theorem with the real Wayfinder pipeline (Pantograph + Dr. Ducky, all lanes).
+    """Prove ONE theorem with Wayfinder's deterministic search (zero neural components).
 
-    Runs `run_benchmark.py` end-to-end on the single theorem's manifest row: the neural
-    navigator predicts a direction, the proof network resolves premises/tactics, and the
-    lane search (structural / cosine / hammer / Dr. Ducky) attempts to close every goal
-    against a live Lean (Pantograph) kernel. Returns a JSON summary: whether Wayfinder
-    proved it, the closing lane, and any residual goal (which is what would go to Aristotle).
+    Runs `run_benchmark.py` end-to-end on the single theorem's manifest row on the
+    deterministic path: the proof network ranks premises by IDF, the pure tactic grammar and
+    Dr. Ducky propose steps, and every step is checked against a live Lean (Pantograph) kernel.
+    If the search stops short, the residual hand-off is built and finished locally as far as it
+    goes. Returns a JSON summary: whether Wayfinder proved it, the closing lane, and the
+    residual — what `fill_hole` / `send_to_local_prover` take next.
 
     Args:
         theorem_id: the theorem to prove (must be a row in `manifest`).
         manifest: JSONL manifest containing the theorem's row (theorem_id, file_path,
                   full_declaration, imports, opens). Default: the 9-theorem rerun manifest.
-        device: torch device ("mps", "cpu", "cuda").
-        timeout: seconds (torch load + Pantograph + Mathlib + search).
+        device: kept for the CLI; the deterministic search loads no model.
+        timeout: seconds (Pantograph + Mathlib + search).
     """
     man = Path(manifest).expanduser().resolve()
     if not man.exists():
@@ -735,10 +782,6 @@ def prove(
             str(one),
             "--limit",
             "1",
-            "--search-mode",
-            "full",
-            "--cosine-rw",  # scope → MiniLM → top-k beam + Lean verify (the lemma-retrieval lane)
-            "--cosine-rw-seq",  # sequential bare-rewrite lane — the KEY closers in real runs
             "--device",
             device,
             "--output",
@@ -1787,8 +1830,8 @@ def prove_corpus(
 ) -> str:
     """Launch a LONG, large-scale proof-search run over a whole corpus, in the BACKGROUND.
 
-    The COMPLETE Wayfinder instantiation — NAV-004 navigator + all lanes (structural / cosine
-    retrieval / hammer / Dr. Ducky) — run over every theorem in `theorems` (a JSONL corpus).
+    Wayfinder's deterministic search (zero neural components: proof network + pure tactic grammar
+    + Dr. Ducky, every step Lean-verified) run over every theorem in `theorems` (a JSONL corpus).
     Fire-and-return: spawns a DETACHED subprocess and returns immediately with the output paths + pid;
     it keeps running after this call. Crash-safe and resumable — each theorem's result is appended to
     the .jsonl AS it completes, a per-theorem SIGALRM watchdog skips a hung Lean kernel instead of
@@ -1800,8 +1843,8 @@ def prove_corpus(
             search kernel imports the union of the rows' `imports`; a calling repo's definitions
             must be a module of the search project (`lake build` it there) named on its rows.
         limit: cap the number of theorems (None = all in the corpus).
-        checkpoint: navigator checkpoint (default NAV-004 — the full-pipeline one).
-        device: torch device ("mps", "cpu", "cuda").
+        checkpoint: required by the CLI; the deterministic search never loads it.
+        device: kept for the CLI; no model is loaded.
         resume: skip theorem_ids already recorded in the output .jsonl (continue a parked run).
         collect_trace: record per-step apply_candidates + goal-stack (the SSL candidate-narrowing observable).
         per_theorem_timeout: SIGALRM watchdog seconds per theorem (hung kernel → skip, not freeze).
@@ -1837,10 +1880,6 @@ def prove_corpus(
         *_lean_imports(manifest_rows),
         "--theorems",
         str(man),
-        "--search-mode",
-        "full",
-        "--cosine-rw",
-        "--cosine-rw-seq",
         "--device",
         device,
         "--per-theorem-timeout",
@@ -1873,8 +1912,8 @@ def prove_corpus(
             "output_json": str(out),
             "output_jsonl": str(out.with_suffix(".jsonl")),
             "log": str(log),
-            "note": "Background corpus run started (detached, resumable, watchdog-protected; cosine + "
-            "collect_trace ON). Poll with prove_corpus_status(output_json). It runs after this "
+            "note": "Background corpus run started (detached, resumable, watchdog-protected; the deterministic "
+            "search, collect_trace ON). Poll with prove_corpus_status(output_json). It runs after this "
             "call returns; resume an interrupted run with prove_corpus(..., resume=True).",
         },
         indent=2,

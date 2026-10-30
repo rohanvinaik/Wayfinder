@@ -153,3 +153,28 @@ def test_a_local_run_s_fills_go_through_the_same_path(tmp_path, monkeypatch):
     again = json.loads(wf.local_prover_result("fresh"))  # applied once
     assert again["applied"] == fresh["applied"]
     assert [x["index"] for x in _ledger(tmp_path)["holes"]] == [2]
+
+
+def test_a_statement_the_steps_made_harder_is_tried_whole(monkeypatch):
+    """When the search's steps leave holes no closer takes, the closers get the statement itself."""
+    row = {"theorem_id": "w", "file_path": "no/such/file.lean", "imports": ["import Mathlib"], "opens": [],
+           "full_declaration": "theorem w (n : ℕ) : n + 0 = n := by\n  sorry"}
+    calls = []
+
+    def fake(text: str, timeout: int = 420) -> dict:
+        calls.append(text)
+        lines = text.splitlines()
+        if "w_wf_close_1" in text:  # the triage probe: the second closer (`omega`) marks its success
+            at = next(i for i, ln in enumerate(lines) if "w_wf_close_1" in ln) + 1
+            msgs = [{"severity": "information", "pos": {"line": at}, "data": "wf_local:1"}]
+        else:  # the one-step proof, with the gate's probe
+            msgs = [{"severity": "information", "data": "w : ∀ (n : ℕ), n + 0 = n"},
+                    {"severity": "information", "data": "'w' does not depend on any axioms"}]
+        return {"returncode": 0, "timed_out": False, "tail": "", "messages": msgs}
+
+    monkeypatch.setattr(wf, "_compile_v428", fake)
+    header, _ = wf.rh.split_declaration(row["full_declaration"])
+    out = wf._close_whole(row, header, "n : ℕ\n⊢ n + 0 = n")
+    assert out is not None and out["prefix"] == ["omega"] and out["holes"] == [] and out["closures_kept"] == 0
+    assert out["declaration"].rstrip().endswith("  omega") and len(calls) == 2
+    assert out["pp_type"] == "w : ∀ (n : ℕ), n + 0 = n"

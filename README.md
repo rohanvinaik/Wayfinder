@@ -22,7 +22,7 @@ Wayfinder began with a learned navigator: a 22M-parameter encoder, an informatio
 
 The deterministic path (`search_mode: deterministic`) never loads a checkpoint. On the frozen 2,000-theorem Mathlib split it closes **1,028 — raw = honest, 51.4%** — against **1,277** (63.8%, `EXP-058`) for the encoder stack it replaced: 80.5% of the solve count with no per-state inference, every close warranted and auditable. Counted as the union of every kernel-verified honest close across the loop's passes, it stands at **1,042 / 2,000** (`runs/loop_union.json`).
 
-The encoder is demoted, not deleted: `search_mode: full` still loads NAV-004 as an ordering layer, and that mode — with the MiniLM cosine-rewrite lanes — is what the MCP `prove` tool runs today.
+The encoder is demoted, not deleted: `search_mode: full` (`configs/wayfinder.yaml`) still loads NAV-004 as an ordering layer and reproduces the frozen `EXP-058` baseline. The MCP tools run the deterministic path only — no checkpoint, no sentence encoder, no cosine lane.
 
 ## The number is never inflated
 
@@ -56,7 +56,7 @@ Aristotle 3.0 (2026-10-27) stopped accepting Lean-only projects. Nothing here de
 
 A candidate that compiles can still prove a different statement or rest on an axiom. Every fill, from any prover, is checked in place before it is kept: a fill is refused before it is compiled if it holds a `sorry`, runs code at elaboration time (`#eval`, `run_tac`, parser extensions) or reaches past the kernel (`native_decide`, new axioms, `debug.` options); the file must elaborate at Lean v4.28; the theorem's statement must be unchanged, in its text and in its fully elaborated type; and `#print axioms` must name only `propext`, `Classical.choice` and `Quot.sound`. The fill that closes the last hole sends the whole file through the gate once more and saves it with every hole's source in its header.
 
-Run end to end on the eight gap lemmas that paper's Wayfinder manifests restate: seven proved on this machine (six by the search and the finishing pass, one by the 32B on the residual) and one shown false as stated, with the counterexample. They are restatements of the gaps; the paper's own Lean still has to be wired to them.
+Run end to end on the eight gap lemmas that paper's Wayfinder manifests restate: seven proved on this machine (six by the deterministic search and the finishing pass, one by the 32B on the residual) and one shown false as stated, with the counterexample. They are restatements of the gaps; the paper's own Lean still has to be wired to them.
 
 ---
 

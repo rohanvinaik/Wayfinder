@@ -164,6 +164,22 @@ standard axioms, provenance naming the model, quant, sample and run. That makes 
 **Gate:** `set_option debug.*` (`debug.skipKernelTC` turns the kernel check off) is now a static
 finding, in the Aristotle path as much as the local one.
 
+**`prove` and `prove_corpus` run the deterministic path only** (2026-10-29, Rohan's call): the
+resolved config is `configs/wayfinder_deterministic.yaml` — no navigator checkpoint, no sentence
+encoder, no cosine lane (`--search-mode full`, `--cosine-rw`, `--cosine-rw-seq` are gone;
+`--checkpoint` is still passed because the CLI requires it, and is never loaded). `configs/wayfinder.yaml`
+reproduces the encoder stack's EXP-058 baseline through `run_benchmark` directly. Regression on the
+paper's eight gap lemmas: the four T7.18 lemmas and `pigeonhole_cover` close as before;
+`greedy_step_decay` is refuted as before; `sheaf_gluing_global_kill` regressed — a deterministic step
+left a hole no closer took, where `grind` closes the statement whole — which is why the hand-off now
+ends with a **whole-statement fallback** (`_close_whole`): when holes survive the finishing pass,
+the closer battery gets the undecomposed statement once. With it, all six close again.
+`kappa_additive_bound` is now a residual with two kept steps and one hole (it was bare).
+
+**EXP-DEC-001** (pre-registered in `docs/Research_Paper/EXPERIMENT_RESULTS.md`):
+`scripts/decomposition_test.py` — the same local prover on the whole statement and on Wayfinder's
+residual, paired, on MiniF2F-test (not the Mathlib split, where a restatement can cite itself).
+
 **Registration.** Wayfinder was withheld from Claude Code in `~/.config/mcp/servers.json`
 (2026-10-20); restored and synced 2026-10-29 (still withheld from Claude Desktop). A running
 server keeps the code it started with — restart it after changing `wayfinder_mcp.py` or `src/`.
