@@ -338,7 +338,7 @@ DEMO_SEED = 20261030
 
 
 def demo(exp: Path, model: str, limit: int | None, remote_only: bool = False, reverse: bool = False,
-         pool_key: str = "", start: int = 0) -> None:  # fmt: skip
+         pool_key: str = "", start: int = 0, escalate_from: str = "", corrections: int = 0) -> None:  # fmt: skip
     """The capacity run: the production lane on every residual — Wayfinder's holes to the local model,
     the completed file through the gate, each accepted proof saved with its provenance — in a seeded
     random order, so the tally at any point is an unbiased sample of the residual population. Same
@@ -354,6 +354,8 @@ def demo(exp: Path, model: str, limit: int | None, remote_only: bool = False, re
     out = exp / "demo" / model
     (out / "records").mkdir(parents=True, exist_ok=True)
     (out / "proofs").mkdir(parents=True, exist_ok=True)
+    if escalate_from:
+        return _escalate(exp, model, order, escalate_from, corrections, rows)
     for i, tid in enumerate(order, 1):
         rec_path = out / "records" / f"{tid}.json"
         if rec_path.exists():
@@ -387,6 +389,43 @@ def demo(exp: Path, model: str, limit: int | None, remote_only: bool = False, re
         print(f"[{i}/{len(order)}] {tid}: {'CLOSED' if arm['closed'] else 'open'} "
               f"(holes {arm['holes_verified']}/{arm['holes']}, {arm['outcomes']}, {arm['wall_s']}s) — "
               f"running tally {closed} closed of {len(done) - infra} scored, {infra} infra", flush=True)  # fmt: skip
+
+
+def _escalate(exp: Path, model: str, order: list[str], below: str, corrections: int, rows: dict) -> None:
+    """The next tier: `model` on every residual the `below` model tried and left open, with
+    `corrections` self-correction rounds, rescanning while `below`'s streams still have theorems in
+    progress — the ladder Wayfinder → small model → large model, all on this machine."""
+    src, out = exp / "demo" / below / "records", exp / "demo" / model
+    done: set[str] = set()
+    while True:
+        below_recs = {t: json.loads((src / f"{t}.json").read_text()) for t in order if (src / f"{t}.json").exists()}
+        open_ = [t for t in order if t in below_recs and not below_recs[t].get("in_progress")
+                 and not below_recs[t]["arm"]["closed"] and not below_recs[t]["arm"]["infra"]]  # fmt: skip
+        todo = [t for t in open_ if t not in done and not (out / "records" / f"{t}.json").exists()]
+        if not todo:
+            if any(r.get("in_progress") for r in below_recs.values()) or len(below_recs) < len(order):
+                time.sleep(300)  # the lower tier is still finishing: look again
+                continue
+            return
+        tid = todo[0]
+        handoff = json.loads((exp / "handoffs" / f"{tid}.json").read_text())["handoff"]
+        job = _job(f"{tid}-{model}", rows[tid], handoff, model, whole=False, samples=K)
+        job.update(correction_rounds=corrections, fix_attempts=4, fix_samples=2)
+        arm = _run_arm(out / "arms" / tid, job)
+        rec = {"theorem_id": tid, "holes": len(handoff["holes"]), "kept": handoff.get("closures_kept"), "arm": arm,
+               "escalated_from": below}  # fmt: skip
+        if arm["closed"]:
+            fills = json.loads((out / "arms" / tid / "fills.json").read_text())
+            ok, _, completed, res = _complete(job, fills)
+            if ok and completed and res:
+                provenance = (f"Wayfinder deterministic search ({handoff.get('closures_kept', 0)} kept closures) + "
+                              + "; ".join(f"hole {f['hole']}: {f['source']}" for f in fills))  # fmt: skip
+                (out / "proofs" / f"{tid}.lean").write_text(m._acceptance_header(res, provenance) + completed)
+        (out / "records" / f"{tid}.json").write_text(json.dumps(rec, indent=2))
+        done.add(tid)
+        tally = [json.loads(f.read_text()) for f in (out / "records").glob("*.json")]
+        print(f"[{model}] {tid}: {'CLOSED' if arm['closed'] else 'open'} ({arm['outcomes']}, {arm['wall_s']}s) — "
+              f"{sum(1 for r in tally if r['arm']['closed'])} closed of {len(tally)} the {below} left open", flush=True)
 
 
 # ── phase 4: the report ───────────────────────────────────────────────────────
@@ -446,6 +485,8 @@ def main() -> int:
     ap.add_argument("--reverse", action="store_true", help="demo: work the order from the end (a second stream)")
     ap.add_argument("--pool-key", default="", help="demo: the pool-file key whose servers this stream uses")
     ap.add_argument("--start", type=int, default=0, help="demo: start this far into the order (a third stream)")
+    ap.add_argument("--escalate-from", default="", help="demo: only the residuals this lower-tier model left open")
+    ap.add_argument("--corrections", type=int, default=0, help="demo --escalate-from: self-correction rounds")
     args = ap.parse_args()
     exp = Path(args.dir)
     exp.mkdir(parents=True, exist_ok=True)
@@ -460,7 +501,8 @@ def main() -> int:
         recheck(exp, args.model)
     elif args.phase == "demo":
         demo(exp, args.model, args.limit, remote_only=args.remote_only, reverse=args.reverse,
-             pool_key=args.pool_key, start=args.start)
+             pool_key=args.pool_key, start=args.start, escalate_from=args.escalate_from,
+             corrections=args.corrections)
     else:
         report(exp)
     return 0
