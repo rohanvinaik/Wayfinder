@@ -63,7 +63,7 @@ Wayfinder is an MCP server. Point it at a Lean goal and it navigates:
 |------|--------------|
 | `prove` | search for a proof of one Lean 4 goal, with the lane it closed in |
 | `prove_corpus` | run the search over a whole eval set; `prove_corpus_status` reports progress |
-| `send_to_aristotle` · `aristotle_result` | hand a goal to the external verifier lane and collect the checked result |
+| `send_to_aristotle` · `aristotle_result` | hand Aristotle the residual Wayfinder left (its verified partial proof, `sorry` only on the open goals), then accept the result only if it compiles, keeps the statement, and uses no non-standard axiom |
 
 Everything the search does is arithmetic on a structured network plus one encoder pass per state — no dense retrieval index, no embedding store, no GPU required for the search itself.
 

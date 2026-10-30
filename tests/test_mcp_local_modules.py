@@ -65,3 +65,41 @@ def test_proof_lean_without_local_modules_is_unchanged(tmp_path, monkeypatch):
         "full_declaration": "theorem t : True := by\n  sorry",
     }
     assert m._proof_lean(row) == "import Mathlib\nopen Finset\ntheorem t : True := by\n  sorry\n"
+
+
+_PREAMBLE_SOURCE = """import Mathlib
+
+open Finset
+
+section Scratch
+variable {β : Type*} [Inhabited β]
+end Scratch
+
+variable {α : Type*} [DecidableEq α]
+
+def total (s : Finset ℕ) : ℕ := s.sum id
+
+theorem target_thm (s : Finset α) : s ⊆ s := by
+  sorry
+
+variable {γ : Type*}
+
+def after (n : ℕ) : ℕ := n + 1
+"""
+
+
+def test_the_preamble_carries_the_variables_in_scope_at_the_theorem(tmp_path, monkeypatch):
+    (tmp_path / "src.lean").write_text(_PREAMBLE_SOURCE)
+    monkeypatch.setattr(m, "LEAN_PROJECT", tmp_path)
+    pre = m._def_preamble({"file_path": "src.lean", "theorem_line": 13})
+    assert "variable {α : Type*} [DecidableEq α]" in pre
+    assert pre.index("variable {α") < pre.index("def total")  # source order
+    assert "Inhabited β" not in pre  # its section closed before the theorem
+    assert "variable {γ" not in pre  # declared after the theorem
+    assert "def after" in pre  # defs are carried wherever they sit, as before
+
+
+def test_a_missing_source_gives_no_preamble(tmp_path, monkeypatch):
+    monkeypatch.setattr(m, "LEAN_PROJECT", tmp_path)
+    assert m._def_preamble({"file_path": "nope.lean"}) == ""
+

@@ -1,11 +1,14 @@
 """FastMCP server for Wayfinder — runs the ACTUAL neural proof-search pipeline.
 
-Two tools, mirroring how proofs are actually produced:
-  * `prove(theorem_id)` — run the real Wayfinder prover (below).
-  * `send_to_aristotle(theorem_id)` — if Wayfinder leaves a residual goal open,
-    fire that statement at Aristotle, a SEPARATE, unrelated hosted prover. This is
-    the "if Wayfinder doesn't finish it, send it to Aristotle" fallback — two
-    explicit steps, not an integrated bridge.
+Three steps, mirroring how proofs are actually produced:
+  * `prove(theorem_id)` — run the real Wayfinder prover (below), then replay the tree it
+    committed as Lean: the declaration, Wayfinder's verified tactics in place, a `sorry` on
+    each goal it left open — compiled at v4.28 until it elaborates (the hand-off skeleton).
+  * `send_to_aristotle(theorem_id)` — hand Aristotle, a SEPARATE hosted prover, that
+    RESIDUAL: the skeleton, with the instruction to fill exactly its holes. Aristotle
+    finishes Wayfinder's proof; it is not asked to re-prove the theorem.
+  * `aristotle_result(project_id)` — collect and JUDGE: the returned file is accepted only
+    if it is the correct, compiling proof of the submitted statement (src/proof_gate.py).
 
 `prove()` invokes `scripts/run_benchmark.py` — the real pipeline: one neural forward
 pass per proof state (encoder → navigator → ternary 6-bank direction) → proof-network
@@ -29,6 +32,8 @@ to Aristotle — this tool does not call it.
 
 from __future__ import annotations
 
+import hashlib
+import inspect
 import json
 import os
 import re
@@ -36,6 +41,7 @@ import shutil
 import subprocess
 import tarfile
 import tempfile
+import time
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
@@ -48,8 +54,16 @@ import sys  # noqa: E402
 
 if str(WF) not in sys.path:
     sys.path.insert(0, str(WF))
+import src.proof_gate as gate  # noqa: E402
+import src.residual_handoff as rh  # noqa: E402
 from src.cheat_sheet import render_cheat_sheet  # noqa: E402
-from src.lean_expr import EmissionWarrant, from_tactics, read_environment_pin, render_declaration  # noqa: E402
+from src.lean_expr import (  # noqa: E402
+    EmissionWarrant,
+    from_tactics,
+    read_environment_pin,
+    render_declaration,
+    warrant_header,
+)
 
 # The goal ledger (THE_REFOUNDING §4.1b/§6): prove() persists each theorem's
 # augmented detail row here; send_to_aristotle renders the cheat sheet from it
@@ -82,6 +96,12 @@ SSL_PROOFS = Path(
 ANSATZ_PROOFS = Path("/Users/rohanvinaik/Projects/Ansatz/proofs")
 ANSATZ_THEOREMS = {"depletion_time", "pesin_band_rate_lower_bound"}  # Pesin/physics-bridge cores; rest → SSL
 ARISTOTLE_INDEX = WF / "runs" / "aristotle" / "index.json"  # project_id → theorem context
+# Building the hand-off skeleton: at most this many repair compiles per form, within this budget.
+HANDOFF_MAX_REPAIRS = 6
+HANDOFF_BUDGET_S = 420
+# The local finishing pass: rounds of close-or-refute over the holes, within this budget.
+HANDOFF_FINISH_ROUNDS = 6
+HANDOFF_FINISH_BUDGET_S = 600
 
 
 def _proof_home(row: dict) -> Path:
@@ -155,28 +175,49 @@ def _manifest_ids(man: Path) -> list[str]:
 
 
 def _def_preamble(row: dict) -> str:
-    """Local `def`/`abbrev` blocks the theorem depends on, pulled from its source file.
+    """The local context the theorem's statement needs, pulled from its source file, in source order:
+    its `def`/`abbrev` blocks, and the `variable`/`universe` commands in scope at the theorem.
 
     The manifest packages only the theorem statement; theorems like survivingDOF_antitone reference a
-    local def (survivingDOF) that must be in scope for BOTH Wayfinder and Aristotle. Returns "" if none.
+    local def (survivingDOF) that must be in scope for BOTH Wayfinder and Aristotle, and statements
+    like T7.17's use a section's `variable {α : Type*} [DecidableEq α]` (without it `Finset.biUnion`
+    has no instance). Variables of a section closed before the theorem do not apply to it and are
+    left out. Returns "" if there is nothing.
     """
     src = LEAN_PROJECT / row.get("file_path", "")
     if not src.exists():
         return ""
     lines = src.read_text().splitlines()
-    blocks: list[str] = []
+    stop = int(row.get("theorem_line") or 0) or len(lines) + 1  # 1-based line of the theorem
+    items: list[list] = []  # [text, scope id, is a variable/universe command]
+    scopes = [0]
+    next_scope = 1
+    closed: set[int] = set()
     i = 0
     while i < len(lines):
-        if re.match(r"^(noncomputable\s+)?(def|abbrev)\s", lines[i]):
-            blk = [lines[i]]
+        line = lines[i]
+        is_def = re.match(r"^(noncomputable\s+)?(def|abbrev)\s", line)
+        is_var = re.match(r"^(variable|universe)\b", line) and i + 1 < stop
+        if re.match(r"^(section|namespace)\b", line):
+            scopes.append(next_scope)
+            next_scope += 1
+        elif re.match(r"^end\b", line) and len(scopes) > 1:
+            closed.add(scopes.pop())
+        if is_def or is_var:
+            blk = [line]
             i += 1
             while i < len(lines) and lines[i].startswith((" ", "\t")):
                 blk.append(lines[i])
                 i += 1
-            blocks.append("\n".join(blk))
-        else:
-            i += 1
-    return "\n\n".join(blocks)
+            items.append(["\n".join(blk), scopes[-1], bool(is_var)])
+            continue
+        i += 1
+    if stop <= len(lines):
+        # scopes still open at the theorem; a variable outside them was closed before it
+        closed_before = {sid for sid in closed if sid not in scopes}
+    else:
+        closed_before = set()
+    return "\n\n".join(text for text, sid, is_var in items if not (is_var and sid in closed_before))
 
 
 def _augmented_declaration(row: dict) -> str:
@@ -254,32 +295,380 @@ def _elaboration_probe(row: dict) -> tuple[bool, str]:
             pass
 
 
-def _verify_at_v428(lean_text: str, thm_name: str) -> tuple[bool, str]:
-    """Compile `lean_text` in the built v4.28 project; True iff it elaborates AND has no `sorryAx`.
+def _verify_at_v428(lean_text: str, thm_name: str, allowed_axioms: tuple[str, ...] = ()) -> tuple[bool, str]:
+    """Compile `lean_text` in the v4.28 environment; True iff it elaborates with no error and
+    no `sorry`, and `#print axioms` names only the standard three (plus `allowed_axioms`).
 
-    This is the soundness gate — a reconstructed Wayfinder proof is saved only if it re-verifies.
+    The soundness gate for a Wayfinder-closed proof — a declared axiom no longer passes just
+    because it is not `sorryAx`. Compiled from a temp file; the project tree is never written to.
     """
-    probe = lean_text.rstrip() + f"\n#print axioms {thm_name}\n"
-    fpath = VERIFY_PROJECT / f"_verify_{thm_name}.lean"
-    try:
-        fpath.write_text(probe)
-        p = subprocess.run(
-            [str(LAKE_BIN), "env", "lean", str(fpath)],
-            cwd=str(VERIFY_PROJECT),
-            capture_output=True,
-            text=True,
-            timeout=420,
-        )
-        out = p.stdout + p.stderr
-        ok = p.returncode == 0 and "sorryAx" not in out
-        return ok, out[-800:]
-    except subprocess.TimeoutExpired:
+    run = gate.run_lean_json(LAKE_BIN, VERIFY_PROJECT, lean_text.rstrip() + gate.probe_suffix(thm_name), timeout=420)
+    if run["timed_out"]:
         return False, "verify timeout (>420s)"
-    finally:
+    msgs = run["messages"]
+    errors = gate.errors_in(msgs)
+    axioms = gate.axioms_from_messages(msgs, thm_name)
+    allowed = set(gate.STANDARD_AXIOMS) | set(allowed_axioms)
+    ok = (
+        run["returncode"] == 0
+        and not errors
+        and not gate.uses_sorry(msgs)
+        and axioms is not None
+        and set(axioms) <= allowed
+    )
+    detail = errors[:3] or ([f"axioms: {axioms}"] if axioms is not None else ["`#print axioms` gave no report"])
+    return ok, "; ".join(detail)[-800:]
+
+
+# ── the residual hand-off: Wayfinder's stopping state as Lean with holes ────────
+
+
+def _lean_name(row: dict) -> str:
+    """The name the row's declaration declares (the theorem_id can differ, e.g. minif2f ids)."""
+    return gate.name_from_declaration(str(row.get("full_declaration", ""))) or str(row.get("theorem_id", ""))
+
+
+def _statement_sha(row: dict) -> str:
+    header, _ = rh.split_declaration(str(row.get("full_declaration", "")))
+    return hashlib.sha256(gate.normalize(header).encode()).hexdigest()
+
+
+def _file_with_declaration(row: dict, declaration: str) -> str:
+    """The standalone hand-off file (`_proof_lean`) with the row's declaration replaced."""
+    base = _proof_lean(row)
+    original = str(row["full_declaration"])
+    at = base.rindex(original)
+    return base[:at] + declaration + base[at + len(original) :]
+
+
+def _compile_v428(text: str, timeout: int = 420) -> dict:
+    return gate.run_lean_json(LAKE_BIN, VERIFY_PROJECT, text, timeout=timeout)
+
+
+def _under_forced(tree: rh.Tree, nid: int, forced: set[int]) -> bool:
+    """Is some ancestor of `nid` a forced hole (so `nid`'s subtree is no longer rendered)?"""
+    p = tree.nodes[nid].parent
+    while p >= 0:
+        if p in forced:
+            return True
+        p = tree.nodes[p].parent
+    return False
+
+
+def _skeleton_attempt(
+    row: dict,
+    header: str,
+    tree: rh.Tree,
+    revert: list[str] | None,
+    deadline: float,
+    forced: set[int] | None = None,
+    fills: dict[int, str] | None = None,
+) -> dict | None:
+    """Compile-repair loop for one form. Returns the compiling candidate, or None.
+
+    Starts from `forced` holes and `fills` (holes the finishing pass closed) when given; a fill
+    that breaks the combined file goes back to being a plain hole.
+    """
+    forced = set(forced or ())
+    fills = dict(fills or {})
+    notes: list[str] = []
+    for _ in range(HANDOFF_MAX_REPAIRS + 1):
+        if time.monotonic() > deadline:
+            notes.append("hand-off build budget spent")
+            return None
+        probe = rh.render(tree, revert=revert, forced_holes=forced, probe=True, fills=fills)
+        text = _file_with_declaration(row, rh.assemble(header, probe))
+        first = rh.body_first_line(text, header)
+        run = _compile_v428(text)
+        if run["timed_out"]:
+            return None
+        if not gate.errors_in(run["messages"]):
+            goals = rh.holes_from_messages(run["messages"], probe, first)
+            ok, rows = rh.faithful(tree, goals, probe.holes)
+            return {"revert": revert, "forced": forced, "fills": fills, "goals": goals, "faithful": ok,
+                    "rows": rows, "kept": len(probe.kept), "notes": notes}  # fmt: skip
+        targets, more = rh.repair_targets(tree, run["messages"], probe, first)
+        notes += more
+        bad_fills = targets & set(fills)
+        for nid in bad_fills:
+            fills.pop(nid)
+        targets -= bad_fills
+        if not targets - forced and not bad_fills:
+            return None
+        forced |= targets
+        fills = {nid: t for nid, t in fills.items() if not _under_forced(tree, nid, forced)}
+    return None
+
+
+def _file_defs(row: dict) -> list[str]:
+    """The definitions the hand-off file itself declares — what a closer may need to unfold."""
+    names = []
+    for chunk in gate.top_level_chunks(_proof_lean(row)):
+        if gate.declaration_kind(chunk) in ("def", "abbrev"):
+            names.append(gate.declaration_name(chunk))
+    return [n for n in dict.fromkeys(names) if n]
+
+
+def _finish_locally(row: dict, header: str, tree: rh.Tree, best: dict, deadline: float) -> tuple[dict, dict]:
+    """The local finishing pass — as much as can be done here is done here.
+
+    Each hole is tried with a battery of deterministic closers (unfolding the file's own
+    definitions it mentions); a hole that closes is filled. Each hole that does not close is
+    tried for a counterexample (`plausible`): a refuted hole means the step that produced it
+    committed to something false (a `left`, a witness), so that step is given back — its
+    parent becomes the hole — and the new hole is tried in turn. A refutation that reaches
+    the root means the statement itself is false. Returns (candidate, report).
+    """
+    target = _lean_name(row)
+    defs = _file_defs(row)
+    report: dict = {"closed": [], "backed_off": [], "refuted_statement": None, "notes": []}
+    fills = dict(best.get("fills") or {})
+    for _ in range(HANDOFF_FINISH_ROUNDS):
+        if time.monotonic() > deadline:
+            report["notes"].append("finishing pass budget spent")
+            break
+        current = rh.render(tree, revert=best["revert"], forced_holes=best["forced"], fills=fills,
+                            hole_goals=best["goals"])  # fmt: skip
+        if not current.holes:
+            break
+        battery = [
+            rh.closers(rh.defs_mentioned(best["goals"].get(nid, ""), defs), best["goals"].get(nid, ""))
+            for nid in current.holes
+        ]
+        probe = rh.triage_block(rh.assemble(header, current), target, battery, heartbeats=1000000)
+        text = _file_with_declaration(row, probe.text)
+        first = text[: text.rindex(probe.text)].count("\n") + 1
+        run = _compile_v428(text, timeout=600)
+        if run["timed_out"]:
+            report["notes"].append("finishing probe timed out")
+            break
+        outcomes = rh.triage_outcomes(run["messages"], probe, first)
+        refuted = []
+        for nid, o in zip(current.holes, outcomes):
+            goal = rh.target_of(best["goals"].get(nid, "") or tree.nodes[nid].goal)
+            if o["closed_by"]:
+                fills[nid] = o["closed_by"]
+                report["closed"].append({"goal": goal, "by": o["closed_by"]})
+            elif o["refuted"]:
+                refuted.append((nid, goal, o["refuted"]))
+        if not refuted:
+            break
+        forced = set(best["forced"])
+        for nid, goal, cex in refuted:
+            parent = tree.nodes[nid].parent
+            step = tree.nodes[parent].tactic if parent >= 0 else None
+            report["backed_off"].append({"hole_goal": goal, "counterexample": cex, "step_given_back": step})
+            if parent < 0 or tree.nodes[parent].closure < 0:
+                report["refuted_statement"] = cex
+            else:
+                forced.add(parent)
+        if report["refuted_statement"]:
+            break
+        fills = {nid: t for nid, t in fills.items() if not _under_forced(tree, nid, forced)}
+        cand = _skeleton_attempt(row, header, tree, best["revert"], deadline, forced=forced, fills=fills)
+        if cand is None:
+            report["notes"].append("the skeleton did not compile after giving a step back")
+            break
+        best, fills = cand, cand["fills"]
+    return {**best, "fills": fills}, report
+
+
+def _build_handoff(row: dict, d: dict) -> dict:
+    """Wayfinder's stopping state as a verified Lean skeleton, finished locally as far as it goes.
+
+    status: "closed" (no holes — Wayfinder's proof, with the finishing pass's closes),
+    "residual" (holes left for the next prover), "bare" (no replayable prefix and nothing
+    closed: the residual is the whole statement), "refuted" (the statement itself has a
+    counterexample — nothing to send), or "failed" (the statement does not elaborate).
+    `faithful` / `matches_stopping_state` describe Wayfinder's stopping state, before the
+    finishing pass; `local` reports what the finishing pass closed and gave back.
+    """
+    target = _lean_name(row)
+    header, _ = rh.split_declaration(str(row["full_declaration"]))
+    out: dict = {"target": target, "statement_sha256": _statement_sha(row), "verified_env": VERIFY_ENV,
+                 "initial_goal_tier": d.get("initial_goal_tier", ""), "notes": []}  # fmt: skip
+    tree: rh.Tree | None = None
+    if d.get("close_log") is None or not d.get("initial_goals"):
+        out["notes"].append("no closure log in the search result (run predates the instrumentation)")
+    else:
         try:
-            fpath.unlink()
-        except OSError:
-            pass
+            tree = rh.build_tree(list(d["initial_goals"]), list(d["close_log"]))
+        except rh.ReplayError as e:
+            out["notes"].append(f"closure log did not rebuild: {e}")
+    deadline = time.monotonic() + HANDOFF_BUDGET_S
+    best = None
+    if tree is not None and any(n.closure >= 0 for n in tree.nodes):
+        names = rh.binder_names(header)
+        closed_type = out["initial_goal_tier"] in ("A", "env_inspect", "raw")
+        forms = [names or None, None] if closed_type else [None, names or None]
+        for revert in dict.fromkeys(tuple(f) if f else None for f in forms):
+            cand = _skeleton_attempt(row, header, tree, list(revert) if revert else None, deadline)
+            if cand and (best is None or (cand["faithful"], cand["kept"]) > (best["faithful"], best["kept"])):
+                best = cand
+            if best and best["faithful"]:
+                break
+    if best is None:
+        # No replayable prefix: the residual is the whole statement. One probe
+        # compile still reads back the goal Lean shows (and that it elaborates).
+        start_goal = tree.nodes[0].goal if tree is not None and tree.nodes else str(row.get("goal_state", ""))
+        tree = rh.Tree(nodes=[rh.Node(goal=start_goal)], roots=[0], open_ids=[0])
+        empty = {"revert": None, "forced": set(), "fills": {}, "goals": {}, "faithful": False, "rows": [],
+                 "kept": 0, "notes": []}  # fmt: skip
+        best = _skeleton_attempt(row, header, tree, None, deadline + 120) or empty
+        out["notes"].append("no replayable prefix: the residual is the whole statement")
+    assert tree is not None  # the bare fallback above always leaves a tree
+
+    # Wayfinder's stopping state, as the search left it (before anything is finished here).
+    stop = rh.render(tree, revert=best["revert"], forced_holes=best["forced"], hole_goals=best["goals"])
+    out["faithful"] = bool(best["faithful"])
+    # The stronger claim: the holes are exactly what the search left open (de-duplicated —
+    # the kernel can report a goal twice — and with harness names stripped). A repair that
+    # dropped a real step fails this even when every hole matches its own node.
+    if d.get("final_goals") is None:
+        out["matches_stopping_state"] = None
+    else:
+        left_open = {rh.target_of(g) for g in d.get("final_goals") or []}
+        at_holes = {rh.target_of(best["goals"].get(nid, "")) for nid in stop.holes if best["goals"].get(nid)}
+        out["matches_stopping_state"] = len(at_holes) == len(stop.holes) and at_holes == left_open
+    out["stopping_holes"] = len(stop.holes)
+
+    best, local = _finish_locally(row, header, tree, best, time.monotonic() + HANDOFF_FINISH_BUDGET_S)
+    out["local"] = local
+    fills = dict(best.get("fills") or {})
+    for _ in range(3):  # the combined file must still compile; a fill that breaks it is dropped
+        final = rh.render(tree, revert=best["revert"], forced_holes=best["forced"], hole_goals=best["goals"],
+                          fills=fills)  # fmt: skip
+        declaration = rh.assemble(header, final)
+        text = _file_with_declaration(row, declaration)
+        run = _compile_v428(text + gate.probe_suffix(target))
+        errors = gate.errors_in(run["messages"])
+        first = rh.body_first_line(text, header)
+        broken = {
+            final.line_node.get(int((m.get("pos") or {}).get("line", -1)) - first)
+            for m in run["messages"]
+            if m.get("severity") == "error"
+        } & set(fills)
+        if not errors or not broken:
+            break
+        for nid in broken:
+            fills.pop(nid)
+        local["notes"].append(f"{len(broken)} local close(s) dropped: they did not compile together")
+    out["notes"] += best["notes"]
+    out["file"] = text
+    out["declaration"] = declaration
+    out["pp_type"] = gate.checked_type(run["messages"], target)
+    out["axioms"] = gate.axioms_from_messages(run["messages"], target)
+    out["holes"] = [
+        {"index": k + 1, "lean_goal": best["goals"].get(nid, ""), "search_goal": rh.target_of(tree.nodes[nid].goal)}
+        for k, nid in enumerate(final.holes)
+    ]
+    out["prefix"] = [tree.nodes[nid].tactic for nid in final.kept] + [fills[nid] for nid in final.filled]
+    out["kept_provenance"] = [tree.nodes[nid].provenance for nid in final.kept]
+    out["closures_total"] = len(d.get("close_log") or [])
+    out["closures_kept"] = len(final.kept)
+    out["closed_locally"] = len(final.filled)
+    out["form"] = "revert" if best["revert"] else "direct"
+    if local.get("refuted_statement"):
+        out["status"] = "refuted"
+    elif errors or out["pp_type"] is None:
+        out["status"] = "failed"
+        out["errors"] = errors[:5]
+    elif not final.holes:
+        out["status"] = "closed"
+    elif not final.kept and not final.filled:
+        out["status"] = "bare"
+    else:
+        out["status"] = "residual"
+    return out
+
+
+def _handoff_prompt(theorem_id: str, name: str, handoff: dict) -> str:
+    """The finish instruction: Wayfinder's verified prefix stays; only the holes are filled."""
+    target = handoff["target"]
+    holes = handoff.get("holes") or []
+    if handoff.get("status") == "residual":
+        lines = [
+            f"`Residual.lean` contains theorem `{target}` ({name}) with a partial proof. Every tactic line already in "
+            f"the proof was produced and kernel-checked by Wayfinder; what remains is exactly {len(holes)} `sorry` "
+            f"placeholder(s), each marked `-- {rh.HOLE_MARK} k` with the goal it must close.",
+            "Finish the proof: replace each marked `sorry` with a proof of its goal. Do not change the theorem "
+            "statement, any other declaration in the file, or any existing tactic line, and do not restructure the "
+            "proof. You may add helper lemmas above the theorem. Do not add axioms, `sorry`, or `admit`.",
+            "",
+            "The goals to close:",
+        ]
+        for h in holes:
+            lines.append(f"{rh.HOLE_MARK} {h['index']}:\n{h.get('lean_goal') or h.get('search_goal')}")
+    else:
+        lines = [
+            f"Prove theorem `{target}` ({name}) in `Residual.lean` by replacing its `sorry`. Wayfinder made no "
+            "replayable progress on it, so the residual is the whole statement.",
+            "Do not change the theorem statement or any other declaration in the file. You may add helper lemmas "
+            "above the theorem. Do not add axioms, `sorry`, or `admit`.",
+        ]
+    return "\n".join(lines)
+
+
+def _handoff_sheet(detail: dict, row: dict, handoff: dict) -> str:
+    """The cheat sheet as the hand-off's companion: it describes the file it travels with.
+
+    The search's own records name things the file does not (descriptor tactics such as
+    `rw_seq(3)`, harness-renamed definitions, goals the kernel reported twice), so the sheet is
+    rendered from a view whose progress is the skeleton's kept Lean prefix and whose residual is
+    the goals Lean prints at its holes — with a closing line that agrees with the instruction.
+    """
+    view = {
+        **detail,
+        "step_trace": [],
+        "tactics_used": list(handoff.get("prefix") or []),
+        # the Lean-printed goal (hypotheses and all) — the reads use the context
+        "final_goals": [h.get("lean_goal") or h.get("search_goal", "") for h in handoff.get("holes") or []],
+    }
+    line = (
+        "hand-off: the file holds Wayfinder's verified partial proof; fill only the marked `sorry` holes, "
+        "keep every existing line, and do not add axioms or `sorry`."
+        if handoff.get("status") == "residual"
+        else "hand-off: prove the statement by replacing its `sorry`; do not add axioms or `sorry`."
+    )
+    return render_cheat_sheet(view, row, handoff_line=line)
+
+
+def _legacy_ids() -> set[str]:
+    """Theorems routed before `proof_home` existed, whose fixed routes stay: the default
+    manifest, the Ansatz cores, and every theorem the Aristotle index already filed somewhere."""
+    ids = set(ANSATZ_THEOREMS)
+    try:
+        ids |= set(_manifest_ids(DEFAULT_MANIFEST))
+    except (OSError, ValueError, KeyError):
+        pass
+    ids |= {str(rec.get("theorem_id")) for rec in _load_index().values() if rec.get("home") and rec.get("theorem_id")}
+    return ids
+
+
+def _accept_home(row: dict) -> Path | None:
+    """Where an accepted proof may be saved: the row's declared home, or a legacy route.
+
+    A row with neither gets None — its proof stays in quarantine rather than
+    falling through to another paper's proofs/ project.
+    """
+    if str(row.get("proof_home") or "").strip():
+        return _proof_home(row)
+    if str(row.get("theorem_id")) in _legacy_ids():
+        return _proof_home(row)
+    return None
+
+
+def _acceptance_header(res: gate.GateResult, provenance: str) -> str:
+    rows = [
+        f"theorem: {res.target}",
+        f"verified in: {res.environment}",
+        f"axioms: {', '.join(res.axioms or []) or 'none'}",
+        "statement: unchanged (text and elaborated type)",
+        f"provenance: {provenance}",
+        f"mode: {res.mode}",
+    ]
+    body = "\n".join(f"  {r}" for r in rows)
+    return f"/- wayfinder acceptance\n{body}\n-/\n"
 
 
 @mcp.tool()
@@ -369,30 +758,10 @@ def prove(
             return f"no result file (exit {p.returncode}).\n{(p.stdout + p.stderr)[-1800:]}"
         r = json.loads(out.read_text())
         d = (r.get("details") or [{}])[0]
-        # Persist the goal-ledger row: the accreting per-theorem source of
-        # truth the cheat sheet renders from at hand-off time.
-        try:
-            GOAL_LEDGER.mkdir(parents=True, exist_ok=True)
-            (GOAL_LEDGER / f"{theorem_id}.json").write_text(json.dumps({"detail": d, "manifest_row": row}, indent=2))
-        except OSError:
-            pass  # the ledger is an artifact, never a gate on the prove result
         proved = bool(d.get("success")) and bool(d.get("honest_success"))
         skipped = (not proved) and d.get("close_lane") == "skipped" and not d.get("attempts")
-
-        # Wayfinder closed it → reconstruct its tactic trace, verify @v4.28, save only if it re-checks.
-        verified = None
-        saved_to = None
-        verify_detail = None
-        if proved:
-            candidate = _reconstruct_proof(
-                row,
-                d.get("tactics_used") or [],
-                provenance=tuple(d.get("close_provenance") or ()),
-                source_run=str(out),
-            )
-            verified, verify_detail = _verify_at_v428(candidate, theorem_id)
-            if verified:
-                saved_to = str(_save_solved_proof(row, candidate))
+        name = _lean_name(row)
+        allowed = tuple(row.get("allowed_axioms") or ())
 
         # A skip means the initial goal never built (attempts=0). DIAGNOSE it — almost always the
         # STATEMENT doesn't elaborate. This is NEVER a residual and NEVER an Aristotle candidate; it
@@ -400,15 +769,83 @@ def prove(
         # is what stops the recurring "attempts=0 → onboard the harness / send to Aristotle" misread.
         statement_elaborates = None
         statement_error = None
+        handoff: dict | None = None
         if skipped:
             statement_elaborates, statement_error = _elaboration_probe(row)
+        else:
+            # The stopping state as Lean: the committed tree replayed with a `sorry` at every open
+            # goal, compiled until it elaborates. A closed proof is the zero-hole case.
+            try:
+                handoff = _build_handoff(row, d)
+            except (rh.ReplayError, ValueError) as e:
+                handoff = {"status": "failed", "notes": [f"hand-off not built: {e}"]}
 
-        if proved and verified:
-            nxt = f"proved by Wayfinder, verified @v4.28 → saved to {saved_to}. No Aristotle needed."
-        elif proved and not verified:
+        # Wayfinder closed it → the tree's zero-hole replay, else the linear trace; saved only if
+        # the gate accepts it (compiles, no sorry, only allowlisted axioms).
+        verified = None
+        saved_to = None
+        verify_detail = None
+        closed_here = bool(handoff and handoff.get("status") == "closed")
+        if proved or closed_here:
+            candidates = []
+            if closed_here:
+                finished = (handoff or {}).get("closed_locally") or 0
+                warrant = EmissionWarrant(
+                    theorem_id=str(theorem_id),
+                    provenance=tuple((handoff or {}).get("kept_provenance") or ())
+                    + (("local_finish",) if finished else ()),
+                    source_run=str(out),
+                    note=(
+                        "replayed from the committed closure tree"
+                        + (f"; {finished} hole(s) closed by the local finishing pass" if finished else "")
+                        if (handoff or {}).get("closures_kept")
+                        else "closed entirely by the local finishing pass (no search prefix was kept)"
+                    ),
+                )
+                candidates.append(warrant_header(warrant, VERIFY_ENV) + "\n\n" + (handoff or {})["file"])
+            if proved:
+                candidates.append(
+                    _reconstruct_proof(
+                        row,
+                        d.get("tactics_used") or [],
+                        provenance=tuple(d.get("close_provenance") or ()),
+                        source_run=str(out),
+                    )
+                )
+            for candidate in candidates:
+                verified, verify_detail = _verify_at_v428(candidate, name, allowed)
+                if verified:
+                    home = _accept_home(row)
+                    saved_to = str(_save_solved_proof(row, candidate)) if home else None
+                    break
+
+        # Persist the goal-ledger row: the accreting per-theorem source of truth the hand-off
+        # (cheat sheet + skeleton) renders from at send time.
+        try:
+            GOAL_LEDGER.mkdir(parents=True, exist_ok=True)
+            (GOAL_LEDGER / f"{theorem_id}.json").write_text(
+                json.dumps({"detail": d, "manifest_row": row, "handoff": handoff}, indent=2)
+            )
+        except OSError:
+            pass  # the ledger is an artifact, never a gate on the prove result
+
+        h = handoff or {}
+        status = h.get("status")
+        if proved:
+            how = "proved by Wayfinder's search"
+        elif h.get("closures_kept"):
+            how = "closed locally (Wayfinder's search prefix, finished by its local finishing pass)"
+        else:
+            how = "closed by Wayfinder's local finishing pass alone (the search kept no step)"
+        if verified and saved_to:
+            nxt = f"{how}, verified @v4.28 → saved to {saved_to}. No Aristotle needed."
+        elif verified:
+            nxt = f"{how} and verified @v4.28, but the row declares no proof_home: not saved."
+        elif status == "refuted":
+            cex = " ".join(str((h.get("local") or {}).get("refuted_statement", "")).split())[:400]
             nxt = (
-                "Wayfinder closed it but its tactic trace did not re-verify @v4.28 "
-                "(non-linearizable) → send to Aristotle."
+                "REFUTED: the statement as written is false — a counterexample was found locally "
+                f"({cex}). Fix the statement; nothing is sent to Aristotle."
             )
         elif skipped and statement_elaborates is False:
             nxt = (
@@ -421,8 +858,25 @@ def prove(
                 "SKIPPED though the statement elaborates → goal-resolution/harness issue "
                 "(debug run_benchmark._resolve_initial_goal). NOT a residual, do NOT send to Aristotle."
             )
+        elif status == "residual":
+            nxt = (
+                f"residual: Wayfinder's verified prefix ({h.get('closures_kept')} of {h.get('closures_total')} "
+                f"closures, {h.get('closed_locally', 0)} hole(s) closed locally) with {len(h.get('holes') or [])} "
+                "hole(s) left → send_to_aristotle hands Aristotle exactly these."
+            )
+            if _load_service_status().get("lean_only") == "refused":
+                nxt += " NOTE: Aristotle currently refuses Lean-only projects; the residual stays in the ledger."
+            if h.get("matches_stopping_state") is False or not h.get("faithful"):
+                nxt += (
+                    " NOTE: the holes are not exactly where Wayfinder stopped"
+                    " (replay diverged or repair dropped steps)."
+                )
+        elif status == "bare":
+            nxt = "no replayable progress: the residual is the whole statement → send_to_aristotle sends it as such."
+            if _load_service_status().get("lean_only") == "refused":
+                nxt += " NOTE: Aristotle currently refuses Lean-only projects; the residual stays in the ledger."
         else:
-            nxt = "residual goal open → send to Aristotle (separate prover; not called here)."
+            nxt = "the hand-off skeleton did not compile (see handoff.notes): nothing to send until it does."
 
         summary = {
             "theorem_id": theorem_id,
@@ -432,11 +886,26 @@ def prove(
             "saved_to": saved_to,
             "close_lane": d.get("close_lane"),
             "goals_closed": d.get("goals_closed"),  # subgoals Wayfinder cleared
-            "goals_remaining": d.get("goals_remaining"),  # residual handed to Aristotle
+            "goals_remaining": d.get("goals_remaining"),  # what the search left open
             "attempts": d.get("attempts"),
             "time_s": r.get("efficiency", {}).get("avg_time_per_theorem_s"),
             "next_step": nxt,
         }
+        if handoff:
+            summary["handoff"] = {
+                "status": status,
+                "holes": len(handoff.get("holes") or []),
+                "closures_kept": handoff.get("closures_kept"),
+                "closures_total": handoff.get("closures_total"),
+                "faithful": handoff.get("faithful"),
+                "matches_stopping_state": handoff.get("matches_stopping_state"),
+                "stopping_holes": handoff.get("stopping_holes"),
+                "closed_locally": handoff.get("closed_locally"),
+                "local": {k: v for k, v in (handoff.get("local") or {}).items() if v},
+                "form": handoff.get("form"),
+                "notes": (handoff.get("notes") or [])[:6],
+                "hole_goals": [h.get("lean_goal", "")[-300:] for h in (handoff.get("holes") or [])[:3]],
+            }
         if verified is False:
             summary["verify_tail"] = verify_detail
         if skipped:
@@ -456,23 +925,6 @@ def _aristotle_key() -> str | None:
             if ln.startswith("ARISTOTLE_API_KEY") and "=" in ln:
                 return ln.split("=", 1)[1].strip().strip('"').strip("'") or None
     return None
-
-
-def _count_sorries(text: str) -> int:
-    """Count `sorry` tactics outside comments (mirrors the pipeline's counter)."""
-    in_block = False
-    n = 0
-    for line in text.splitlines():
-        if "/-" in line:
-            in_block = True
-        if "-/" in line:
-            in_block = False
-            continue
-        if in_block:
-            continue
-        if re.search(r"\bsorry\b", re.sub(r"--.*", "", line)):
-            n += 1
-    return n
 
 
 def _sane_project_name(theorem_id: str, row: dict) -> str:
@@ -560,14 +1012,15 @@ def proofs_roots(modules: list[str]) -> str:
     return "roots = [" + ", ".join(f'"{n}"' for n in names) + "]"
 
 
-def _write_aristotle_project(row: dict, proj_dir: Path) -> Path:
+def _write_aristotle_project(proj_dir: Path, source: str) -> Path:
     """Write a minimal standalone Lean project (v4.28.0, no manifest) into `proj_dir`.
 
-    `proj_dir`'s basename becomes the Aristotle project name — pass a named dir. No lake-manifest is
-    written: a v4.27 manifest would poison the v4.28 build, and Aristotle resolves mathlib itself.
+    `source` is the hand-off file (the residual skeleton). `proj_dir`'s basename names the project
+    on SDKs that name it after the directory. No lake-manifest is written: a v4.27 manifest would
+    poison the v4.28 build, and Aristotle resolves mathlib itself.
     """
     proj_dir.mkdir(parents=True, exist_ok=True)
-    (proj_dir / "Residual.lean").write_text(_proof_lean(row))
+    (proj_dir / "Residual.lean").write_text(source)
     (proj_dir / "lakefile.toml").write_text(_lakefile("AristotleResidual", "Residual", 'roots = ["Residual"]'))
     (proj_dir / "lean-toolchain").write_text(f"leanprover/lean4:{LEAN_VERSION}\n")
     return proj_dir
@@ -588,6 +1041,38 @@ def _load_index() -> dict:
 def _save_index(idx: dict) -> None:
     ARISTOTLE_INDEX.parent.mkdir(parents=True, exist_ok=True)
     ARISTOTLE_INDEX.write_text(json.dumps(idx, indent=2))
+
+
+# ── what the hosted service currently accepts ──────────────────────────────────
+# Aristotle 3.0 (2026-10-27) verifies Verilog, C and Rust; a Lean-only project is refused at
+# run time ("Lean-only projects aren't supported right now"). The refusal is recorded so the
+# next hand-off is declined locally, with the reason, instead of spending the account's one
+# concurrent run on a predictable refusal; an accepted proof clears the record.
+ARISTOTLE_SERVICE = WF / "runs" / "aristotle" / "service_status.json"
+_REFUSAL_MARKERS = (
+    "aren't supported",
+    "are not supported",
+    "not supported right now",
+    "no source files in a supported language",
+)
+
+
+def _service_refusal(summary: str | None) -> bool:
+    """Is a run's summary the service refusing the project (not a proof attempt that failed)?"""
+    text = (summary or "").lower()
+    return any(marker in text for marker in _REFUSAL_MARKERS)
+
+
+def _load_service_status() -> dict:
+    try:
+        return json.loads(ARISTOTLE_SERVICE.read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def _save_service_status(status: dict) -> None:
+    ARISTOTLE_SERVICE.parent.mkdir(parents=True, exist_ok=True)
+    ARISTOTLE_SERVICE.write_text(json.dumps(status, indent=2))
 
 
 def _save_solved_proof(row: dict, solved_lean: str) -> Path:
@@ -613,29 +1098,47 @@ def _save_solved_proof(row: dict, solved_lean: str) -> Path:
     return proof_path
 
 
+def _create_kwargs(aristotlelib, name: str) -> dict:
+    """Unattended-run options for `Project.create_from_directory`, as the installed SDK takes them.
+
+    Questions are always DISABLED: nobody answers an MCP-submitted run, and since 3.0 the SDK's
+    default lets Aristotle stop and wait 15 minutes per question. The project is named explicitly
+    where the SDK accepts a name (3.x); 2.x names it after the uploaded directory.
+    """
+    params = inspect.signature(aristotlelib.Project.create_from_directory).parameters
+    kwargs: dict = {}
+    if "agent_questions_setting" in params:
+        kwargs["agent_questions_setting"] = aristotlelib.AgentQuestionsSetting.DISABLED
+    if "name" in params:
+        kwargs["name"] = name
+    return kwargs
+
+
 @mcp.tool()
 async def send_to_aristotle(
     theorem_id: str,
     manifest: str = str(DEFAULT_MANIFEST),
     prompt: str = "",
+    force: bool = False,
 ) -> str:
-    """Fire ONE theorem at Aristotle (the SEPARATE hosted fallback prover) and return immediately.
+    """Hand Aristotle the RESIDUAL Wayfinder left — its verified partial proof, `sorry` only on the
+    goals still open — and return immediately with the project id.
 
-    Use when Wayfinder's `prove()` leaves a residual goal open ("if Wayfinder doesn't finish it,
-    send it to Aristotle"). This SUBMITS and returns right away with the project id + name — it does
-    NOT wait for the proof (Aristotle keeps running server-side). Collect the result later with
-    `aristotle_result(project_id)`. Wayfinder and Aristotle are unrelated systems.
+    Requires a fresh `prove(theorem_id)` run: the hand-off skeleton it built (and compiled at v4.28)
+    is what gets submitted, with an instruction to fill exactly those holes and keep everything else.
+    If Wayfinder made no replayable progress, the residual is the whole statement and is sent as such.
+    Collect with `aristotle_result(project_id)`; the result is accepted only through the gate there.
 
-    METERED hosted call. Key read from $ARISTOTLE_API_KEY or semantic_probing/.env (never hardcoded).
-    Uses aristotlelib 2.1.0 (v3 API). The Aristotle project is named `Wayfinder-<theorem>-<proof_NN>`
-    so it is resolvable later.
+    METERED hosted call. Key from $ARISTOTLE_API_KEY or semantic_probing/.env (never hardcoded).
 
     Args:
-        theorem_id: theorem to prove (a row in `manifest`: full_declaration/imports/opens/file_path).
-        manifest: JSONL manifest. Default: the 9-theorem rerun manifest.
-        prompt: optional instruction override; a sensible default is used if empty.
+        theorem_id: theorem to hand off (a row in `manifest`, already run through `prove`).
+        manifest: JSONL manifest. Default: the rerun manifest.
+        prompt: optional text appended to the finish instruction.
+        force: send even though Aristotle last refused Lean-only projects (to check whether it
+            takes them again).
     """
-    import aristotlelib  # lazy: host's 2.1.0 (v3 API)
+    import aristotlelib  # lazy: the MCP host's SDK
 
     key = _aristotle_key()
     if not key:
@@ -653,38 +1156,81 @@ async def send_to_aristotle(
     row = json.loads(rows[0])
     name = _sane_project_name(theorem_id, row)
 
-    default_prompt = (
-        f"Fill all sorry placeholders and prove the theorem `{theorem_id}` ({name}) using Mathlib. "
-        "Leave any declarations marked `axiom` as axioms; do not add new axioms or `sorry`."
-    )
-    # Fold Wayfinder's computed understanding into the hand-off (Gotcha 3):
-    # the cheat sheet renders deterministically from the persisted goal-ledger
-    # row of the most recent prove() run — signature walk, lane history, the
-    # negative channel, and the verified progress so far.
+    # The residual must exist, be current, and compile — or nothing is sent.
     ledger_path = GOAL_LEDGER / f"{theorem_id}.json"
-    if ledger_path.exists():
-        try:
-            ledger = json.loads(ledger_path.read_text())
-            sheet = render_cheat_sheet(ledger.get("detail") or {}, ledger.get("manifest_row") or row)
-            default_prompt += "\n\nContext from Wayfinder's own search (computed, deterministic):\n\n" + sheet
-        except (OSError, ValueError, KeyError):
-            pass  # a malformed ledger never blocks the submission; the bare prompt stands
+    try:
+        ledger = json.loads(ledger_path.read_text())
+    except (OSError, ValueError):
+        return f"error: no goal-ledger entry for '{theorem_id}'. Run prove('{theorem_id}') first."
+    handoff = ledger.get("handoff") or {}
+    status = handoff.get("status")
+    if status not in ("residual", "bare"):
+        refutation = " ".join(str((handoff.get("local") or {}).get("refuted_statement", "")).split())[:300]
+        why = {
+            "closed": "Wayfinder already closed it — nothing to hand off",
+            "refuted": f"the statement is false as written (counterexample found locally: {refutation})",
+            "failed": f"its hand-off skeleton did not compile ({'; '.join(handoff.get('notes') or [])[:300]})",
+            None: "the ledger entry predates the residual hand-off; re-run prove()",
+        }.get(status, f"hand-off status is {status!r}")
+        return f"error: not sent — {why}."
+    if handoff.get("statement_sha256") != _statement_sha(row):
+        return f"error: not sent — the manifest's statement changed since prove(); re-run prove('{theorem_id}')."
+
+    service = _load_service_status()
+    if service.get("lean_only") == "refused" and not force:
+        return (
+            f"error: not sent — Aristotle refused a Lean-only project on {service.get('seen_at')} "
+            f"(project {service.get('project_id')}): {service.get('message')!r}. Aristotle 3.x verifies Verilog, "
+            "C and Rust code; a Lean theorem is not a submission it takes. The residual stays in the goal ledger. "
+            "Pass force=True to check whether it takes Lean again."
+        )
+
+    instruction = _handoff_prompt(theorem_id, name, handoff)
+    try:
+        sheet = _handoff_sheet(ledger.get("detail") or {}, ledger.get("manifest_row") or row, handoff)
+        instruction += "\n\nContext from Wayfinder's own search (computed, deterministic):\n\n" + sheet
+    except (ValueError, KeyError, TypeError):
+        pass  # a malformed ledger never blocks the submission; the finish instruction stands
+    if prompt:
+        instruction += "\n\n" + prompt
 
     aristotlelib.set_api_key(key)
+    server_toolchain = None
+    try:
+        from aristotlelib import local_file_utils
+
+        server_toolchain = await local_file_utils.get_expected_toolchain()
+    except Exception:  # noqa: BLE001 — informational only
+        pass
     base = Path(tempfile.mkdtemp(prefix="aristotle_"))
     try:
-        proj_dir = _write_aristotle_project(row, base / name)
-        project = await aristotlelib.Project.create_from_directory(prompt or default_prompt, proj_dir)
+        proj_dir = _write_aristotle_project(base / name, handoff["file"])
+        try:
+            project = await aristotlelib.Project.create_from_directory(
+                instruction, proj_dir, **_create_kwargs(aristotlelib, name)
+            )
+        except aristotlelib.AristotleAPIError as e:
+            return f"error: Aristotle refused the submission ({type(e).__name__}): {e}"
     finally:
-        shutil.rmtree(base, ignore_errors=True)  # tar already built; result lives server-side
+        shutil.rmtree(base, ignore_errors=True)  # the archive is built; the result lives server-side
 
-    # Record project_id → theorem context so aristotle_result can save it to the right repo by id alone.
+    # Everything the gate needs to judge the result, recorded at submit time — the exact
+    # submitted text, its elaborated statement, the holes — so nothing is reconstructed later.
     idx = _load_index()
     idx[project.project_id] = {
         "theorem_id": theorem_id,
         "project_name": name,
-        "home": str(_proof_home(row)),
+        "home": str(_accept_home(row) or ""),
         "row": row,
+        "target": handoff.get("target"),
+        "submitted_text": handoff["file"],
+        "submitted_type": handoff.get("pp_type"),
+        "statement_sha256": handoff.get("statement_sha256"),
+        "handoff_status": status,
+        "holes": handoff.get("holes"),
+        "closures_kept": handoff.get("closures_kept"),
+        "faithful": handoff.get("faithful"),
+        "sdk": getattr(aristotlelib, "__version__", "") or _sdk_version(),
     }
     _save_index(idx)
 
@@ -693,28 +1239,52 @@ async def send_to_aristotle(
             "theorem_id": theorem_id,
             "project_name": name,
             "project_id": project.project_id,
-            "status": str(project.status),
-            "saves_to": str(_proof_home(row)),
-            "note": "Fired and backgrounded — Aristotle is proving it server-side. "
-            "Collect with aristotle_result(project_id) later; no need to wait.",
+            "status": _status_name(project.status),
+            "sent": f"{status}: {len(handoff.get('holes') or [])} hole(s), "
+            f"{handoff.get('closures_kept', 0)} verified Wayfinder closure(s) kept",
+            "saves_to": str(_accept_home(row) or "nowhere (no proof_home declared) — accepted proofs stay quarantined"),
+            "server_lean_toolchain": server_toolchain,
+            "submitted_lean_toolchain": f"leanprover/lean4:{LEAN_VERSION}",
+            "note": "Fired and backgrounded. Collect with aristotle_result(project_id); the result is accepted "
+            "only if it compiles at v4.28, keeps the statement and every submitted declaration, and uses "
+            "only allowlisted axioms.",
         },
         indent=2,
     )
 
 
-@mcp.tool()
-async def aristotle_result(project_id: str, destination: str = "") -> str:
-    """Collect a backgrounded Aristotle project by id. Non-blocking: one status check.
+def _status_name(status) -> str:
+    """A project status as its name (`RUNNING`, `IDLE`) — 3.x enums print as their number."""
+    return str(getattr(status, "name", status))
 
-    If the project is still RUNNING, says so (check again later). If done, downloads the solved
-    Lean and reports the remaining-sorry count. Downloads to `destination` if given, else
-    `runs/aristotle/<project_id>/`.
+
+def _sdk_version() -> str:
+    try:
+        from importlib.metadata import version
+
+        return version("aristotlelib")
+    except Exception:  # noqa: BLE001 — informational only
+        return ""
+
+
+@mcp.tool()
+async def aristotle_result(project_id: str, destination: str = "", require_finish: bool = False) -> str:
+    """Collect a backgrounded Aristotle project by id and judge it. Non-blocking: one status check.
+
+    A returned file is a candidate, never a result. It is accepted only if it passes the gate
+    (src/proof_gate.py): nothing that executes code or bypasses the kernel, every submitted
+    declaration unchanged, the statement unchanged (text and elaborated type), compiles at v4.28
+    with no `sorry`, and `#print axioms` names only the standard three (plus the row's
+    `allowed_axioms`). Only an accepted proof is saved to its proofs/ project; everything else
+    stays in quarantine under the download directory with the gate's reasons.
 
     Args:
         project_id: id returned by `send_to_aristotle`.
-        destination: optional download directory (absolute); defaults under the Wayfinder repo.
+        destination: optional download directory (absolute); defaults to runs/aristotle/<project_id>/.
+        require_finish: reject a correct proof that rebuilt Wayfinder's prefix instead of finishing it
+            (default: accept it, and report it as "reproved").
     """
-    import aristotlelib  # lazy: host's 2.1.0 (v3 API)
+    import aristotlelib  # lazy: the MCP host's SDK
 
     key = _aristotle_key()
     if not key:
@@ -723,9 +1293,45 @@ async def aristotle_result(project_id: str, destination: str = "") -> str:
     aristotlelib.set_api_key(key)
     project = await aristotlelib.Project.from_id(project_id)
     await project.refresh()
+    run_status = getattr(getattr(project, "latest_run_status", None), "name", None)
     if project.status == aristotlelib.ProjectStatus.RUNNING:
         return json.dumps(
-            {"project_id": project_id, "status": "RUNNING", "note": "still proving on Aristotle — call again later."},
+            {"project_id": project_id, "status": "RUNNING", "run": run_status,
+             "note": "still proving on Aristotle — call again later."},  # fmt: skip
+            indent=2,
+        )
+    summary = None
+    get_tasks = getattr(project, "get_tasks", None)
+    if get_tasks is not None:
+        try:
+            tasks, _ = await get_tasks(limit=1)
+            summary = tasks[0].output_summary if tasks else None
+        except Exception:  # noqa: BLE001 — informational only
+            summary = None
+    if _service_refusal(summary):
+        rec = _load_index().get(project_id, {})
+        _save_service_status(
+            {
+                "lean_only": "refused",
+                "seen_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "project_id": project_id,
+                "message": " ".join(str(summary).split())[:400],
+            }
+        )
+        return json.dumps(
+            {"project_id": project_id, "theorem_id": rec.get("theorem_id"), "status": _status_name(project.status),
+             "run": run_status, "accepted": False, "outcome": "service_refused",
+             "aristotle_summary": summary,
+             "next_step": "Aristotle refused the project itself — no proof was attempted, so there is nothing to "
+             "judge. The residual stays in the goal ledger; send_to_aristotle now declines Lean-only hand-offs "
+             "(force=True to retry)."},  # fmt: skip
+            indent=2,
+        )
+    if not getattr(project, "has_files", True):
+        # get_files would hand back our own submission here; never judge the input as a result.
+        return json.dumps(
+            {"project_id": project_id, "status": _status_name(project.status), "run": run_status,
+             "note": "Aristotle produced no result files for this project."},  # fmt: skip
             indent=2,
         )
 
@@ -734,49 +1340,109 @@ async def aristotle_result(project_id: str, destination: str = "") -> str:
     tar_path = dest / "aristotle_result.tar.gz"
     await project.get_files(tar_path)  # get_files writes the result tar.gz to this FILE path
     with tarfile.open(tar_path) as tf:
-        tf.extractall(dest)
-    leans = list(dest.rglob("Residual.lean")) or [p for p in dest.rglob("*.lean") if p.is_file()]
+        tf.extractall(dest, filter="data")  # no absolute paths, no escaping links
+    leans = sorted(dest.rglob("Residual.lean"))
+    rec = _load_index().get(project_id, {})
     if not leans:
         return json.dumps(
-            {
-                "project_id": project_id,
-                "status": str(project.status),
-                "note": "no .lean returned",
-                "downloaded_to": str(dest),
-            },
+            {"project_id": project_id, "status": _status_name(project.status), "run": run_status, "accepted": False,
+             "reasons": ["the returned archive has no Residual.lean"], "downloaded_to": str(dest)},  # fmt: skip
             indent=2,
         )
-    solved = leans[0].read_text()
-    n_sorry = _count_sorries(solved)
+    returned = leans[0].read_text()
 
-    # On a finished proof, save it into its owning repo's clean proofs/ project (looked up by id).
-    rec = _load_index().get(project_id, {})
     theorem_id = rec.get("theorem_id")
-    # the indexed manifest row carries the calling repo's `proof_home`; a legacy index entry
-    # without a row still routes by theorem id
-    row = rec.get("row") or ({"theorem_id": theorem_id} if theorem_id else None)
-    saved_to = None
-    if n_sorry == 0 and row:
-        saved_to = str(_save_solved_proof(row, solved))
+    row = rec.get("row") or ({"theorem_id": theorem_id} if theorem_id else {})
+    reconstructed = "submitted_text" not in rec
+    if row.get("full_declaration"):
+        submitted = rec.get("submitted_text") or _proof_lean(row)
+        target = rec.get("target") or _lean_name(row)
+    else:
+        submitted, target = "", str(theorem_id or "")
+    submitted_type = rec.get("submitted_type")
+    if submitted_type is None and submitted:
+        probe = _compile_v428(submitted + gate.probe_suffix(target))
+        submitted_type = gate.checked_type(probe["messages"], target)
 
-    return json.dumps(
-        {
-            "project_id": project_id,
-            "theorem_id": theorem_id,
-            "status": str(project.status),
-            "proved_by_aristotle": n_sorry == 0,
-            "sorries_remaining": n_sorry,
-            "saved_to": saved_to,
-            "downloaded_to": str(dest),
-            "next_step": (
-                f"closed by Aristotle → saved to {saved_to}. Verify: `lake env lean` + `#print axioms` "
-                "(run `lake update && lake exe cache get` once per proofs project)."
-                if n_sorry == 0
-                else "Aristotle left sorries — still open; not saved as a proof."
-            ),
-        },
-        indent=2,
+    compile_run = None
+    if submitted and not gate.static_findings(returned, submitted):
+        compile_run = _compile_v428(returned + gate.probe_suffix(target))
+    res = gate.judge(
+        returned=returned,
+        submitted=submitted,
+        target=target,
+        compile_run=compile_run,
+        submitted_type=submitted_type,
+        allowed_axioms=tuple(row.get("allowed_axioms") or ()),
+        require_finish=require_finish,
+        environment=VERIFY_ENV,
     )
+    if not submitted:
+        res.accepted = False
+        res.reasons.insert(0, "no submission on record for this project id")
+
+    # Aristotle's own per-declaration verdicts (SDK 3.x) — reported beside ours, never instead of it.
+    verdicts = None
+    get_declarations = getattr(project, "get_declarations", None)
+    if get_declarations is not None:
+        try:
+            verdicts = [
+                {"name": dcl.name, "status": dcl.status.name,
+                 "failure": dcl.failure_reason.name if dcl.failure_reason else None}  # fmt: skip
+                for dcl in await get_declarations()
+                if dcl.name == target or dcl.name.endswith(f".{target}")
+            ]
+        except Exception as e:  # noqa: BLE001 — informational only
+            verdicts = [{"error": f"{type(e).__name__}: {e}"[:200]}]
+
+    saved_to = None
+    home = _accept_home(row) if row else None
+    if res.accepted and home is not None:
+        provenance = (
+            f"Wayfinder ({rec.get('closures_kept', 0)} verified closures, {rec.get('handoff_status', '?')}) + "
+            f"Aristotle project {project_id}"
+        )
+        saved_to = str(_save_solved_proof(row, _acceptance_header(res, provenance) + returned))
+    (dest / "gate.json").write_text(
+        json.dumps({**res.to_dict(), "aristotle_verdicts": verdicts, "aristotle_summary": summary}, indent=2)
+    )
+    if res.accepted and _load_service_status().get("lean_only") == "refused":
+        _save_service_status({"lean_only": "accepted", "seen_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                              "project_id": project_id})  # fmt: skip
+    idx = _load_index()
+    if project_id in idx:
+        idx[project_id]["gate"] = {**res.to_dict(), "saved_to": saved_to}
+        _save_index(idx)
+
+    if res.accepted and saved_to:
+        nxt = f"ACCEPTED → saved to {saved_to}"
+        if res.mode == "reproved":
+            nxt += " — NOTE: Aristotle rebuilt Wayfinder's prefix instead of finishing it (see prefix_missing)."
+    elif res.accepted:
+        nxt = "ACCEPTED, but the row declares no proof_home: kept in quarantine at the download directory."
+    else:
+        nxt = "REJECTED — not saved. The candidate and gate.json stay in quarantine at the download directory."
+    out = {
+        "project_id": project_id,
+        "theorem_id": theorem_id,
+        "status": _status_name(project.status),
+        "run": run_status,
+        "accepted": res.accepted,
+        "reasons": res.reasons,
+        "checks": res.checks,
+        "axioms": res.axioms,
+        "mode": res.mode,
+        "aristotle_verdicts": verdicts,
+        "aristotle_summary": summary,
+        "saved_to": saved_to,
+        "downloaded_to": str(dest),
+        "next_step": nxt,
+    }
+    if res.prefix_missing and res.mode == "reproved":
+        out["prefix_missing"] = res.prefix_missing[:10]
+    if reconstructed:
+        out["warning"] = "submitted before the gate recorded submissions: compared against a reconstruction"
+    return json.dumps(out, indent=2)
 
 
 @mcp.tool()
