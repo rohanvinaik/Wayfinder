@@ -173,18 +173,28 @@ def _build_theorem_id_map(conn: sqlite3.Connection) -> dict[str, int]:
 
 
 def _resolve_initial_goal(thm: dict, lean: LeanKernel) -> str | None:
-    """Resolve the initial goal for proof search.
+    """Resolve the initial goal for proof search (see `_resolve_initial_goal_with_tier`)."""
+    return _resolve_initial_goal_with_tier(thm, lean)[0]
+
+
+def _resolve_initial_goal_with_tier(thm: dict, lean: LeanKernel) -> tuple[str | None, str]:
+    """Resolve the initial goal for proof search, and say which path built it.
 
     For Pantograph with a Mathlib project, the canonical path is theorem-site
     faithful replay via `goal_via_file_context`. This avoids pretty-printer
     ellipses, universe-pressure failures, and binder-mangling from raw theorem
     type strings. Raw `goal_start` is retained only as degraded fallback.
 
-    Returns None only if goal_start fails on both the inspected type AND
+    The tier is what a replay of the search must start from: "B" is the
+    declaration's own post-`by` state (binders in context); "A", "env_inspect"
+    and "raw" start from the theorem's closed type (binders still quantified);
+    "backend" means no kernel built it.
+
+    Returns (None, tier) only if goal_start fails on both the inspected type AND
     the raw goal_state.
     """
     if lean._backend != "pantograph" or lean._server is None:
-        return thm["goal_state"]
+        return thm["goal_state"], "backend"
 
     tid = canonicalize_theorem_id(str(thm["theorem_id"]))
     file_path = thm.get("file_path", "")
@@ -201,7 +211,7 @@ def _resolve_initial_goal(thm: dict, lean: LeanKernel) -> str | None:
                 fallback_goal_pp=thm.get("goal_state", ""),
             )
             if result.success and result.goal_state:
-                return result.goal_state
+                return result.goal_state, str(getattr(result, "tier_used", "") or "file_context")
         except Exception:
             pass
 
@@ -209,7 +219,7 @@ def _resolve_initial_goal(thm: dict, lean: LeanKernel) -> str | None:
     try:
         info = lean._server.env_inspect(tid)
         theorem_type = info["type"]["pp"]
-        return lean.goal_start(theorem_type, theorem_name=tid, file_path=file_path)
+        return lean.goal_start(theorem_type, theorem_name=tid, file_path=file_path), "env_inspect"
     except Exception:
         pass
 
@@ -217,12 +227,12 @@ def _resolve_initial_goal(thm: dict, lean: LeanKernel) -> str | None:
     raw_goal = thm["goal_state"]
     if raw_goal:
         try:
-            return lean.goal_start(raw_goal, theorem_name=tid, file_path=file_path)
+            return lean.goal_start(raw_goal, theorem_name=tid, file_path=file_path), "raw"
         except Exception:
             pass
 
     logger.debug("Could not start goal for %s", tid)
-    return None
+    return None, "none"
 
 
 def _failure_entry(thm: dict, category: str, lane: str, t0: float, error: str) -> dict:
@@ -296,7 +306,7 @@ def _run_search_loop(
         accessible_id = name_to_id.get(thm["theorem_id"]) if name_to_id else None
 
         # Resolve initial goal — uses env_inspect for Pantograph+Mathlib
-        initial_goal = _resolve_initial_goal(thm, lean)
+        initial_goal, initial_goal_tier = _resolve_initial_goal_with_tier(thm, lean)
 
         if initial_goal is None:
             # Could not create goal state (universe polymorphism, missing theorem, etc.)
@@ -406,6 +416,12 @@ def _run_search_loop(
                     "goals_closed": result.goals_closed,
                     "goals_remaining": result.goals_remaining,
                     "tactics_used": result.tactics_used,
+                    # The stopping state as a replayable tree: where the search
+                    # started, the committed closures, and what is left open.
+                    "initial_goals": [initial_goal],
+                    "initial_goal_tier": initial_goal_tier,
+                    "close_log": getattr(result, "close_log", []),
+                    "final_goals": list(getattr(result, "final_goals", []) or []),
                     "time_s": round(elapsed, 3),
                     # The abstention ledger (THE_REFOUNDING §7.3): the negative
                     # channel is reported wherever the positive one is.

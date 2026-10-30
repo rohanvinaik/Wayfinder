@@ -29,6 +29,46 @@ logger = logging.getLogger(__name__)
 _DECL_MODIFIERS = r"(?:(?:noncomputable|private|protected)\s+)*"
 
 
+_SORRY_DECL_HEAD = re.compile(
+    r"^(?:@\[[^\]]*\]\s*)*" + _DECL_MODIFIERS + r"(?:theorem|lemma|def|abbrev|instance|example)\b"
+)
+
+
+def _count_sorry_decls(source: str) -> int:
+    """How many top-level declarations of `source` contain a `sorry` (line comments ignored)."""
+    count, in_decl, has_sorry = 0, False, False
+    for line in source.splitlines():
+        if line and not line[0].isspace() and _SORRY_DECL_HEAD.match(line):
+            count += int(in_decl and has_sorry)
+            in_decl, has_sorry = True, False
+        elif line and not line[0].isspace() and not line.startswith("--"):
+            count += int(in_decl and has_sorry)
+            in_decl, has_sorry = False, False
+        if in_decl and re.search(r"\bsorry\b", line.split("--", 1)[0]):
+            has_sorry = True
+    return count + int(in_decl and has_sorry)
+
+
+def _target_state(targets: list[Any] | None, source: str) -> Any | None:
+    """The start state of the declaration under replay: the LAST sorry-bearing target.
+
+    A Tier B wrapper puts context (a support slice, the earlier source) before the
+    declaration being started, and `frontend.distil` returns one target per
+    sorry-bearing declaration, in source order. The first target is therefore any
+    earlier theorem that still ends in `sorry` — every stub of a paper's file — not the
+    one asked for. When the target count disagrees with the wrapper's sorry-bearing
+    declarations (the declaration itself did not elaborate), None is returned rather
+    than an earlier stub's goal.
+    """
+    states = [t.goal_state for t in targets or [] if getattr(t, "goal_state", None) is not None and t.goal_state.goals]
+    if not states:
+        return None
+    expected = _count_sorry_decls(source)
+    if expected and len(states) != expected:
+        return None
+    return states[-1]
+
+
 # ---------------------------------------------------------------------------
 # Lean feedback classification
 # ---------------------------------------------------------------------------
@@ -973,6 +1013,9 @@ class LeanKernel:
         # Pantograph backend: lazy-initialized server + goal state tracking
         self._server: Any | None = None
         self._goal_states: dict[tuple[str, str], Any] = {}  # (env_key, goal_str)
+        # Where each cached goal sits in its GoalState: a tactic for the second goal of a
+        # state must be applied there, not to the state's first goal.
+        self._goal_index: dict[tuple[str, str], int] = {}
         # Tactic result cache: (env_key, goal_state, tactic) → TacticResult
         # Pure function — same env + goal + tactic = same result.
         # Eliminates redundant Lean IPC calls across search iterations.
@@ -995,6 +1038,7 @@ class LeanKernel:
                 pass
             self._server = None
             self._goal_states.clear()
+            self._goal_index.clear()
             self._tactic_cache.clear()
 
     def _prepare_for_new_example(self) -> None:
@@ -1197,6 +1241,7 @@ class LeanKernel:
             state = self._goal_via_sorry(server, goal_state)
 
         self._goal_states[cache_key] = state
+        self._goal_index[cache_key] = 0
         return state
 
     @staticmethod
@@ -1352,6 +1397,7 @@ class LeanKernel:
 
         goal_str = str(state.goals[0].target) if state.goals else theorem_type
         self._goal_states[(self._current_env_key, goal_str)] = state
+        self._goal_index[(self._current_env_key, goal_str)] = 0
         return goal_str
 
     def goal_start_from_pp(
@@ -1370,6 +1416,21 @@ class LeanKernel:
     def _quiet_goal_start(server: Any, expr: str) -> Any:
         with contextlib.redirect_stdout(io.StringIO()):
             return server.goal_start(expr)
+
+    def _site_for(self, goal_state: str, goal_id: int = 0) -> Any:
+        """Where a tactic for `goal_state` acts: that goal's own position in its cached state, with
+        the state's other goals left dormant (`auto_resume=False`).
+
+        Both matter. With the default site a tactic lands on the state's FIRST goal, so a step
+        meant for a second goal (after `constructor`, the `q` of `p ∧ q`) was applied to the
+        first; and with auto-resume on, the resulting state carried the untouched siblings back
+        as if the tactic had produced them, so goals were counted twice and a do-nothing tactic
+        read as progress. An explicit `goal_id` (branching replay) still wins.
+        """
+        from pantograph.expr import Site  # type: ignore[import-untyped]
+
+        idx = goal_id if goal_id > 0 else self._goal_index.get((self._current_env_key, goal_state), 0)
+        return Site(goal_id=idx, auto_resume=False)
 
     def _pantograph_try_tactic(
         self,
@@ -1395,17 +1456,12 @@ class LeanKernel:
         if cached is not None:
             return cached
 
-        from pantograph.expr import Site  # type: ignore[import-untyped]
         from pantograph.server import TacticFailure  # type: ignore[import-untyped]
 
         try:
             state = self._get_or_create_goal(goal_state)
             server = self._ensure_server()
-            if goal_id > 0:
-                site = Site(goal_id=goal_id)
-                new_state = server.goal_tactic(state, tactic=tactic, site=site)
-            else:
-                new_state = server.goal_tactic(state, tactic=tactic)
+            new_state = server.goal_tactic(state, tactic=tactic, site=self._site_for(goal_state, goal_id))
         except TacticFailure as e:
             fail_result = TacticResult(
                 success=False,
@@ -1439,12 +1495,14 @@ class LeanKernel:
 
         new_goals = [str(g.target) for g in new_state.goals]
 
-        # Cache each new goal state for subsequent tactic applications
-        for goal in new_state.goals:
+        # Cache each new goal state for subsequent tactic applications, with the goal's
+        # position in it (with auto_resume off, these are only this tactic's goals).
+        for idx, goal in enumerate(new_state.goals):
             goal_str = str(goal.target)
             gs_key = (self._current_env_key, goal_str)
             if gs_key not in self._goal_states:
                 self._goal_states[gs_key] = new_state
+                self._goal_index[gs_key] = idx
 
         # Success = Pantograph accepted the tactic (no TacticFailure raised).
         # is_solved / no goals → closed all; new_goals non-empty → structural
@@ -1522,6 +1580,7 @@ class LeanKernel:
                 pass
             self._server = None
         self._goal_states.clear()
+        self._goal_index.clear()
         self._tactic_cache.clear()
         self._server_contaminated = False
         self._ensure_server()
@@ -1862,8 +1921,9 @@ class LeanKernel:
             server = self._ensure_server()
             targets = server.load_sorry(wrapper)
             self._server_contaminated = True
-            if targets and targets[0].goal_state.goals:
-                return targets[0].goal_state
+            state = _target_state(targets, wrapper)
+            if state is not None:
+                return state
         except Exception as e:
             self._server_contaminated = True
             self._last_goal_feedback = _classify_compiler_feedback(
@@ -1902,12 +1962,13 @@ class LeanKernel:
                 try:
                     targets = server.load_sorry(direct_wrapper)
                     self._server_contaminated = True
-                    if targets and targets[0].goal_state.goals:
+                    state = _target_state(targets, direct_wrapper)
+                    if state is not None:
                         logger.debug(
                             "Tier B1.5 direct support-slice succeeded for %s",
                             theorem_full_name,
                         )
-                        return targets[0].goal_state
+                        return state
                 except Exception as direct_err:
                     self._server_contaminated = True
                     if self._is_crash_error(direct_err):
@@ -1923,12 +1984,13 @@ class LeanKernel:
                 wrapper = self._wrap_replay_namespace(direct_wrapper, fresh_name)
                 targets = server.load_sorry(wrapper)
                 self._server_contaminated = True
-                if targets and targets[0].goal_state.goals:
+                state = _target_state(targets, wrapper)
+                if state is not None:
                     logger.debug(
                         "Tier B1.5 wrapped support-slice succeeded for %s",
                         theorem_full_name,
                     )
-                    return targets[0].goal_state
+                    return state
         except Exception as e_b15:
             self._server_contaminated = True
             if self._is_crash_error(e_b15):
@@ -1979,9 +2041,10 @@ class LeanKernel:
             source_slice = self._wrap_replay_namespace(source_slice, fresh_name)
             targets = server.load_sorry(source_slice)
             self._server_contaminated = True
-            if targets and targets[0].goal_state.goals:
+            state = _target_state(targets, source_slice)
+            if state is not None:
                 logger.debug("Tier B4 source replay succeeded for %s", theorem_full_name)
-                return targets[0].goal_state
+                return state
         except Exception as e_b4:
             self._server_contaminated = True
             if self._is_crash_error(e_b4):
@@ -2109,6 +2172,7 @@ class LeanKernel:
                 goal_str = str(base_state.goals[0].target)
                 cache_key = (env_key, goal_str)
                 self._goal_states[cache_key] = base_state
+                self._goal_index[cache_key] = 0
                 return ReplayResult(
                     success=True,
                     goal_state=goal_str,
@@ -2317,6 +2381,7 @@ class LeanKernel:
 
         cache_key = (env_key, matched_goal_str)
         self._goal_states[cache_key] = current_state
+        self._goal_index[cache_key] = matched_idx
 
         return ReplayResult(
             success=True,
@@ -2339,6 +2404,7 @@ class LeanKernel:
             except Exception:
                 pass
         self._goal_states.clear()
+        self._goal_index.clear()
         self._tactic_cache.clear()
 
 

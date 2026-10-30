@@ -154,6 +154,10 @@ class SearchResult:
     final_goals: list[str] = field(default_factory=list)
     # Per-goal provenance: which lane closed each goal
     close_provenance: list[str] = field(default_factory=list)
+    # The committed closures, one record each (goal, its index in the open list
+    # at the time, the replayable Lean text, the goals it opened) — the tree the
+    # residual hand-off replays as a Lean proof with holes.
+    close_log: list[dict] = field(default_factory=list)
     # Temporal controller trace (shadow or active mode)
     temporal_trace: list[dict] = field(default_factory=list)
     # Per-step trace for dataset harvesting (populated when collect_trace=True)
@@ -235,6 +239,11 @@ class _SearchState:
     theorem_id: str = ""
     closed_goals: list[str] = field(default_factory=list)
     tactics_used: list[str] = field(default_factory=list)
+    # One record per committed closure — the proof tree the residual hand-off
+    # replays in Lean (src/residual_handoff.py). `tactics_used` keeps its
+    # descriptor strings for the consumers that key on them; the replayable
+    # Lean text lives here.
+    close_log: list[dict] = field(default_factory=list)
     attempts: int = 0
     # Per-goal provenance: which lane closed each goal
     close_provenance: list[str] = field(default_factory=list)
@@ -313,6 +322,7 @@ def _snapshot_frontier(state: _SearchState) -> dict[str, Any]:
         "open_goals": list(state.open_goals),
         "closed_goals": list(state.closed_goals),
         "tactics_used": list(state.tactics_used),
+        "close_log": list(state.close_log),
         "close_provenance": list(state.close_provenance),
         "post_apply_goals": set(state._post_apply_goals),
     }
@@ -322,6 +332,7 @@ def _restore_frontier(state: _SearchState, snapshot: dict[str, Any]) -> None:
     state.open_goals = list(snapshot["open_goals"])
     state.closed_goals = list(snapshot["closed_goals"])
     state.tactics_used = list(snapshot["tactics_used"])
+    state.close_log = list(snapshot["close_log"])
     state.close_provenance = list(snapshot["close_provenance"])
     state._post_apply_goals = set(snapshot["post_apply_goals"])
     state._infer_cache.clear()
@@ -360,6 +371,9 @@ def _progress_pathology_tags(
     return list(dict.fromkeys(tags))
 
 
+_REPLAY_AS_GIVEN: Any = object()  # sentinel: the recorded tactic is itself Lean text
+
+
 def _close_goal(
     goal: str,
     goal_idx: int,
@@ -367,12 +381,32 @@ def _close_goal(
     new_goals: list[str],
     state: _SearchState,
     provenance: str = "learned",
+    replay: Any = _REPLAY_AS_GIVEN,
 ) -> None:
     """Close a goal and update search state. Invalidates inference cache.
 
     Args:
         provenance: Which lane closed this goal — "automation", "bootstrap", or "learned".
+        replay: The Lean text that reproduces this closure when `tactic` is a
+            descriptor rather than Lean (e.g. `rw_seq(3)`); None when nothing
+            replays it. Self-application never replays — it is not a proof.
     """
+    prepend = provenance in ("cosine_apply", "exec_selector_apply") and bool(new_goals)
+    lean_text = tactic if replay is _REPLAY_AS_GIVEN else replay
+    if provenance == "self_application" or _is_self_application_tactic(tactic, state.theorem_id):
+        lean_text = None
+    state.close_log.append(
+        {
+            "goal": goal,
+            "goal_idx": goal_idx,
+            "open_before": list(state.open_goals),
+            "tactic": tactic,
+            "lean_tactic": lean_text,
+            "new_goals": list(new_goals),
+            "provenance": provenance,
+            "prepend": prepend,
+        }
+    )
     state.open_goals.pop(goal_idx)
     state.closed_goals.append(goal)
     state.tactics_used.append(tactic)
@@ -380,7 +414,7 @@ def _close_goal(
     # After apply/exec_selector_apply, prepend new subgoals so they're tried first
     # (they're often simple and closeable by automation). Other lanes append.
     # Also mark them as post-apply for subgoal-scoped retrieval.
-    if provenance in ("cosine_apply", "exec_selector_apply") and new_goals:
+    if prepend:
         state.open_goals = list(new_goals) + state.open_goals
         state._post_apply_goals.update(new_goals)
     else:
@@ -603,7 +637,9 @@ def _try_dr_ducky(
     program_id = str(winning.get("program_id", "") or "")
     tactic_desc = f"dr_ducky[{program_id}] {script}".strip()
     new_goals = [] if result.closed else list(winning.get("goals_after") or [])
-    _close_goal(goal, goal_idx, tactic_desc or "dr_ducky", new_goals, state, "dr_ducky")
+    _close_goal(
+        goal, goal_idx, tactic_desc or "dr_ducky", new_goals, state, "dr_ducky", replay=script.strip() or None
+    )
     return True
 
 
@@ -1117,6 +1153,7 @@ def _try_cosine_rw_seq(
     current_goal = goal
     total_calls = 0
     atoms_fired = 0
+    fired: list[str] = []  # the rewrites that fired, in order — the chain's Lean text
     provenance = "cosine_rw_seq"
 
     for _ in range(max_atoms):
@@ -1150,9 +1187,10 @@ def _try_cosine_rw_seq(
                 total_calls += 1
                 if result.success:
                     atoms_fired += 1
+                    fired.append(tac)
                     if not result.new_goals:
-                        # Goal fully closed by this rewrite
-                        _close_goal(goal, goal_idx, tac, [], state, provenance)
+                        # Goal fully closed by this rewrite (after any earlier ones in the chain)
+                        _close_goal(goal, goal_idx, tac, [], state, provenance, replay="\n".join(fired))
                         return True
                     # Progress: advance to residual goal
                     new_g = result.new_goals[0]
@@ -1167,7 +1205,9 @@ def _try_cosine_rw_seq(
 
     # Report progress even if goal not fully closed
     if atoms_fired > 0:
-        _close_goal(goal, goal_idx, f"rw_seq({atoms_fired})", [current_goal], state, provenance)
+        _close_goal(
+            goal, goal_idx, f"rw_seq({atoms_fired})", [current_goal], state, provenance, replay="\n".join(fired)
+        )
         return True
     return False
 
@@ -1472,6 +1512,7 @@ def _try_interleaved_bootstrap(
             # simp made progress — try symbolic closers on each residual
             simp_residuals = list(r_simp.new_goals)
             all_closed = True
+            closers: list[str] = []  # which tactic closed each residual, in order
             for res_goal in simp_residuals:
                 res_str = res_goal if isinstance(res_goal, str) else str(res_goal)
                 for symbolic_tac in ("solve_by_elim", "aesop"):
@@ -1481,6 +1522,7 @@ def _try_interleaved_bootstrap(
                 else:
                     r_symbolic = None
                 if r_symbolic is not None and r_symbolic.success and not r_symbolic.new_goals:
+                    closers.append(symbolic_tac)
                     continue  # symbolic search closed this residual
                 # Try omega/decide as symbolic-search alternatives
                 closed_residual = False
@@ -1491,13 +1533,21 @@ def _try_interleaved_bootstrap(
                     r_fb = _try(fallback, res_str)
                     if r_fb is not None and r_fb.success and not r_fb.new_goals:
                         closed_residual = True
+                        closers.append(fallback)
                         break
                 if not closed_residual:
                     all_closed = False
                     break
             if all_closed:
                 # Record as simp→symbolic-search chain close on the original goal
-                _close(g, g_idx, "simp_then_symbolic", [], "interleaved_bootstrap/simp_aesop")
+                chain = (
+                    f"simp\n{closers[0]}"
+                    if len(closers) == 1
+                    else "simp\n" + "\n".join(f"· {c}" for c in closers)
+                )
+                _close_goal(
+                    g, g_idx, "simp_then_symbolic", [], state, "interleaved_bootstrap/simp_aesop", replay=chain
+                )
                 return True
             # simp made progress but didn't fully close — record partial advance
             _close(g, g_idx, "simp", simp_residuals, "interleaved_bootstrap/simp")
@@ -2224,11 +2274,7 @@ def _search_step(
                             (env.lean._current_env_key, goal)
                         )
                         if gs is not None:
-                            from pantograph.expr import Site
-
-                            new_gs = env.lean._server.goal_tactic(
-                                gs, tac, site=Site(goal_id=0)
-                            )
+                            new_gs = env.lean._server.goal_tactic(gs, tac, site=env.lean._site_for(goal))
                             for msg in getattr(new_gs, "messages", []):
                                 if "Try this" in getattr(msg, "data", ""):
                                     # Extract: "Try this:\n  exact foo bar"
@@ -2606,6 +2652,7 @@ def search(
         progress_steps=progress_steps,
         final_goals=list(state.open_goals),
         close_provenance=state.close_provenance,
+        close_log=list(state.close_log),
         temporal_trace=tc_trace,
         step_trace=step_trace,
         trigger_fire_count=state._trigger_fire_count,
