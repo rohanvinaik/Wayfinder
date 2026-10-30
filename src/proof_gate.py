@@ -60,6 +60,7 @@ _SYNTAX_COMMANDS = (
 # Commands that run code at elaboration time, or bypass the kernel.
 _EXECUTING_COMMANDS = ("#eval", "#exec", "run_cmd", "run_elab", "run_meta", "initialize", "builtin_initialize")
 _BYPASS_MARKERS = ("unsafe", "@[extern", "@[implemented_by", "implemented_by")
+_DEBUG_OPTION = re.compile(r"\bset_option\s+(debug\.[\w.]+)")
 
 _CHUNK_START = re.compile(
     r"^(?:@\[|(?:" + "|".join(re.escape(m) for m in _MODIFIERS) + r")\b|(?:"
@@ -234,6 +235,9 @@ def static_findings(returned: str, submitted: str) -> list[str]:
     for bad in ("sorry", "admit"):
         if bad in tokens:
             findings.append(f"`{bad}` remains")
+    # `debug.skipKernelTC` turns the kernel's check off; no `debug.` option belongs in a proof.
+    for option in dict.fromkeys(_DEBUG_OPTION.findall(strip_comments(returned))):
+        findings.append(f"kernel bypass (set_option {option})")
     return findings
 
 

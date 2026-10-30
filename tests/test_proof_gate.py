@@ -95,6 +95,14 @@ class StaticTest(unittest.TestCase):
         bad = FINISHED + "\nunsafe def boom : ℕ := 0\n"
         self.assertTrue(any("kernel bypass" in f for f in g.static_findings(bad, SUBMITTED)))
 
+    def test_switching_the_kernel_check_off_is_a_bypass(self):
+        bad = "set_option debug.skipKernelTC true\n" + FINISHED
+        self.assertIn("kernel bypass (set_option debug.skipKernelTC)", g.static_findings(bad, SUBMITTED))
+        scoped = FINISHED.replace(":= by", ":= by\n  set_option debug.skipKernelTC true in", 1)
+        self.assertTrue(any("debug.skipKernelTC" in f for f in g.static_findings(scoped, SUBMITTED)))
+        heartbeats = FINISHED.replace(":= by", ":= by\n  set_option maxHeartbeats 400000 in", 1)
+        self.assertEqual(g.static_findings(heartbeats, SUBMITTED), [])
+
 
 class FidelityTest(unittest.TestCase):
     def test_changed_definition_is_caught(self):
