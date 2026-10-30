@@ -282,10 +282,15 @@ def lifted_name(target: str, k: int) -> str:
     return f"{target}_wf_hole_{k}"
 
 
-# The second print of each hole: numerals and binders with their types written out. The plain print
-# reads better but can re-elaborate differently — `Finset.Icc 1 35` over a goal whose index was ℕ
-# re-reads at ℝ — so it is used only when it elaborates back.
-_TYPED = ("set_option pp.numericTypes true in", "set_option pp.funBinderTypes true in")
+# The second print of each hole: numerals, binders and coercions with their types written out. The
+# plain print reads better but can re-elaborate differently — `Finset.Icc 1 35` over a goal whose
+# index was ℕ re-reads at ℝ — or not at all: `↑n / ↑N ^ (3 : ℝ)⁻¹ < …` with nothing to say the casts
+# land in ℝ fails to find `HPow ℕ ℝ _` (amc12a_2021_p25), so it is used only when it elaborates back.
+_TYPED = (
+    "set_option pp.numericTypes true in",
+    "set_option pp.funBinderTypes true in",
+    "set_option pp.coercions.types true in",
+)
 
 
 def lifting_probe(declaration: str, target: str) -> str:

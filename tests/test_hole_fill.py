@@ -145,7 +145,10 @@ KAPPA_LIFTED = (
 class LiftingTest(unittest.TestCase):
     def test_the_probe_asks_extract_goal_at_every_hole_plain_then_typed(self):
         probe = hf.lifting_probe(DECLARATION, "t")
-        typed = "set_option pp.numericTypes true in\n    set_option pp.funBinderTypes true in\n"
+        typed = (
+            "set_option pp.numericTypes true in\n    set_option pp.funBinderTypes true in\n"
+            "    set_option pp.coercions.types true in\n"
+        )
         self.assertIn(f"  · extract_goal * using t_wf_hole_1\n    {typed}    extract_goal * using t_wf_hole_1_r\n    sorry", probe)
         self.assertIn("  · extract_goal * using t_wf_hole_2\n", probe)
         self.assertIn("  extract_goal * using u_wf_hole_1\n  set_option", hf.lifting_probe(LINEAR, "u"))
