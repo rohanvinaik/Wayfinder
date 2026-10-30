@@ -518,7 +518,8 @@ class Worker:
         return gate.run_lean_json(self.job["lake_bin"], self.job["verify_project"], text, timeout=timeout)
 
     def _repl_pool(self) -> lr.ReplPool | None:
-        if not self.job.get("repl", False) or not REPL_BIN.exists():
+        # a live kill switch: this file turns the REPL off for every worker that starts after it appears
+        if not self.job.get("repl", False) or not REPL_BIN.exists() or (REPL_BIN.parents[3] / "DISABLED").exists():
             return None
         with self.lock:
             if getattr(self, "repl_pool", None) is None:
