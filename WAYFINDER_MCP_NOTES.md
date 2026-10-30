@@ -180,6 +180,21 @@ the closer battery gets the undecomposed statement once. With it, all six close 
 `scripts/decomposition_test.py` — the same local prover on the whole statement and on Wayfinder's
 residual, paired, on MiniF2F-test (not the Mathlib split, where a restatement can cite itself).
 
+**MiniF2F-test, deterministic (EXP-DEC-001 phases 1–2, 2026-10-30):** the search closes 89/244, the
+local finishing pass 19 more — **108/244 with zero neural components** — leaving 125 residuals and
+11 that never start. The search runs in chunks of 20 per process: a Pantograph server that dies
+after a run of REPL panics is not always restarted, and every theorem after it is then skipped
+at once (57 of 61 on the first attempt).
+
+**Process-shaped errors, cleared before they cost an attempt** (all local, Lean's own messages
+decide): a hole is lifted twice, plain and with `pp.numericTypes`/`pp.funBinderTypes` (the plain
+print can re-elaborate at another type); `∑ x in s` → `∑ x ∈ s`; and a model answer whose every
+error is "No goals to be solved" / "made no progress" on its own proof lines has exactly those lines
+deleted and is compiled again (the 8B's mathd_algebra_276 answer verifies after three). Next, the
+typed version: replay a model's tactics step by step through Wayfinder's Pantograph kernel and keep
+what acts on a goal; a rename table mined from Mathlib's `@[deprecated] alias`es; Wayfinder's IDF
+premises in the prompt.
+
 **Registration.** Wayfinder was withheld from Claude Code in `~/.config/mcp/servers.json`
 (2026-10-20); restored and synced 2026-10-29 (still withheld from Claude Desktop). A running
 server keeps the code it started with — restart it after changing `wayfinder_mcp.py` or `src/`.

@@ -4423,6 +4423,21 @@ entry when the run completes; nothing above this line changes after it starts.
 - **Unchanged:** population rule, N, seed, the frozen sample, the matched budgets, the success rule and
   the exclusions.
 
+**Status 2026-10-30 — paused after the pilot, at Rohan's direction** (a demonstration of capacity
+first; this validation later). The amended pilot exposed a harness defect: a residual hole whose
+plain `extract_goal` print did not re-elaborate (`Finset.Icc 1 35` re-read over ℝ). Fixed in
+3395238 — every hole is now also printed with numeral and binder types written out, used when the
+plain print does not elaborate back. Per this entry's pilot rule, pilot pairs are rerun on the
+fixed harness when the experiment resumes. Phase 1–2 results stand: deterministic search 89/244
+closed, local finishing pass +19 (108/244, zero neural components), 125 residuals, 11 that did not
+start.
+
+**Separately, not pre-registered — the capacity run** (`decomposition_test.py demo`): the production
+lane on all 125 residuals (Wayfinder's holes to Goedel-Prover-V2-8B, the completed file through
+`gate.judge`, accepted proofs saved), in a seeded random order, with the no-goals / no-progress
+repair (6b418c3). It answers "what does Wayfinder + a model in RAM close", not "does decomposition
+beat the whole statement"; its records use arm B's settings and are reported apart from this entry.
+
 ## Cumulative Findings
 
 ### Hypothesis Status Tracker
