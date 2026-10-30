@@ -5,8 +5,11 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import threading
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest import mock
 
 import src.local_prover as lp
 
@@ -112,6 +115,42 @@ class StreamTest(unittest.TestCase):
         out = lp.read_events([_event(content="a"), _event(content="b")], lambda: next(calls))
         self.assertTrue(out["cancelled"])
         self.assertEqual(out["content"], "a")
+
+
+def _watcher() -> lp.Worker:
+    w = lp.Worker.__new__(lp.Worker)  # no job: the watchdog only needs its stop state
+    w.stop, w.stop_reason, w.stop_kind = threading.Event(), "", ""
+    return w
+
+
+class YieldTest(unittest.TestCase):
+    """The worker gives the machine its RAM back rather than pushing it into pressure."""
+
+    def test_pressure_held_for_thirty_seconds_stops_the_run(self):
+        w, srv = _watcher(), SimpleNamespace(stopping=False, alive=lambda: True)
+        with mock.patch.object(lp, "pressure_level", return_value=2), mock.patch.object(lp.time, "sleep"):
+            w.watch(srv)
+        self.assertTrue(w.stop.is_set())
+        self.assertEqual(w.stop_kind, "memory")
+
+    def test_a_brief_spike_does_not(self):
+        w, srv = _watcher(), SimpleNamespace(stopping=False, alive=lambda: True)
+        levels = iter([2, 2, 1, 2, 2, 1, 1])
+        polls = iter(range(7))
+
+        def sleep(_s):  # the server's own stop ends the watch after seven polls
+            if next(polls) == 6:
+                srv.stopping = True
+
+        with mock.patch.object(lp, "pressure_level", side_effect=lambda: next(levels)), \
+                mock.patch.object(lp.time, "sleep", side_effect=sleep):  # fmt: skip
+            w.watch(srv)
+        self.assertFalse(w.stop.is_set())
+
+    def test_a_dead_server_ends_the_run(self):
+        w = _watcher()
+        w.watch(SimpleNamespace(stopping=False, alive=lambda: False))
+        self.assertEqual(w.stop_kind, "server")
 
 
 class RenameTest(unittest.TestCase):

@@ -38,7 +38,7 @@ When a search stops short, `prove` turns its stopping state into Lean: the decla
 
 ## The last mile runs on this machine
 
-The holes go to an open-weights Lean prover served on the same machine — Goedel-Prover-V2, 8B (Q8_0, 8.7 GB) or 32B (Q4_K_M, 19.8 GB), through llama.cpp. Each hole is lifted to a standalone lemma (`extract_goal`), and Wayfinder's own reads of it decide which model gets it: a light hole goes to the 8B and on to the 32B if the 8B leaves it; a heavy hole goes straight to the 32B. The prompts and self-correction rounds are the model's own training protocol, Lean's errors shown back to it in the format it learned. The servers are sized to the memory free when they start and stand down when the machine needs its RAM back. Nothing leaves the machine.
+The holes go to an open-weights Lean prover served on the same machine — Goedel-Prover-V2, 8B (Q8_0, 8.7 GB) or 32B (Q4_K_M, 19.8 GB), through llama.cpp. Each hole is lifted to a standalone lemma (`extract_goal`), and Wayfinder's own reads of it decide which model gets it: a light hole goes to the 8B and on to the 32B if the 8B leaves it; a heavy hole goes straight to the 32B. The prompts and self-correction rounds are the model's own published pipeline, Lean's errors shown back to it in the format that pipeline uses. The servers are sized to the memory free when they start and stand down when the machine needs its RAM back. Nothing leaves the machine.
 
 The first theorem it closed, `kappa_additive_bound` from a specification-complexity paper, had been left open by the search; the hosted prover it would once have gone to no longer takes Lean. On an M1 Max:
 
@@ -56,7 +56,7 @@ Aristotle 3.0 (2026-10-27) stopped accepting Lean-only projects. Nothing here de
 
 A candidate that compiles can still prove a different statement or rest on an axiom. Every fill, from any prover, is checked in place before it is kept: a fill is refused before it is compiled if it holds a `sorry`, runs code at elaboration time (`#eval`, `run_tac`, parser extensions) or reaches past the kernel (`native_decide`, new axioms, `debug.` options); the file must elaborate at Lean v4.28; the theorem's statement must be unchanged, in its text and in its fully elaborated type; and `#print axioms` must name only `propext`, `Classical.choice` and `Quot.sound`. The fill that closes the last hole sends the whole file through the gate once more and saves it with every hole's source in its header.
 
-Run end to end on that paper's eight open gap theorems: seven proved on this machine (six by the search and the finishing pass, one by the 32B on the residual) and one shown false as stated, with the counterexample.
+Run end to end on the eight gap lemmas that paper's Wayfinder manifests restate: seven proved on this machine (six by the search and the finishing pass, one by the 32B on the residual) and one shown false as stated, with the counterexample. They are restatements of the gaps; the paper's own Lean still has to be wired to them.
 
 ---
 
@@ -66,7 +66,7 @@ Splitting a monolithic prover into specialists is only sound if the pieces do no
 
 $$\sigma(A \circ B) \;\le\; \sigma(A) + \sigma(B) + \gamma(A, B).$$
 
-When the specialists are independent, the cross term γ vanishes and complexity is **additive, not multiplicative** — so a system of small, stable specialists is provably no harder to specify than the sum of its parts. Wayfinder uses this to decompose the prover into typed temporal slots — PERCEPTION → RECOGNITION → PLANNING → ORCHESTRATION → EXECUTION → VERIFICATION — and it stops decomposing a slot once its process-stability proxy reads "stable." The move that makes this pay is narrative construction: it turns hard proof-structure prediction (low symmetry, exponential σ) into template classification (high symmetry, polynomial σ). Structure is not predicted. It is recognized.
+When the specialists are independent, the cross term γ vanishes and the bound is the sum of the parts — complexity adds rather than multiplies, so a system of small, stable specialists costs no more to specify than its parts do. (The Lean formalization proves this subadditive bound for κ, under injectivity and surjectivity conditions on the parts.) Wayfinder's Society-of-Mind runtime decomposes the prover into typed temporal slots — PERCEPTION → RECOGNITION → PLANNING → ORCHESTRATION → EXECUTION → VERIFICATION. The move that makes this pay is narrative construction: it turns hard proof-structure prediction (low symmetry, exponential σ) into template classification (high symmetry, polynomial σ). Structure is not predicted. It is recognized.
 
 ---
 
