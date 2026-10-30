@@ -143,11 +143,22 @@ KAPPA_LIFTED = (
 
 
 class LiftingTest(unittest.TestCase):
-    def test_the_probe_asks_extract_goal_at_every_hole(self):
+    def test_the_probe_asks_extract_goal_at_every_hole_plain_then_typed(self):
         probe = hf.lifting_probe(DECLARATION, "t")
-        self.assertIn("  · extract_goal * using t_wf_hole_1\n    sorry", probe)
-        self.assertIn("  · extract_goal * using t_wf_hole_2\n    sorry", probe)
-        self.assertIn("  extract_goal * using u_wf_hole_1\n  sorry", hf.lifting_probe(LINEAR, "u"))
+        typed = "set_option pp.numericTypes true in\n    set_option pp.funBinderTypes true in\n"
+        self.assertIn(f"  · extract_goal * using t_wf_hole_1\n    {typed}    extract_goal * using t_wf_hole_1_r\n    sorry", probe)
+        self.assertIn("  · extract_goal * using t_wf_hole_2\n", probe)
+        self.assertIn("  extract_goal * using u_wf_hole_1\n  set_option", hf.lifting_probe(LINEAR, "u"))
+
+    def test_both_prints_are_read_back_and_the_typed_one_takes_the_holes_name(self):
+        typed = "theorem t_wf_hole_1_r (h : ∑ k ∈ Finset.Icc (1 : ℕ) (35 : ℕ), f k = (0 : ℝ)) : True"
+        msgs = [{"severity": "information", "data": "theorem t_wf_hole_1 (h : ∑ k ∈ Finset.Icc 1 35, f k = 0) : True := sorry"},
+                {"severity": "information", "data": typed + " := sorry"}]  # fmt: skip
+        plain, got = hf.lifted_variants(msgs, "t")[1]
+        self.assertTrue(plain.startswith("theorem t_wf_hole_1 (h"))
+        self.assertEqual(got, typed)
+        self.assertTrue(hf.untyped_name(got, "t", 1).startswith("theorem t_wf_hole_1 (h : ∑ k ∈ Finset.Icc (1 : ℕ)"))
+        self.assertEqual(hf.lifted_from_messages(msgs, "t"), {1: plain})
 
     def test_printed_statements_are_read_back_by_hole(self):
         msgs = [{"severity": "information", "data": KAPPA_LIFTED + " := sorry"},

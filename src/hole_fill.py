@@ -282,37 +282,58 @@ def lifted_name(target: str, k: int) -> str:
     return f"{target}_wf_hole_{k}"
 
 
+# The second print of each hole: numerals and binders with their types written out. The plain print
+# reads better but can re-elaborate differently — `Finset.Icc 1 35` over a goal whose index was ℕ
+# re-reads at ℝ — so it is used only when it elaborates back.
+_TYPED = ("set_option pp.numericTypes true in", "set_option pp.funBinderTypes true in")
+
+
 def lifting_probe(declaration: str, target: str) -> str:
-    """The declaration with `extract_goal *` before every open hole's `sorry`; compiled, Lean
-    prints each hole as a standalone theorem named `lifted_name(target, k)`."""
+    """The declaration with `extract_goal *` before every open hole's `sorry`, twice — plain, then
+    with types written out (`<name>_r`); compiled, Lean prints each hole as a standalone theorem."""
     lines = declaration.splitlines()
     for s in sorted(hole_sites(declaration).values(), key=lambda s: s.sorry, reverse=True):
-        probe = f"extract_goal * using {lifted_name(target, s.index)}"
-        if s.bullet:
-            lines[s.sorry : s.sorry + 1] = [f"{s.indent}· {probe}", f"{s.indent}  sorry"]
-        else:
-            lines[s.sorry : s.sorry + 1] = [f"{s.indent}{probe}", f"{s.indent}sorry"]
+        name = lifted_name(target, s.index)
+        lead, body = (f"{s.indent}· ", f"{s.indent}  ") if s.bullet else (s.indent, s.indent)
+        lines[s.sorry : s.sorry + 1] = (
+            [f"{lead}extract_goal * using {name}"]
+            + [f"{body}{opt}" for opt in _TYPED]
+            + [f"{body}extract_goal * using {name}_r", f"{body}sorry"]
+        )
     return "\n".join(lines) + "\n"
 
 
 def lifted_from_messages(messages: list[dict], target: str) -> dict[int, str]:
-    """hole index -> the statement `extract_goal` printed for it (its `:= sorry` dropped)."""
-    head = re.compile(r"^theorem " + re.escape(target) + r"_wf_hole_(\d+)(?=[.\s({\[⦃:])")
-    out: dict[int, str] = {}
+    """hole index -> the plain statement `extract_goal` printed for it (its `:= sorry` dropped)."""
+    return {k: v[0] for k, v in lifted_variants(messages, target).items() if v[0]}
+
+
+def lifted_variants(messages: list[dict], target: str) -> dict[int, tuple[str, str]]:
+    """hole index -> (plain statement, typed statement still named `<name>_r`); "" where Lean printed none."""
+    head = re.compile(r"^theorem " + re.escape(target) + r"_wf_hole_(\d+)(_r)?(?=[.\s({\[⦃:])")
+    out: dict[int, list[str]] = {}
     for m in messages:
         if m.get("severity") != "information":
             continue
         data = str(m.get("data", "")).strip()
         hit = head.match(data)
         if hit and data.endswith(":= sorry"):
-            out[int(hit.group(1))] = data[: -len(":= sorry")].rstrip()
-    return out
+            pair = out.setdefault(int(hit.group(1)), ["", ""])
+            pair[1 if hit.group(2) else 0] = data[: -len(":= sorry")].rstrip()
+    return {k: (v[0], v[1]) for k, v in out.items()}
 
 
-def validation_block(statements: dict[int, str]) -> tuple[str, dict[int, tuple[int, int]]]:
+def untyped_name(statement: str, target: str, k: int) -> str:
+    """A typed statement under the hole's own lifted name (`<name>_r` → `<name>`)."""
+    name = lifted_name(target, k)
+    return re.sub(r"^(theorem )" + re.escape(name) + r"_r(?=[.\s({\[⦃:])", r"\1" + name, statement, count=1)
+
+
+def validation_block(statements: dict) -> tuple[str, dict]:
     """Each statement as its own `:= by sorry` declaration, to check it re-elaborates.
 
-    Returns (text, hole -> (first, last) line of its declaration, 0-based in the text).
+    Returns (text, key -> (first, last) line of its declaration, 0-based in the text); keys are any
+    sortable labels (a hole, or a hole and which print of it).
     """
     chunks, ranges, cursor = [], {}, 0
     for k in sorted(statements):
@@ -324,9 +345,9 @@ def validation_block(statements: dict[int, str]) -> tuple[str, dict[int, tuple[i
     return "\n".join(chunks), ranges
 
 
-def failing_ranges(messages: list[dict], ranges: dict[int, tuple[int, int]], first_line: int) -> dict[int, str]:
-    """hole -> the first error inside its range (`first_line` is the 1-based file line of the block)."""
-    out: dict[int, str] = {}
+def failing_ranges(messages: list[dict], ranges: dict, first_line: int) -> dict:
+    """key -> the first error inside its range (`first_line` is the 1-based file line of the block)."""
+    out: dict = {}
     for m in messages:
         if m.get("severity") != "error":
             continue

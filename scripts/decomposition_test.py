@@ -215,22 +215,28 @@ def _stray_servers() -> list[str]:
 
 def _closed(job: dict, fills: list[dict]) -> tuple[bool, list[str]]:
     """Apply every fill to the arm's file, then the acceptance gate on the completed file."""
+    accepted, reasons, _, _ = _complete(job, fills)
+    return accepted, reasons
+
+
+def _complete(job: dict, fills: list[dict]) -> tuple[bool, list[str], str | None, gate.GateResult | None]:
+    """(accepted, reasons, the completed file, the gate's verdict) for an arm's verified fills."""
     by_hole = {int(f["hole"]): f for f in fills}
     holes = [int(h["index"]) for h in job["holes"]]
     if any(k not in by_hole for k in holes):
-        return False, [f"{sum(k in by_hole for k in holes)}/{len(holes)} holes verified"]
+        return False, [f"{sum(k in by_hole for k in holes)}/{len(holes)} holes verified"], None, None
     name = re.compile(r"(?<![\w.'])" + re.escape(job["target"]) + r"(?![\w'])")
     file_text, decl = job["file"], job["declaration"]
     for k in holes:
         f = by_hole[k]
         if name.search(f["fill"]) or name.search(f["helpers"]):
-            return False, [f"hole {k}: the fill names the theorem under test (self-citation)"]
+            return False, [f"hole {k}: the fill names the theorem under test (self-citation)"], None, None
         file_text, decl = hf.apply_fill(file_text, decl, k, f["fill"], f["helpers"], note=f["source"])
     run = m._compile_v428(file_text + gate.probe_suffix(job["target"]))
     res = gate.judge(returned=file_text, submitted=job["file"], target=job["target"], compile_run=run,
                      submitted_type=job["pp_type"], allowed_axioms=tuple(job["allowed_axioms"]),
                      environment=m.VERIFY_ENV)  # fmt: skip
-    return res.accepted, res.reasons
+    return res.accepted, res.reasons, file_text, res
 
 
 def _run_arm(arm_dir: Path, job: dict) -> dict:
@@ -328,6 +334,49 @@ def recheck(exp: Path, model: str) -> None:
               flush=True)  # fmt: skip
 
 
+DEMO_SEED = 20261030
+
+
+def demo(exp: Path, model: str, limit: int | None) -> None:
+    """The capacity run: the production lane on every residual — Wayfinder's holes to the local model,
+    the completed file through the gate, each accepted proof saved with its provenance — in a seeded
+    random order, so the tally at any point is an unbiased sample of the residual population. Same
+    settings as EXP-DEC-001's arm B (Amendment 1), so its records can stand in for that arm later."""
+    rows = _rows()
+    order = sorted(_population(exp))
+    random.Random(DEMO_SEED).shuffle(order)
+    order = order[:limit] if limit else order
+    out = exp / "demo" / model
+    (out / "records").mkdir(parents=True, exist_ok=True)
+    (out / "proofs").mkdir(parents=True, exist_ok=True)
+    for i, tid in enumerate(order, 1):
+        rec_path = out / "records" / f"{tid}.json"
+        if rec_path.exists():
+            prior = json.loads(rec_path.read_text())
+            if not prior["arm"]["infra"] or prior.get("reruns", 0) >= 1:
+                continue
+        handoff = json.loads((exp / "handoffs" / f"{tid}.json").read_text())["handoff"]
+        job = _job(f"{tid}-demo", rows[tid], handoff, model, whole=False, samples=K)
+        arm = _run_arm(out / "arms" / tid, job)
+        rec = {"theorem_id": tid, "holes": len(handoff["holes"]), "kept": handoff.get("closures_kept"), "arm": arm}
+        if rec_path.exists():
+            rec["reruns"] = json.loads(rec_path.read_text()).get("reruns", 0) + 1
+        if arm["closed"]:
+            fills = json.loads((out / "arms" / tid / "fills.json").read_text())
+            ok, _, completed, res = _complete(job, fills)
+            if ok and completed and res:
+                provenance = (f"Wayfinder deterministic search ({handoff.get('closures_kept', 0)} kept closures) + "
+                              + "; ".join(f"hole {f['hole']}: {f['source']}" for f in fills))  # fmt: skip
+                (out / "proofs" / f"{tid}.lean").write_text(m._acceptance_header(res, provenance) + completed)
+        rec_path.write_text(json.dumps(rec, indent=2))
+        done = [json.loads(f.read_text()) for f in (out / "records").glob("*.json")]
+        closed = sum(1 for r in done if r["arm"]["closed"])
+        infra = sum(1 for r in done if r["arm"]["infra"])
+        print(f"[{i}/{len(order)}] {tid}: {'CLOSED' if arm['closed'] else 'open'} "
+              f"(holes {arm['holes_verified']}/{arm['holes']}, {arm['outcomes']}, {arm['wall_s']}s) — "
+              f"running tally {closed} closed of {len(done) - infra} scored, {infra} infra", flush=True)  # fmt: skip
+
+
 # ── phase 4: the report ───────────────────────────────────────────────────────
 
 
@@ -376,7 +425,7 @@ def report(exp: Path) -> dict:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
-    ap.add_argument("phase", choices=["search", "handoffs", "pairs", "recheck", "report"])
+    ap.add_argument("phase", choices=["search", "handoffs", "pairs", "recheck", "demo", "report"])
     ap.add_argument("--dir", default=str(WF / "runs" / "exp_dec_001"))
     ap.add_argument("--workers", type=int, default=3, help="hand-off builders in parallel")
     ap.add_argument("--model", default=lp.LIGHT, choices=sorted(lp.MODELS))
@@ -393,6 +442,8 @@ def main() -> int:
         pairs(exp, args.model, args.limit)
     elif args.phase == "recheck":
         recheck(exp, args.model)
+    elif args.phase == "demo":
+        demo(exp, args.model, args.limit)
     else:
         report(exp)
     return 0

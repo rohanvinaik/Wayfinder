@@ -405,18 +405,22 @@ class Worker:
             return
         self.publish(state="lifting")
         probe = self.prefix + hf.lifting_probe(self.job["declaration"], self.target)
-        lifted = hf.lifted_from_messages(self.compile(probe)["messages"], self.target)
-        block, ranges = hf.validation_block(lifted)
+        variants = hf.lifted_variants(self.compile(probe)["messages"], self.target)
+        printed = {(k, i): st for k, pair in variants.items() for i, st in enumerate(pair) if st}
+        block, ranges = hf.validation_block(printed)
         first = self.prefix.count("\n") + 1
-        broken = hf.failing_ranges(self.compile(self.prefix + block)["messages"], ranges, first) if lifted else {}
+        broken = hf.failing_ranges(self.compile(self.prefix + block)["messages"], ranges, first) if printed else {}
         for hole in self.holes:
-            statement = lifted.get(hole.index)
-            if statement is None:
+            # the plain print if it elaborates back, else the one with types written out
+            usable = [(i, st) for (k, i), st in sorted(printed.items()) if k == hole.index and (k, i) not in broken]
+            if not any(k == hole.index for k, _ in printed):
                 hole.note, hole.plan = "extract_goal printed no statement for this hole", []
-            elif hole.index in broken:
-                hole.note, hole.plan = f"the lifted statement does not re-elaborate: {broken[hole.index]}", []
+            elif not usable:
+                why = broken.get((hole.index, 1)) or broken.get((hole.index, 0))
+                hole.note, hole.plan = f"the lifted statement does not re-elaborate: {why}", []
             else:
-                hole.statement = statement
+                i, statement = usable[0]
+                hole.statement = statement if i == 0 else hf.untyped_name(statement, self.target, hole.index)
                 hole.name = hole.helper_name = hf.lifted_name(self.target, hole.index)
                 hole.binders = hf.binders(statement)
                 hole.rename = hf.rename_line(hf.context_names(hole.goal), hole.binders)
