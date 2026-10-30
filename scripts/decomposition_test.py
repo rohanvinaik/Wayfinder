@@ -490,6 +490,62 @@ def _escalate(exp: Path, model: str, order: list[str], below: str, corrections: 
               f"{sum(1 for r in tally if r['arm']['closed'])} closed of {len(tally)} the {below} left open", flush=True)
 
 
+# ── the capacity run's ledger: what each theorem cost ─────────────────────────
+
+
+def ledger(exp: Path) -> dict:
+    """Per theorem, across every demo tier: the answers the models generated (a revised-from seed is
+    not a new answer), their tokens (a cut-off answer has no count from the server: estimated from
+    its text, ~3.6 characters a token), and which tier closed it. Wayfinder's own closes cost none.
+    Goedel-Prover-V2's published MiniF2F figures are pass@32: 32 answers a theorem (up to 96
+    generations with its two revision rounds)."""
+    demo = exp / "demo"
+    tiers = sorted(d.name for d in demo.iterdir() if (d / "records").is_dir())
+    statuses = {json.loads(f.read_text())["theorem_id"]: json.loads(f.read_text()).get("status")
+                for f in (exp / "handoffs").glob("*.json")}  # fmt: skip
+    rows: dict[str, dict] = {}
+    for tid, st in statuses.items():
+        row = {"answers": 0, "tokens": 0, "estimated_tokens": 0, "closed_by": None, "tiers": []}
+        if st in ("closed", "search_closed"):
+            row["closed_by"] = "wayfinder"
+        for tier in tiers:
+            arm = demo / tier / "arms" / tid
+            rec_path = demo / tier / "records" / f"{tid}.json"
+            if not (arm / "samples.jsonl").exists():
+                continue
+            row["tiers"].append(tier)
+            for s in _jsonl(arm / "samples.jsonl"):
+                out = arm / "outputs" / f"{s['id']}.txt"
+                if "-seed-" in str(s["id"]) or not out.exists():
+                    continue
+                row["answers"] += 1
+                if s.get("tokens"):
+                    row["tokens"] += int(s["tokens"])
+                else:
+                    row["estimated_tokens"] += round(len(out.read_text()) / 3.6)
+            rec = json.loads(rec_path.read_text()) if rec_path.exists() else {}
+            if not row["closed_by"] and not rec.get("in_progress") and (rec.get("arm") or {}).get("closed"):
+                row["closed_by"] = tier
+        rows[tid] = row
+    closed = [r for r in rows.values() if r["closed_by"]]
+    by_model = [r for r in closed if r["closed_by"] != "wayfinder"]
+    spent = sorted(r["answers"] for r in by_model)
+    total_answers = sum(r["answers"] for r in rows.values())
+    summary = {
+        "theorems": len(rows), "closed": len(closed), "closed_by": {}, "answers_total": total_answers,
+        "answers_per_theorem": round(total_answers / max(1, len(rows)), 1),
+        "answers_per_model_closure": {"median": spent[len(spent) // 2] if spent else None,
+                                      "max": max(spent) if spent else None},
+        "tokens_total": sum(r["tokens"] + r["estimated_tokens"] for r in rows.values()),
+        "goedel_published": "pass@32 = 32 answers a theorem (≤ 96 generations with two revision rounds)",
+    }  # fmt: skip
+    for r in closed:
+        summary["closed_by"][r["closed_by"]] = summary["closed_by"].get(r["closed_by"], 0) + 1
+    (exp / "ledger.json").write_text(json.dumps({"summary": summary, "theorems": rows}, indent=2))
+    print(json.dumps(summary, indent=2))
+    return summary
+
+
 # ── phase 4: the report ───────────────────────────────────────────────────────
 
 
@@ -538,7 +594,7 @@ def report(exp: Path) -> dict:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
-    ap.add_argument("phase", choices=["search", "handoffs", "pairs", "recheck", "demo", "report"])
+    ap.add_argument("phase", choices=["search", "handoffs", "pairs", "recheck", "demo", "ledger", "report"])
     ap.add_argument("--dir", default=str(WF / "runs" / "exp_dec_001"))
     ap.add_argument("--workers", type=int, default=3, help="hand-off builders in parallel")
     ap.add_argument("--model", default=lp.LIGHT, choices=sorted(lp.MODELS))
@@ -573,6 +629,8 @@ def main() -> int:
         pairs(exp, args.model, args.limit)
     elif args.phase == "recheck":
         recheck(exp, args.model)
+    elif args.phase == "ledger":
+        ledger(exp)
     elif args.phase == "demo":
         demo(exp, args.model, args.limit, remote_only=args.remote_only, reverse=args.reverse,
              pool_key=args.pool_key, start=args.start, escalate_from=args.escalate_from,
