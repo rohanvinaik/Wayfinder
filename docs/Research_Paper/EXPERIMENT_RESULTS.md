@@ -4356,6 +4356,52 @@ import mlx_vis
 
 ---
 
+### EXP-DEC-001 — decomposition: the local prover on the whole statement vs on Wayfinder's residual
+
+**PRE-REGISTERED 2026-10-29, before any model sample was drawn.** Results are appended under this
+entry when the run completes; nothing above this line changes after it starts.
+
+- **Date:** 2026-10-29 (pre-registration).
+- **Script / command:** `scripts/decomposition_test.py {search,handoffs,pairs,report}` on the MCP host
+  python; run directory `runs/exp_dec_001/`.
+- **Question:** does Wayfinder's decomposition make what is left easier for a small local model than
+  the whole statement is?
+- **Data / split:** MiniF2F-test (`data/minif2f_test.jsonl`, 244). Not the Mathlib split: a restated
+  Mathlib theorem could be closed by citing the original lemma, and the gate checks statement and
+  axioms, not circularity. MiniF2F rows import only `Mathlib`, so no theorem can cite itself; a fill
+  that names the theorem under test is refused all the same.
+- **Population (fixed rule):** the theorems whose deterministic search plus local finishing pass
+  (whole-statement fallback included) ends in a residual hand-off — at least one kept Wayfinder
+  closure and at least one open hole. Wayfinder-closed, refuted, bare, skipped and failed theorems
+  are counted, not sampled.
+- **Sample:** N = 40 (all, if the population is smaller), drawn once with `random.Random(20261029)`
+  from the population sorted by theorem id, frozen in `runs/exp_dec_001/sample.json`, never
+  extended on interim results. The pilot is the first 5 of the frozen sample; if it exposes a
+  harness defect, those pairs are rerun after the fix and the change is recorded here.
+- **Arms:** A = the whole statement (the bare declaration, one hole); B = Wayfinder's residual (its
+  holes, each lifted with `extract_goal *`, proofs put back in place). The same model, quant and
+  sampling (T = 1, top-p 0.95, 32,768 new tokens), no correction rounds, arms alternating in order.
+- **Budget (matched on total attempts):** B gets k = 8 attempts per hole; A gets 8 × B's hole count.
+  Each hole stops at its first verified attempt.
+- **Primary model:** Goedel-Prover-V2-8B Q8_0 (llama.cpp, this machine). **Second arm, after the
+  primary and on the same sample:** Goedel-Prover-V2-32B Q4_K_M.
+- **Success:** A — its fill applied and the completed file accepted by `gate.judge`; B — every
+  hole's fill applied together and the completed file accepted by `gate.judge`. A truncated
+  sample is a spent attempt.
+- **Exclusions (infrastructure — never scored as model losses):** a worker run that did not end
+  `done`; any `server_error`, `memory_yield`, `context_full` or `in_place_failed` sample; a lifted
+  statement that does not re-elaborate. The arm is rerun once; if it is still infrastructure-bound
+  the pair is excluded and counted.
+- **Report:** the four cells (A✓B✓, A✓B✗, A✗B✓, A✗B✗) and the discordant pairs; B's per-hole
+  pass@8; tokens and generation time per arm; the population counts over the 244. No significance
+  claim at this N.
+- **Expectation, stated before the run:** MiniF2F-test is the model's own benchmark (the 8B card
+  reports 83–85 % pass@32 on it) and arm A gets the header it was trained on, so A should be
+  strong and B can only show in A's failure cells. B can also lose: Wayfinder's kept steps rewrite
+  hypotheses and goals — on the paper's gap lemmas a deterministic step turned
+  `sheaf_gluing_global_kill`, which `grind` closes whole, into a hole no closer took — and lifted
+  statements print in current Mathlib notation. A null or negative result is a result.
+
 ## Cumulative Findings
 
 ### Hypothesis Status Tracker
