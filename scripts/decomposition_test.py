@@ -65,22 +65,59 @@ def _jsonl(path: Path) -> list[dict]:
 # ── phase 1: the deterministic search ─────────────────────────────────────────
 
 
+CHUNK = 20  # theorems per search process: a fresh Lean server for each chunk
+RETRIES = 2  # fresh-process retries for a theorem that did not start
+
+
 def search(exp: Path) -> None:
-    rows = list(_rows().values())
-    corpus = exp / "corpus.jsonl"
-    corpus.write_text("".join(json.dumps({**r, "full_declaration": m._augmented_declaration(r)}) + "\n" for r in rows))
+    """The deterministic search, in chunks of CHUNK theorems, each chunk its own process.
+
+    A Pantograph server that dies mid-run is not always brought back, and every theorem after it
+    is then skipped at once (the first full-corpus attempt skipped 57 of its last 61 that way). So a
+    theorem that did not start is retried at the front of a later chunk, on a fresh server, up to
+    RETRIES times: a statement that genuinely cannot start skips again; one the dead kernel skipped
+    starts.
+    """
+    rows = _rows()
+    master = exp / "search.jsonl"
+    retries_path = exp / "search_retries.json"
+    retries: dict[str, int] = json.loads(retries_path.read_text()) if retries_path.exists() else {}
+    chunk_dir = exp / "chunks"
+    chunk_dir.mkdir(exist_ok=True)
     cfg = m._resolved_config(dest=exp / "config.yaml")
-    out = exp / "search.json"
-    cmd = [
-        str(m.VENV_PY), "-u", str(m.BENCH), "--config", str(cfg), "--checkpoint", str(m.CHECKPOINT),
-        "--backend", "pantograph", "--lean-project", str(m.LEAN_PROJECT), "--lean-imports", *m._lean_imports(rows),
-        "--theorems", str(corpus), "--device", "mps", "--per-theorem-timeout", "300", "--output", str(out),
-    ]  # fmt: skip
-    if out.with_suffix(".jsonl").exists():
-        cmd.append("--resume")
     env = {**os.environ, "PYTHONPATH": str(WF), "PYTHONUNBUFFERED": "1"}
-    with open(exp / "search.log", "a") as log:
-        subprocess.run(cmd, cwd=str(WF), env=env, stdout=log, stderr=subprocess.STDOUT, check=False)
+    n = len(list(chunk_dir.glob("chunk_*.jsonl")))
+    while True:
+        done = {r["theorem_id"]: r for r in _jsonl(master)}
+        redo = [t for t, r in done.items() if r.get("disposition") == "skipped_start" and retries.get(t, 0) < RETRIES]
+        fresh = [t for t in rows if t not in done]
+        batch = (redo + fresh)[:CHUNK]
+        if not batch:
+            break
+        for t in batch:
+            if t in done:
+                retries[t] = retries.get(t, 0) + 1
+        retries_path.write_text(json.dumps(retries, indent=2))
+        n += 1
+        corpus = chunk_dir / f"chunk_{n:03d}_corpus.jsonl"
+        corpus.write_text(
+            "".join(json.dumps({**rows[t], "full_declaration": m._augmented_declaration(rows[t])}) + "\n" for t in batch)
+        )
+        out = chunk_dir / f"chunk_{n:03d}.json"
+        cmd = [
+            str(m.VENV_PY), "-u", str(m.BENCH), "--config", str(cfg), "--checkpoint", str(m.CHECKPOINT),
+            "--backend", "pantograph", "--lean-project", str(m.LEAN_PROJECT), "--lean-imports",
+            *m._lean_imports([rows[t] for t in batch]), "--theorems", str(corpus), "--device", "mps",
+            "--per-theorem-timeout", "300", "--output", str(out),
+        ]  # fmt: skip
+        with open(exp / "search.log", "a") as log:
+            subprocess.run(cmd, cwd=str(WF), env=env, stdout=log, stderr=subprocess.STDOUT, check=False)
+        for r in _jsonl(out.with_suffix(".jsonl")):
+            done[r["theorem_id"]] = r
+        master.write_text("".join(json.dumps(done[t]) + "\n" for t in rows if t in done))
+        started = sum(1 for t in batch if done.get(t, {}).get("disposition") != "skipped_start")
+        print(f"chunk {n}: {len(batch)} theorems ({len([t for t in batch if retries.get(t)])} retries), "
+              f"{started} started; {len(done)}/{len(rows)} recorded", flush=True)  # fmt: skip
 
 
 # ── phase 2: the hand-offs ────────────────────────────────────────────────────
