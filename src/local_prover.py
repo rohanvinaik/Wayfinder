@@ -693,7 +693,7 @@ class Worker:
 
     def repair_round(self, hole: Hole, spec: ModelSpec, failures: list[dict], rnd: int
                      ) -> tuple[bool, list[tuple[int, list[dict], str | None]]]:  # fmt: skip
-        """Between revision rounds (a job with `repair`): the best rejected proofs' skeletons, their
+        """After each round (unless the job sets `repair` false): the best rejected proofs' skeletons, their
         holes to Wayfinder's closers. A proof completed this way is accepted like any answer. A
         skeleton with steps still open goes back to the model to complete — its plan, Wayfinder's
         closes in place, `sorry` where steps failed (Goedel's own "complete the code" form); a
@@ -701,11 +701,13 @@ class Worker:
         the completion attempts for the next round)."""
         seen: set[str] = set()
         completions: list[tuple[int, list[dict], str | None]] = []
-        for f in sorted(failures, key=lambda f: f["n_errors"])[: int(self.job.get("fix_attempts") or 4)]:
-            code = hf.extract_code(f["raw"])
-            if not code or self.stop.is_set():
-                continue
-            res = self.skeleton_repair(hole, code)
+        picked = sorted(failures, key=lambda f: f["n_errors"])[: int(self.job.get("fix_attempts") or 4)]
+        # the skeletons are compiled side by side: the model waits on them
+        with ThreadPoolExecutor(max_workers=max(1, len(picked))) as ex:
+            repaired = list(ex.map(lambda f: self.skeleton_repair(hole, hf.extract_code(f["raw"]) or ""), picked))
+        for f, res in zip(picked, repaired):
+            if self.stop.is_set():
+                break
             if res.get("skeleton") in seen:
                 continue
             seen.add(res.get("skeleton") or "")
@@ -919,7 +921,7 @@ class Worker:
             failures = []
             if self.run_round(hole, pool, attempts, failures, seeds):
                 return True
-            if self.job.get("repair") and failures:
+            if self.job.get("repair", True) and failures:  # on unless a protocol turns it off
                 solved, completions = self.repair_round(hole, pool.local.spec, failures, rnd)
                 if solved:
                     return True

@@ -305,6 +305,8 @@ def pairs(exp: Path, model: str, limit: int | None) -> None:
         rec.update(holes=holes, kept=handoff.get("closures_kept"))
         jobs = {"A": _job(f"{tid}-A", rows[tid], handoff, model, whole=True, samples=K * holes),
                 "B": _job(f"{tid}-B", rows[tid], handoff, model, whole=False, samples=K)}
+        for job in jobs.values():  # EXP-DEC-001's protocol: no repair loop, as pre-registered
+            job["repair"] = False
         order = ["A", "B"] if i % 2 == 0 else ["B", "A"]  # alternate which arm goes first
         for arm in order:
             done = rec["arms"].get(arm)
