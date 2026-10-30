@@ -726,8 +726,10 @@ class Worker:
         heavy = [c for c in base if c in rh._HEAVY_CLOSERS]
         seeds = list(dict.fromkeys(c for st in steps for c in hf.seeded_closers(st)))[:6]
         battery = [[c for c in base if c not in heavy] + seeds + heavy] * n
-        probe = rh.triage_block(decl, hole.name, battery, heartbeats=1000000)
-        run = self.compile(above + probe.text, timeout=600)
+        # heartbeats per copy above the model's own 400K, so its seeded step gets more than it had, but
+        # bounded: the probe runs two copies a hole, and the model waits on it
+        probe = rh.triage_block(decl, hole.name, battery, heartbeats=600000)
+        run = self.compile(above + probe.text, timeout=900)
         out = {"outcome": "open", "holes": n, "skeleton": decl, "replaced": sk.replaced,
                "claims": hf.claims_at_holes(decl)}  # fmt: skip
         if run["timed_out"]:
