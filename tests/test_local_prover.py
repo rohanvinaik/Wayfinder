@@ -178,6 +178,34 @@ class RepairTest(unittest.TestCase):
         self.assertIsNone(lp.repairable_lines([], 10, 20))
 
 
+class PoolTest(unittest.TestCase):
+    """Attempts take the local server's slots first, then the remotes'; a dropped remote is skipped."""
+
+    def servers(self):
+        local = SimpleNamespace(name="local", slots=2)
+        remote = SimpleNamespace(name="air", slots=1)
+        return local, remote, lp.Pool([local, remote])
+
+    def test_local_first_then_remote_then_wait_for_a_release(self):
+        local, remote, pool = self.servers()
+        self.assertEqual(pool.slots, 3)
+        self.assertIs(pool.acquire(), local)
+        self.assertIs(pool.acquire(), local)
+        self.assertIs(pool.acquire(), remote)
+        pool.release(local)
+        self.assertIs(pool.acquire(), local)
+
+    def test_a_dropped_remote_is_left_out(self):
+        local, remote, pool = self.servers()
+        pool.drop(remote)
+        self.assertEqual(pool.slots, 2)
+        self.assertIsNone(pool.acquire(exclude={id(local)}))
+
+    def test_the_pool_file_is_optional(self):
+        with mock.patch.dict("os.environ", {"WAYFINDER_LLM_POOL": "/nonexistent/pool.json"}):
+            self.assertEqual(lp.pool_config(), {})
+
+
 class RenameTest(unittest.TestCase):
     def test_the_whole_statements_helper_takes_its_own_name(self):
         lemma = "set_option maxHeartbeats 400000 in\ntheorem kappa {n : ℕ} : n = n := by\n  rfl"

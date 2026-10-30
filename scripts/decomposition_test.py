@@ -337,7 +337,7 @@ def recheck(exp: Path, model: str) -> None:
 DEMO_SEED = 20261030
 
 
-def demo(exp: Path, model: str, limit: int | None) -> None:
+def demo(exp: Path, model: str, limit: int | None, remote_only: bool = False, reverse: bool = False) -> None:
     """The capacity run: the production lane on every residual — Wayfinder's holes to the local model,
     the completed file through the gate, each accepted proof saved with its provenance — in a seeded
     random order, so the tally at any point is an unbiased sample of the residual population. Same
@@ -346,6 +346,8 @@ def demo(exp: Path, model: str, limit: int | None) -> None:
     order = sorted(_population(exp))
     random.Random(DEMO_SEED).shuffle(order)
     order = order[:limit] if limit else order
+    if reverse:  # a second stream works the same order from the end; records keep the streams apart
+        order = order[::-1]
     out = exp / "demo" / model
     (out / "records").mkdir(parents=True, exist_ok=True)
     (out / "proofs").mkdir(parents=True, exist_ok=True)
@@ -357,6 +359,11 @@ def demo(exp: Path, model: str, limit: int | None) -> None:
                 continue
         handoff = json.loads((exp / "handoffs" / f"{tid}.json").read_text())["handoff"]
         job = _job(f"{tid}-demo", rows[tid], handoff, model, whole=False, samples=K)
+        if remote_only:
+            job["remote_only"] = True
+            # claim the theorem: the other stream skips any theorem that has a record
+            claim = {"theorem_id": tid, "in_progress": True, "arm": {"infra": False, "closed": False}}
+            rec_path.write_text(json.dumps(claim))
         arm = _run_arm(out / "arms" / tid, job)
         rec = {"theorem_id": tid, "holes": len(handoff["holes"]), "kept": handoff.get("closures_kept"), "arm": arm}
         if rec_path.exists():
@@ -369,7 +376,7 @@ def demo(exp: Path, model: str, limit: int | None) -> None:
                               + "; ".join(f"hole {f['hole']}: {f['source']}" for f in fills))  # fmt: skip
                 (out / "proofs" / f"{tid}.lean").write_text(m._acceptance_header(res, provenance) + completed)
         rec_path.write_text(json.dumps(rec, indent=2))
-        done = [json.loads(f.read_text()) for f in (out / "records").glob("*.json")]
+        done = [r for f in (out / "records").glob("*.json") if not (r := json.loads(f.read_text())).get("in_progress")]
         closed = sum(1 for r in done if r["arm"]["closed"])
         infra = sum(1 for r in done if r["arm"]["infra"])
         print(f"[{i}/{len(order)}] {tid}: {'CLOSED' if arm['closed'] else 'open'} "
@@ -430,6 +437,8 @@ def main() -> int:
     ap.add_argument("--workers", type=int, default=3, help="hand-off builders in parallel")
     ap.add_argument("--model", default=lp.LIGHT, choices=sorted(lp.MODELS))
     ap.add_argument("--limit", type=int, default=None, help="only the first N of the frozen sample (the pilot)")
+    ap.add_argument("--remote-only", action="store_true", help="demo: sample only on the pool file's remote servers")
+    ap.add_argument("--reverse", action="store_true", help="demo: work the order from the end (a second stream)")
     args = ap.parse_args()
     exp = Path(args.dir)
     exp.mkdir(parents=True, exist_ok=True)
@@ -443,7 +452,7 @@ def main() -> int:
     elif args.phase == "recheck":
         recheck(exp, args.model)
     elif args.phase == "demo":
-        demo(exp, args.model, args.limit)
+        demo(exp, args.model, args.limit, remote_only=args.remote_only, reverse=args.reverse)
     else:
         report(exp)
     return 0

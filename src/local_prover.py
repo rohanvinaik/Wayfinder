@@ -229,6 +229,7 @@ class LlamaServer:
     ):
         self.binary, self.model_path, self.spec, self.slots, self.log_path = binary, model_path, spec, slots, log_path
         self.ctx = ctx or spec.ctx  # tokens per slot: the prompt and the answer
+        self.name, self.quant = "local", spec.quant
         self.proc: subprocess.Popen | None = None
         self.port = 0
         self.stopping = False
@@ -303,6 +304,75 @@ class LlamaServer:
             return read_events(resp, should_stop)
         finally:
             conn.close()  # closing mid-stream is how a sample is cancelled
+
+
+class RemoteServer(LlamaServer):
+    """A llama-server another machine runs for the same model, reached through a localhost tunnel
+    (`ssh -L port:127.0.0.1:port node`): never started or stopped here, dropped when it fails."""
+
+    def __init__(self, spec: ModelSpec, name: str, port: int, slots: int, ctx: int, quant: str):
+        super().__init__("", Path(), spec, slots, Path(), ctx=ctx)
+        self.name, self.quant, self.port = name, quant, port
+
+    def start(self, timeout: float = 0) -> None:
+        if self._request("GET", "/health", timeout=10)[0] != 200:
+            raise RuntimeError(f"{self.name}: /health did not answer 200")
+
+    def alive(self) -> bool:
+        return True
+
+    def stop(self) -> None:
+        self.stopping = True
+
+
+def pool_config() -> dict:
+    """Machine-local remote servers per model: $WAYFINDER_LLM_POOL, else ~/.config/wayfinder/llm_pool.json.
+
+    {"goedel-v2-8b": [{"name": "node", "port": 18081, "slots": 2, "ctx": 16384, "quant": "Q4_K_M"}]}
+    """
+    path = Path(os.environ.get("WAYFINDER_LLM_POOL") or Path.home() / ".config" / "wayfinder" / "llm_pool.json")
+    try:
+        return json.loads(path.read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+class Pool:
+    """The servers one model's attempts go to: the local server first, then the remotes. Each slot
+    serves one attempt at a time; a remote that fails is dropped and its attempt tried elsewhere."""
+
+    def __init__(self, servers: list[LlamaServer]):
+        self.servers = list(servers)
+        self.local = self.servers[0]
+        self.free = {id(s): s.slots for s in self.servers}
+        self.dead: set[int] = set()
+        self.cond = threading.Condition()
+
+    @property
+    def slots(self) -> int:
+        return sum(s.slots for s in self.servers if id(s) not in self.dead)
+
+    def acquire(self, exclude: set[int] | frozenset[int] = frozenset()) -> LlamaServer | None:
+        with self.cond:
+            while True:
+                live = [s for s in self.servers if id(s) not in self.dead and id(s) not in exclude]
+                if not live:
+                    return None
+                for srv in live:
+                    if self.free[id(srv)] > 0:
+                        self.free[id(srv)] -= 1
+                        return srv
+                self.cond.wait(timeout=5)
+
+    def release(self, srv: LlamaServer) -> None:
+        with self.cond:
+            self.free[id(srv)] += 1
+            self.cond.notify()
+
+    def drop(self, srv: LlamaServer) -> None:
+        with self.cond:
+            self.dead.add(id(srv))
+            self.cond.notify_all()
 
 
 # ── prompts: Goedel-Prover-V2's own (Goedel-LM/Goedel-Prover-V2, src/utils.py) ─────
@@ -541,23 +611,36 @@ class Worker:
     def seed(self, sample_id: str) -> int:
         return int(hashlib.sha256(f"{self.job['run_id']}:{sample_id}".encode()).hexdigest()[:8], 16)
 
-    def generate(self, srv: LlamaServer, messages: list[dict], sample_id: str, cancel: threading.Event) -> dict:
+    def generate(self, pool: Pool, messages: list[dict], sample_id: str, cancel: threading.Event) -> dict:
         def halted() -> bool:
             return cancel.is_set() or self.stop.is_set()
 
         if halted():
             return {"outcome": self.halt_outcome()}
         prompt = chatml(messages)
-        try:
-            n_prompt = srv.count_tokens(prompt)
-            budget = min(int(self.job["max_new_tokens"]), srv.ctx - n_prompt - 64)
-            if budget < 1024:
-                return {"outcome": "context_full", "prompt_tokens": n_prompt}
-            start = time.monotonic()
-            out = srv.complete(prompt, budget, self.seed(sample_id), halted)
-        except (OSError, http.client.HTTPException, RuntimeError, ValueError) as e:
-            return {"outcome": "server_error", "error": f"{type(e).__name__}: {e}"[:300]}
-        out.update(prompt_tokens=n_prompt, budget=budget, wall_s=round(time.monotonic() - start, 1))
+        tried: set[int] = set()
+        while True:
+            srv = pool.acquire(exclude=tried)
+            if srv is None:
+                return {"outcome": "server_error", "error": "no server left in the pool"}
+            try:
+                n_prompt = pool.local.count_tokens(prompt)  # one tokenizer for every quant of the model
+                budget = min(int(self.job["max_new_tokens"]), srv.ctx - n_prompt - 64)
+                if budget < 1024:
+                    return {"outcome": "context_full", "prompt_tokens": n_prompt}
+                start = time.monotonic()
+                out = srv.complete(prompt, budget, self.seed(sample_id), halted)
+                break
+            except (OSError, http.client.HTTPException, RuntimeError, ValueError) as e:
+                if srv is pool.local:
+                    return {"outcome": "server_error", "error": f"{type(e).__name__}: {e}"[:300]}
+                pool.drop(srv)  # a remote that fails is out for the rest of this run; the attempt goes elsewhere
+                tried.add(id(srv))
+                self.note(f"remote {srv.name} dropped: {type(e).__name__}: {e}"[:200])
+            finally:
+                pool.release(srv)
+        out.update(prompt_tokens=n_prompt, budget=budget, wall_s=round(time.monotonic() - start, 1),
+                   server=srv.name, quant=srv.quant)  # fmt: skip
         (self.dir / "outputs" / f"{sample_id}.txt").write_text(out["content"])
         if out.pop("cancelled"):
             out["outcome"] = self.halt_outcome()
@@ -575,7 +658,8 @@ class Worker:
         self, hole: Hole, spec: ModelSpec, sid: str, rnd: int, parent: str | None, gen: dict, res: dict
     ) -> None:
         outcome = res.get("outcome") or gen.get("outcome")
-        rec = {"id": sid, "hole": hole.index, "model": spec.name, "quant": spec.quant, "round": rnd, "parent": parent,
+        rec = {"id": sid, "hole": hole.index, "model": spec.name, "quant": gen.get("quant") or spec.quant,
+               "server": gen.get("server"), "round": rnd, "parent": parent,
                "outcome": outcome, "prompt_tokens": gen.get("prompt_tokens"), "budget": gen.get("budget"),
                "tokens": gen.get("tokens_predicted"),
                "stop_type": gen.get("stop_type"), "wall_s": gen.get("wall_s"), "tok_per_s": gen.get("tok_per_s"),
@@ -591,22 +675,28 @@ class Worker:
                 m["tokens"] += int(gen["tokens_predicted"])
                 m["gen_seconds"] = round(m["gen_seconds"] + float(gen.get("gen_ms") or 0) / 1000, 1)
                 m["tok_per_s"] = round(m["tokens"] / max(m["gen_seconds"], 1e-9), 2)
+                blank = {"samples": 0, "tokens": 0, "gen_seconds": 0.0}
+                per = m.setdefault("by_server", {}).setdefault(gen.get("server") or "local", blank)
+                per["samples"] += 1
+                per["tokens"] += int(gen["tokens_predicted"])
+                per["gen_seconds"] = round(per["gen_seconds"] + float(gen.get("gen_ms") or 0) / 1000, 1)
         self.publish()
 
-    def run_round(self, hole: Hole, srv: LlamaServer, attempts: list[tuple[int, list[dict], str | None]],
+    def run_round(self, hole: Hole, pool: Pool, attempts: list[tuple[int, list[dict], str | None]],
                   failures: list[dict]) -> bool:  # fmt: skip
-        """Sample every attempt (as many at once as the server has slots), check each answer as it
+        """Sample every attempt (as many at once as the pool has slots), check each answer as it
         lands, and stop the rest the moment one is verified."""
         cancel = threading.Event()
-        spec = srv.spec
-        gen_pool = ThreadPoolExecutor(max_workers=srv.slots)
+        spec = pool.local.spec
+        gen_pool = ThreadPoolExecutor(max_workers=max(1, pool.slots))
         ver_pool = ThreadPoolExecutor(max_workers=2)
         jobs: dict = {}
         for rnd, messages, parent in attempts:
             self.counter[(hole.index, spec.name)] += 1
             n = self.counter[(hole.index, spec.name)]
             sid = f"h{hole.index}-{spec.name.removeprefix('goedel-v2-')}-r{rnd}-s{n}"
-            jobs[gen_pool.submit(self.generate, srv, messages, sid, cancel)] = ("gen", sid, rnd, messages, parent, None)
+            fut = gen_pool.submit(self.generate, pool, messages, sid, cancel)
+            jobs[fut] = ("gen", sid, rnd, messages, parent, None)
         pending = set(jobs)
         solved = False
         while pending:
@@ -633,9 +723,11 @@ class Worker:
                     solved = True
                     cancel.set()
                     hole.solved_by = sid
-                    source = f"{spec.name} ({spec.quant}, local llama.cpp), sample {sid}, run {self.job['run_id']}"
+                    quant, where = gen.get("quant") or spec.quant, gen.get("server") or "local"
+                    host = "local llama.cpp" if where == "local" else f"llama.cpp on {where}"
+                    source = f"{spec.name} ({quant}, {host}), sample {sid}, run {self.job['run_id']}"
                     with self.lock:
-                        self.fills.append({"hole": hole.index, "model": spec.name, "quant": spec.quant, "sample": sid,
+                        self.fills.append({"hole": hole.index, "model": spec.name, "quant": quant, "sample": sid,
                                            "round": rnd, "form": res["form"], "fill": res["fill"],
                                            "helpers": res["helpers"], "source": source})  # fmt: skip
                         self._write("fills.json", self.fills)
@@ -646,9 +738,9 @@ class Worker:
         ver_pool.shutdown(wait=True)
         return solved
 
-    def solve(self, hole: Hole, srv: LlamaServer) -> bool:
+    def solve(self, hole: Hole, pool: Pool) -> bool:
         """Round 0 (`samples` attempts), then self-correction rounds on the best failures."""
-        self.publish(state="sampling", hole=hole.index, model=srv.spec.name)
+        self.publish(state="sampling", hole=hole.index, model=pool.local.spec.name)
         base = [{"role": "user", "content": ROUND0.format(statement=self.formal(hole))}]
         attempts: list[tuple[int, list[dict], str | None]] = [(0, base, None)] * int(self.job["samples"])
         failures: list[dict] = []
@@ -661,7 +753,7 @@ class Worker:
             if not attempts:
                 return False
             failures = []
-            if self.run_round(hole, srv, attempts, failures):
+            if self.run_round(hole, pool, attempts, failures):
                 return True
             if self.stop.is_set():
                 return False
@@ -686,7 +778,43 @@ class Worker:
                 return
             time.sleep(10)
 
+    def remotes(self, model: str, spec: ModelSpec, ctx: int) -> list[LlamaServer]:
+        """The pool file's servers for this model that answer now."""
+        out: list[LlamaServer] = []
+        for r in pool_config().get(model) or []:
+            remote = RemoteServer(spec, str(r["name"]), int(r["port"]), int(r.get("slots", 1)),
+                                  int(r.get("ctx", ctx)), str(r.get("quant", "?")))  # fmt: skip
+            try:
+                remote.start()
+                out.append(remote)
+            except (OSError, http.client.HTTPException, RuntimeError, ValueError) as e:
+                self.note(f"remote {remote.name} not answering, left out: {type(e).__name__}: {e}"[:200])
+        return out
+
+    def serve_remote_only(self, model: str, holes: list[Hole]) -> None:
+        """No local server: the pool is the other machines' servers (the first counts tokens)."""
+        spec = MODELS[model]
+        servers = self.remotes(model, spec, int(self.job.get("ctx") or spec.ctx))
+        if not servers:
+            for h in holes:
+                h.note = f"{model}: remote-only run, and no remote server answered"
+            return
+        pool = Pool(servers)
+        listed = [{"name": s.name, "slots": s.slots, "quant": s.quant, "ctx": s.ctx} for s in servers]
+        self.models.setdefault(model, {"samples": 0, "tokens": 0, "gen_seconds": 0.0}).update(
+            remote_only=True, servers=listed
+        )
+        self.publish(state="sampling", model=model)
+        for h in holes:
+            if self.stop.is_set():
+                break
+            h_start = time.monotonic()
+            if self.solve(h, pool):
+                h.note = f"verified after {time.monotonic() - h_start:.0f}s on {model} (remote)"
+
     def serve(self, model: str, holes: list[Hole]) -> None:
+        if self.job.get("remote_only"):
+            return self.serve_remote_only(model, holes)
         spec = MODELS[model]
         path = Path(self.job["gguf_dir"]) / spec.file
         if not path.exists():
@@ -713,12 +841,16 @@ class Worker:
         self.models[model]["load_seconds"] = round(time.monotonic() - start, 1)
         watcher = threading.Thread(target=self.watch, args=(srv,), daemon=True)
         watcher.start()
+        servers: list[LlamaServer] = [srv, *self.remotes(model, spec, ctx)]
+        pool = Pool(servers)
+        self.models[model]["servers"] = [{"name": s.name, "slots": s.slots, "quant": s.quant, "ctx": s.ctx}
+                                         for s in servers]  # fmt: skip
         try:
             for h in holes:
                 if self.stop.is_set():
                     break
                 h_start = time.monotonic()
-                if self.solve(h, srv):
+                if self.solve(h, pool):
                     h.note = f"verified after {time.monotonic() - h_start:.0f}s on {model}"
         finally:
             srv.stop()
