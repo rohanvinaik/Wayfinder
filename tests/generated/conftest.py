@@ -17,3 +17,11 @@ def pytest_runtest_call(item):
         if isinstance(exc, KeyboardInterrupt):
             raise
         pytest.xfail(f"Generated stub — {type(exc).__name__}: {str(exc)[:80]}")
+
+
+@pytest.fixture(autouse=True)
+def _stub_in_a_scratch_directory(tmp_path, monkeypatch):
+    """A stub calls its function with `...` for every argument, and one that takes a path writes
+    there: `init_db(...)` left a database named "Ellipsis" in the repository root on every run.
+    Each stub runs with a scratch directory as its working directory."""
+    monkeypatch.chdir(tmp_path)
