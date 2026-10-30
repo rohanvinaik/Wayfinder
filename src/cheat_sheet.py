@@ -54,9 +54,14 @@ def residual_goals(row: dict) -> list[str]:
 
 
 def _signature_walk(goal_text: str) -> list[str]:
-    """One residual goal's structural read, each sign with its evidence."""
+    """One residual goal's structural read, each sign with its evidence.
+
+    The read sees the whole goal (hypotheses included, when the text has them);
+    the line shows its target.
+    """
     reads = read_goal(goal_text)
-    lines = [f"goal ({reads.goal_bucket}): {goal_text.strip()[:160]}"]
+    target = goal_text.rsplit("⊢", 1)[-1] if "⊢" in goal_text else goal_text
+    lines = [f"goal ({reads.goal_bucket}): {' '.join(target.split())[:160]}"]
     for read in reads.reads:
         if read.sign == 0 and read.bank not in CENSOR_SLICE:
             continue  # non-slice zeros carry no hand-off content
@@ -91,8 +96,19 @@ def _negative_channel(row: dict) -> list[str]:
     ]
 
 
-def render_cheat_sheet(row: dict, manifest_row: dict | None = None) -> str:
-    """The full sheet: verdict, progress, reads walk, channels, hand-off."""
+_HANDOFF_LINE = (
+    "hand-off: prove the statement completely; reuse the verified progress "
+    "where it applies; do not add axioms or `sorry`."
+)
+
+
+def render_cheat_sheet(row: dict, manifest_row: dict | None = None, handoff_line: str | None = None) -> str:
+    """The full sheet: verdict, progress, reads walk, channels, hand-off.
+
+    `handoff_line` replaces the closing instruction — the residual hand-off
+    passes its own (fill the marked holes, keep every line), so the sheet never
+    contradicts the skeleton it accompanies.
+    """
     theorem_id = str(row.get("theorem_id", ""))
     disposition = disposition_of_row(row)
     sections: list[str] = [
@@ -129,8 +145,5 @@ def render_cheat_sheet(row: dict, manifest_row: dict | None = None) -> str:
     if fences:
         sections.append("negative channel (do not retry these families on these shapes):\n" + "\n".join(fences))
 
-    sections.append(
-        "hand-off: prove the statement completely; reuse the verified progress "
-        "where it applies; do not add axioms or `sorry`."
-    )
+    sections.append(handoff_line or _HANDOFF_LINE)
     return "\n\n".join(sections) + "\n"
