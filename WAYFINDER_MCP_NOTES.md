@@ -103,6 +103,67 @@ The server's `/version` reports Lean v4.34.0; the account allows one project in 
 (`scripts/regate_aristotle_results.py`): 59 accepted, 1 rejected (a `sorry` left in), 11
 unverifiable (`lib/Pabkit.lean` changed after they were submitted; submissions now store their text).
 
+## 2026-10-29 (evening) — closing the residual on this machine
+
+**`fill_hole(theorem_id, k, proof, helpers, source)`** is the one acceptance path for a fill,
+whoever proposes it (Claude, Codex, a person, the local lane). Nothing is compiled that could run
+code or bypass the kernel: `sorry`/`admit`, `native_decide`, `run_tac`/`by_elab`, the `#eval`
+family, parser extensions, axioms, `debug.` options, `exact?`/`apply?`. Command keywords are
+refused even mid-line, because after a parse error Lean resumes at the next command token. The
+fill replaces hole k's `sorry` (under a bullet, continuation lines sit at the bullet's column + 2),
+helpers go directly above the theorem, and the file is compiled at v4.28 with the gate's probe: no
+error, the theorem's `pp.all` type unchanged, axioms ⊆ the standard three ∪ the row's ∪ `sorryAx`
+while other holes are open. A kept fill updates the ledger — `as_built` keeps the hand-off
+`prove()` made, `holes` shrinks, `fills` records each source — so `send_to_aristotle` and the local
+lane see the smaller residual. The fill that closes the last hole runs `gate.judge` against
+`as_built` and saves the proof with every hole's source in its provenance header. A rejected fill
+changes nothing; Lean's errors come back in the reply.
+
+**`send_to_local_prover` / `local_prover_result`** run Goedel-Prover-V2 on this machine: 8B at
+Q8_0 (8.7 GB) and 32B at Q4_K_M (19.8 GB), GGUFs in `models/gguf/` (gitignored, sha256-checked
+against the Hugging Face LFS record), each served by its own llama-server on a free localhost port.
+Port 8080 belongs to the squishos model router; leave it alone.
+- **Routing** (`src/local_prover.assess`): votes from `src/structural_reads.py` plus an
+  existential target, the file's own definitions, and a whole-statement residual. Under 3 votes a
+  hole is light (8B, then 32B if the 8B leaves it); at 3 or more it is heavy (32B). `model=` forces one.
+- **Lifting**: `extract_goal * using <target>_wf_hole_k` at each hole, all lifted statements
+  re-elaborated in one compile before they are used; a whole-statement residual uses the
+  declaration as written. In place, `rename_i` restores the names `extract_goal` gave inaccessible
+  hypotheses; otherwise the proof goes in as a helper lemma applied to the explicit hypotheses.
+- **Prompts** are Goedel-Prover-V2's own (Goedel-LM/Goedel-Prover-V2 `src/utils.py`, `dpskcot`):
+  the round-0 request, then self-correction rounds that show Lean's errors between `<error>` tags.
+  The rendered text matches the models' chat template byte for byte (`tests/fixtures`). Sampling
+  is theirs too: T = 1, top-p 0.95, 32K new tokens, 8 attempts, 2 correction rounds × 2 samples
+  for each of the 4 best failures.
+- **Every answer**: deny-list → `modernize` (`∑ x in s` → `∑ x ∈ s`: the 2024 big-operator syntax
+  these models write, which this Mathlib no longer parses — the 32B's first answer on kappa
+  failed on exactly that) → the lifted lemma compiled with the model's proof (400000 heartbeats,
+  not the unlimited `0` their header uses) → the fill compiled in place. Verified fills go to
+  `fills.json`; `local_prover_result` applies them through `fill_hole`'s path, and only while the
+  ledger still holds the hand-off the run was given.
+- **Memory**: slots = full 40,960-token sequences (q8_0 KV cache) that fit beside the weights,
+  keeping `reserve_gb` free; the server is stopped when its holes are done, when memory pressure
+  holds at warn for 30 s (`kern.memorystatus_vm_pressure_level`), or on SIGTERM to the worker.
+- **The log** (`runs/local_prover/<run_id>/samples.jsonl`) gives every sample an outcome:
+  verified, wrong_proof, truncated, no_code, no_theorem, denied, in_place_failed, cancelled,
+  superseded, memory_yield, server_error, context_full. Only wrong_proof counts against a model.
+
+**Measured on `kappa_additive_bound` (M1 Max, 64 GB; the hole was the whole statement):**
+
+| | 32B Q4_K_M, 1 slot | 8B Q8_0, 4 slots |
+|---|---|---|
+| decode speed per sequence | 10.7 tok/s | 24.8 tok/s |
+| samples finished | 1 (verified) | 3 (2 hallucinated lemma names, 1 verified) |
+| time to a verified proof | ~165 s | 94 s |
+| load (warm page cache) | 4 s | 6 s |
+
+The 32B's fill was applied: `Specification_Complexity_Paper/proofs/kappa_additive_bound.lean`,
+standard axioms, provenance naming the model, quant, sample and run. That makes 7 of the paper's
+8 gap theorems proved on this machine (`greedy_step_decay` is false as stated).
+
+**Gate:** `set_option debug.*` (`debug.skipKernelTC` turns the kernel check off) is now a static
+finding, in the Aristotle path as much as the local one.
+
 **Registration.** Wayfinder was withheld from Claude Code in `~/.config/mcp/servers.json`
 (2026-10-20); restored and synced 2026-10-29 (still withheld from Claude Desktop). A running
 server keeps the code it started with — restart it after changing `wayfinder_mcp.py` or `src/`.

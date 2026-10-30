@@ -9,6 +9,12 @@ Three steps, mirroring how proofs are actually produced:
     finishes Wayfinder's proof; it is not asked to re-prove the theorem.
   * `aristotle_result(project_id)` — collect and JUDGE: the returned file is accepted only
     if it is the correct, compiling proof of the submitted statement (src/proof_gate.py).
+  * `fill_hole(theorem_id, k, proof)` — any prover's fill for hole k (Claude, Codex, a person),
+    checked in place before it is kept (src/hole_fill.py); the last fill closes the theorem
+    through the same gate and saves it.
+  * `send_to_local_prover(theorem_id)` / `local_prover_result(run_id)` — the residual's holes,
+    lifted to standalone lemmas, routed to Goedel-Prover-V2 8B or 32B running on this machine
+    (src/local_prover.py); verified fills are applied through `fill_hole`'s path.
 
 `prove()` invokes `scripts/run_benchmark.py` — the real pipeline: one neural forward
 pass per proof state (encoder → navigator → ternary 6-bank direction) → proof-network
@@ -54,6 +60,8 @@ import sys  # noqa: E402
 
 if str(WF) not in sys.path:
     sys.path.insert(0, str(WF))
+import src.hole_fill as hf  # noqa: E402
+import src.local_prover as lp  # noqa: E402
 import src.proof_gate as gate  # noqa: E402
 import src.residual_handoff as rh  # noqa: E402
 from src.cheat_sheet import render_cheat_sheet  # noqa: E402
@@ -862,7 +870,8 @@ def prove(
             nxt = (
                 f"residual: Wayfinder's verified prefix ({h.get('closures_kept')} of {h.get('closures_total')} "
                 f"closures, {h.get('closed_locally', 0)} hole(s) closed locally) with {len(h.get('holes') or [])} "
-                "hole(s) left → send_to_aristotle hands Aristotle exactly these."
+                "hole(s) left → send_to_local_prover runs the local provers on exactly these; fill_hole takes any "
+                "prover's fill through the same checks; send_to_aristotle hands Aristotle exactly these."
             )
             if _load_service_status().get("lean_only") == "refused":
                 nxt += " NOTE: Aristotle currently refuses Lean-only projects; the residual stays in the ledger."
@@ -872,7 +881,10 @@ def prove(
                     " (replay diverged or repair dropped steps)."
                 )
         elif status == "bare":
-            nxt = "no replayable progress: the residual is the whole statement → send_to_aristotle sends it as such."
+            nxt = (
+                "no replayable progress: the residual is the whole statement → send_to_local_prover or fill_hole "
+                "(hole 1); send_to_aristotle sends it as such."
+            )
             if _load_service_status().get("lean_only") == "refused":
                 nxt += " NOTE: Aristotle currently refuses Lean-only projects; the residual stays in the ledger."
         else:
@@ -1443,6 +1455,323 @@ async def aristotle_result(project_id: str, destination: str = "", require_finis
     if reconstructed:
         out["warning"] = "submitted before the gate recorded submissions: compared against a reconstruction"
     return json.dumps(out, indent=2)
+
+
+# ── filling holes: one acceptance path, whoever proposes the fill ───────────────
+
+LOCAL_RUNS = WF / "runs" / "local_prover"
+GGUF_DIR = WF / "models" / "gguf"  # gitignored; the GGUFs the local lane serves
+LLAMA_SERVER = Path(shutil.which("llama-server") or "/opt/homebrew/bin/llama-server")
+
+
+def _sha256(text: str) -> str:
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
+def _as_built(handoff: dict) -> dict:
+    """The hand-off as prove() built it, before any fill — what the final gate compares against."""
+    return handoff.get("as_built") or {"file": handoff.get("file", ""), "declaration": handoff.get("declaration", "")}
+
+
+def _row_for(theorem_id: str, manifest: str) -> dict | str:
+    """The theorem's manifest row, or an error message."""
+    man = Path(manifest).expanduser().resolve()
+    if not man.exists():
+        return f"error: manifest not found: {man}"
+    rows = [ln for ln in man.read_text().splitlines() if ln.strip() and json.loads(ln).get("theorem_id") == theorem_id]
+    if not rows:
+        return f"error: '{theorem_id}' not in {man.name}. Available: {_manifest_ids(man)}"
+    return json.loads(rows[0])
+
+
+def _open_handoff(theorem_id: str, row: dict) -> tuple[dict, dict] | str:
+    """(ledger, hand-off) for a theorem with holes open, or why there is nothing to fill."""
+    try:
+        ledger = json.loads((GOAL_LEDGER / f"{theorem_id}.json").read_text())
+    except (OSError, ValueError):
+        return f"no goal-ledger entry for '{theorem_id}': run prove('{theorem_id}') first"
+    handoff = ledger.get("handoff") or {}
+    status = handoff.get("status")
+    if status not in ("residual", "bare"):
+        why = {
+            "closed": "it is already closed",
+            "refuted": "the statement is false as written",
+            "failed": "its hand-off skeleton did not compile",
+            None: "the ledger entry predates the hand-off; re-run prove()",
+        }.get(status, f"the hand-off's status is {status!r}")
+        return f"nothing to fill: {why}"
+    if handoff.get("statement_sha256") != _statement_sha(row):
+        return f"the manifest's statement changed since prove(): re-run prove('{theorem_id}')"
+    return ledger, handoff
+
+
+def _apply_fill(theorem_id: str, row: dict, hole: int, proof: str, helpers: str, source: str) -> dict:
+    """Check one fill in place and keep it if it holds; the fill that closes the last hole sends
+    the whole file through the acceptance gate and saves it. Every prover's fill takes this path."""
+    opened = _open_handoff(theorem_id, row)
+    if isinstance(opened, str):
+        return {"accepted": False, "reasons": [opened]}
+    ledger, handoff = opened
+    target, declaration, file_text = handoff["target"], handoff["declaration"], handoff["file"]
+    sites = hf.hole_sites(declaration)
+    if hole not in sites:
+        return {"accepted": False, "reasons": [f"hole {hole} is not open (open holes: {sorted(sites) or 'none'})"]}
+    findings = hf.fill_findings(proof) + hf.helper_findings(helpers)
+    if findings:
+        return {"accepted": False, "compiled": False, "reasons": findings}
+    source = " ".join(source.split()) or "an unattributed MCP caller"
+    new_file, new_decl = hf.apply_fill(file_text, declaration, hole, proof, helpers, note=source)
+    run = _compile_v428(new_file + gate.probe_suffix(target))
+    left = len(sites) - 1
+    allowed = tuple(row.get("allowed_axioms") or ())
+    if run["timed_out"]:
+        reasons = ["compile timed out"]
+    else:
+        reasons = hf.partial_findings(run["messages"], target, handoff.get("pp_type"), allowed, left)
+    if reasons:
+        out = {"accepted": False, "compiled": True, "reasons": reasons}
+        if gate.errors_in(run["messages"]):
+            out["lean_errors"] = hf.error_report(new_file, run["messages"])[-4000:]
+        return out
+    as_built = _as_built(handoff)
+    fills = list(handoff.get("fills") or [])
+    fills.append({"hole": hole, "source": source, "proof": proof, "helpers": helpers,
+                  "at": time.strftime("%Y-%m-%d %H:%M:%S")})  # fmt: skip
+    closing: dict = {}
+    if left == 0:
+        res = gate.judge(
+            returned=new_file,
+            submitted=as_built["file"],
+            target=target,
+            compile_run=run,
+            submitted_type=handoff.get("pp_type"),
+            allowed_axioms=allowed,
+            environment=VERIFY_ENV,
+        )
+        if not res.accepted:
+            why = "the completed proof failed the acceptance gate: " + "; ".join(res.reasons)
+            return {"accepted": False, "compiled": True, "gate": res.to_dict(), "reasons": [why]}
+        provenance = (
+            f"Wayfinder ({handoff.get('closures_kept', 0)} verified closures, {handoff.get('status')}) + "
+            + "; ".join(f"hole {f['hole']}: {f['source']}" for f in fills)
+        )
+        saved_to = None
+        if _accept_home(row):
+            saved_to = str(_save_solved_proof(row, _acceptance_header(res, provenance) + new_file))
+        closing = {"status": "closed", "closed_by": provenance, "gate": {**res.to_dict(), "saved_to": saved_to}}
+    still_open = [h for h in handoff.get("holes") or [] if int(h.get("index", -1)) != hole]
+    handoff.update(as_built=as_built, file=new_file, declaration=new_decl, fills=fills, holes=still_open, **closing)
+    ledger["handoff"] = handoff
+    (GOAL_LEDGER / f"{theorem_id}.json").write_text(json.dumps(ledger, indent=2))
+    out = {"accepted": True, "hole": hole, "holes_left": left, "source": source}
+    if closing:
+        gate_rec = closing["gate"]
+        out.update(closed=True, saved_to=gate_rec["saved_to"], mode=gate_rec["mode"], axioms=gate_rec["axioms"])
+        if not gate_rec["saved_to"]:
+            out["note"] = "accepted, but the row declares no proof_home: not saved"
+    return out
+
+
+@mcp.tool()
+def fill_hole(
+    theorem_id: str,
+    hole: int,
+    proof: str,
+    helpers: str = "",
+    source: str = "",
+    manifest: str = str(DEFAULT_MANIFEST),
+) -> str:
+    """Fill ONE hole of the residual Wayfinder left — any prover's proof, checked before it is kept.
+
+    `prove(theorem_id)` leaves a hand-off whose open goals are marked `-- WAYFINDER RESIDUAL k`
+    with the goal Lean shows there. `proof` is tactic text that closes hole k in that context: it
+    replaces the hole's `sorry`, the hole's hypotheses are in scope (`rename_i` names inaccessible
+    ones). `helpers` are optional theorems/lemmas/definitions placed above the theorem.
+
+    Nothing that could run code or bypass the kernel is compiled (`sorry`, `native_decide`,
+    `run_tac`, `#eval`, new axioms, `debug.` options, …). The fill is kept only if the file then
+    compiles at v4.28, the theorem's elaborated statement is unchanged, and its axioms are the
+    standard three (plus `sorryAx` while other holes are open). The fill that closes the last hole
+    sends the whole file through the acceptance gate and saves it to the row's proof_home, every
+    hole's source named in its provenance header. A rejected fill changes nothing; Lean's errors
+    come back in the reply.
+
+    Args:
+        theorem_id: a theorem `prove` left a residual for (a row in `manifest`).
+        hole: the k of `-- WAYFINDER RESIDUAL k`.
+        proof: the tactic block for that hole.
+        helpers: Lean declarations (theorem / lemma / def / abbrev) the proof uses.
+        source: who proposed the fill (e.g. "claude-opus-5.5", "codex", "manual") — recorded.
+        manifest: JSONL manifest holding the theorem's row.
+    """
+    row = _row_for(theorem_id, manifest)
+    if isinstance(row, str):
+        return row
+    out = _apply_fill(theorem_id, row, hole, proof, helpers, source)
+    return json.dumps({"theorem_id": theorem_id, **out}, indent=2)
+
+
+@mcp.tool()
+def send_to_local_prover(
+    theorem_id: str,
+    manifest: str = str(DEFAULT_MANIFEST),
+    model: str = "auto",
+    samples: int = 8,
+    correction_rounds: int = 2,
+    max_new_tokens: int = 32768,
+    reserve_gb: float = 6.0,
+) -> str:
+    """Hand the residual's open holes to open-weights Lean provers on THIS machine, in the background.
+
+    Goedel-Prover-V2 8B (Q8_0) and 32B (Q4_K_M), GGUFs under models/gguf/, each served by its own
+    llama-server. Each hole is lifted to a standalone lemma and routed by how hard Wayfinder's
+    structural reads say it looks: light → the 8B, on to the 32B if the 8B leaves it; heavy →
+    the 32B. `model` forces one ("goedel-v2-8b" | "goedel-v2-32b"). Per hole: `samples`
+    attempts, then `correction_rounds` rounds that show the model Lean's errors (Goedel-Prover-V2's
+    own protocol). A model's server is sized to the memory free when it starts (keeping
+    `reserve_gb` free), stopped when its holes are done, and stopped early under sustained memory
+    pressure. Nothing leaves the machine.
+
+    Fire-and-return: collect with `local_prover_result(run_id)`, which applies the verified fills
+    through `fill_hole`'s path.
+    """
+    row = _row_for(theorem_id, manifest)
+    if isinstance(row, str):
+        return row
+    opened = _open_handoff(theorem_id, row)
+    if isinstance(opened, str):
+        return f"error: not sent — {opened}."
+    _, handoff = opened
+    if model != "auto" and model not in lp.MODELS:
+        return f"error: unknown model {model!r}; choose 'auto' or one of {sorted(lp.MODELS)}"
+    sites = hf.hole_sites(handoff["declaration"])
+    holes = [h for h in handoff.get("holes") or [] if int(h.get("index", -1)) in sites]
+    if not holes:
+        return "error: not sent — the hand-off has no open hole."
+    defs = _file_defs(row)
+    whole = handoff["status"] == "bare"
+    forced = None if model == "auto" else model
+    routing = {}
+    for h in holes:
+        a = lp.assess(h.get("lean_goal") or h.get("search_goal") or "", defs, whole)
+        routing[h["index"]] = {**a, "plan": lp.model_plan(a, forced)}
+    needed = {m for r in routing.values() for m in r["plan"]}
+    missing = sorted(m for m in needed if not (GGUF_DIR / lp.MODELS[m].file).exists())
+    if missing and forced:
+        return f"error: not sent — {forced} is not downloaded ({GGUF_DIR / lp.MODELS[forced].file})."
+    header, _ = rh.split_declaration(str(row["full_declaration"]))
+    run_id = f"{theorem_id}-{time.strftime('%Y%m%d-%H%M%S')}"
+    run_dir = LOCAL_RUNS / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    job = {
+        "run_id": run_id, "theorem_id": theorem_id, "row": row, "target": handoff["target"],
+        "status": handoff["status"], "file": handoff["file"], "declaration": handoff["declaration"],
+        "statement": re.sub(r":=\s*by\s*$", "", header).rstrip() if whole else "", "holes": holes,
+        "pp_type": handoff.get("pp_type"), "allowed_axioms": list(row.get("allowed_axioms") or []), "defs": defs,
+        "as_built_sha256": _sha256(_as_built(handoff)["file"]), "model": model, "samples": samples,
+        "correction_rounds": correction_rounds, "fix_attempts": 4, "fix_samples": 2,
+        "max_new_tokens": max_new_tokens, "reserve_gb": reserve_gb, "max_slots": 4,
+        "lake_bin": str(LAKE_BIN), "verify_project": str(VERIFY_PROJECT), "gguf_dir": str(GGUF_DIR),
+        "llama_server": str(LLAMA_SERVER),
+    }  # fmt: skip
+    (run_dir / "job.json").write_text(json.dumps(job, indent=2))
+    log = open(run_dir / "worker.log", "w")  # noqa: SIM115 — handed to the detached worker
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "src.local_prover", str(run_dir / "job.json")],
+        cwd=str(WF),
+        env={**os.environ, "PYTHONPATH": str(WF), "PYTHONUNBUFFERED": "1"},
+        stdout=log,
+        stderr=subprocess.STDOUT,
+        start_new_session=True,  # the run outlives this call
+    )
+    return json.dumps(
+        {
+            "run_id": run_id,
+            "pid": proc.pid,
+            "theorem_id": theorem_id,
+            "holes": len(holes),
+            "routing": routing,
+            "not_downloaded": missing,
+            "run_dir": str(run_dir),
+            "note": "Running in the background on this machine. Poll with local_prover_result(run_id); verified "
+            "fills are applied there through fill_hole's checks.",
+        },
+        indent=2,
+    )
+
+
+def _pid_alive(pid) -> bool:
+    try:
+        os.kill(int(pid), 0)
+        return True
+    except (OSError, TypeError, ValueError):
+        return False
+
+
+@mcp.tool()
+def local_prover_result(run_id: str, apply: bool = True) -> str:
+    """Progress of a `send_to_local_prover` run, with its verified fills applied. Non-blocking.
+
+    Each verified fill is re-checked and kept through `fill_hole`'s path — one acceptance path for
+    every prover — and only if the ledger still holds the hand-off the run was given (a fresh
+    `prove()` rebuilds it). The fill that closes the last hole saves the proof. Safe to call
+    repeatedly: each fill is applied once.
+
+    Args:
+        run_id: id returned by send_to_local_prover.
+        apply: apply verified fills (default True); False only reports.
+    """
+    run_dir = LOCAL_RUNS / run_id
+    try:
+        job = json.loads((run_dir / "job.json").read_text())
+    except (OSError, ValueError):
+        return f"error: no local-prover run '{run_id}' under {LOCAL_RUNS}"
+
+    def read(name: str, default):
+        try:
+            return json.loads((run_dir / name).read_text())
+        except (OSError, ValueError):
+            return default
+
+    status = read("status.json", {})
+    fills = read("fills.json", [])
+    applied = read("applied.json", {})
+    if apply:
+        for f in fills:
+            key = str(f["hole"])
+            if key in applied:
+                continue
+            opened = _open_handoff(job["theorem_id"], job["row"])
+            if not isinstance(opened, str) and _sha256(_as_built(opened[1])["file"]) != job["as_built_sha256"]:
+                applied[key] = {"accepted": False, "reasons": ["the hand-off was rebuilt since this run started"]}
+                continue
+            hole = int(f["hole"])
+            applied[key] = _apply_fill(job["theorem_id"], job["row"], hole, f["fill"], f["helpers"], f["source"])
+        (run_dir / "applied.json").write_text(json.dumps(applied, indent=2))
+    outcomes: dict = {}
+    try:
+        for ln in (run_dir / "samples.jsonl").read_text().splitlines():
+            rec = json.loads(ln)
+            per = outcomes.setdefault(rec["model"], {})
+            per[rec["outcome"]] = per.get(rec["outcome"], 0) + 1
+    except (OSError, ValueError):
+        pass
+    return json.dumps(
+        {
+            "run_id": run_id,
+            "theorem_id": job["theorem_id"],
+            "state": status.get("state", "starting"),
+            "running": _pid_alive(status.get("pid")),
+            "stop_reason": status.get("stop_reason") or None,
+            "models": status.get("models"),
+            "holes": status.get("holes"),
+            "sample_outcomes": outcomes,
+            "verified": [{k: f[k] for k in ("hole", "model", "quant", "sample", "round", "form")} for f in fills],
+            "applied": applied,
+            "notes": (status.get("notes") or [])[-3:],
+        },
+        indent=2,
+    )
 
 
 @mcp.tool()
