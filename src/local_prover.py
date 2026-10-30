@@ -79,6 +79,26 @@ HEAVY = "goedel-v2-32b"
 # Lean's budget for a candidate: Goedel-Prover-V2's own files set 400000; `0` (unlimited) would
 # let one runaway candidate hold the checker forever.
 HEARTBEATS = 400000
+# Errors this Mathlib raises where the model's 2024 Mathlib passed silently: a tactic run after its
+# goal was already closed, or one that changed nothing. Deleting exactly that line cannot change what
+# is proved — the tactic acted on nothing — and the result is compiled again. Only when every error
+# is of these kinds, only inside the model's proof, at most REPAIR_ROUNDS times.
+_REPAIRABLE = ("No goals to be solved", "made no progress")
+REPAIR_ROUNDS = 3
+
+
+def repairable_lines(messages: list[dict], first: int, last: int) -> set[int] | None:
+    """The 1-based lines to delete, if every error is a no-goals / no-progress error on a line in
+    [first, last]; else None."""
+    lines: set[int] = set()
+    for m in messages:
+        if m.get("severity") != "error":
+            continue
+        line = int((m.get("pos") or {}).get("line", -1))
+        if not any(k in str(m.get("data", "")) for k in _REPAIRABLE) or not first <= line <= last:
+            return None
+        lines.add(line)
+    return lines or None
 
 
 # ── routing: how hard does the hole look? ─────────────────────────────────────
@@ -346,6 +366,7 @@ class Worker:
         self.counter = Counter()
         self.holes: list[Hole] = []
         self.fills: list[dict] = []
+        self.repaired: dict[int, int] = {}
         self.models: dict[str, dict] = {}
         self.status: dict = {
             "run_id": self.job["run_id"], "theorem_id": self.job["theorem_id"], "pid": os.getpid(),
@@ -451,19 +472,42 @@ class Worker:
         bad = hf.fill_findings(cand.proof) + hf.helper_findings("\n\n".join(helpers))
         if bad:
             return {"outcome": "denied", "reasons": bad}
-        lemma = f"set_option maxHeartbeats {HEARTBEATS} in\n" + cand.scoped(f"{hole.statement} :={cand.proof}")
-        standalone = self.prefix + "\n\n".join(helpers + [lemma]) + "\n" + gate.probe_suffix(hole.name)
+        head = f"set_option maxHeartbeats {HEARTBEATS} in\n" + cand.scoped(f"{hole.statement} :=")
+        lemma = head + cand.proof
+        above = self.prefix + "\n\n".join(helpers + [""])  # everything before the lemma
+        standalone = above + lemma + "\n" + gate.probe_suffix(hole.name)
         run = self.compile(standalone)
         if run["timed_out"]:
             return {"outcome": "compile_timeout"}
         msgs = run["messages"]
         errors = gate.errors_in(msgs)
+        # the proof's own lines: after the line its `:=` ends, through the lemma's last line
+        first, last = (above + head).count("\n") + 2, (above + lemma).count("\n") + 1
+        removed = 0
+        for _ in range(REPAIR_ROUNDS):
+            lines = repairable_lines(msgs, first, last) if errors else None
+            if not lines:
+                break
+            kept = [ln for i, ln in enumerate(standalone.split("\n"), 1) if i not in lines]
+            standalone, last, removed = "\n".join(kept), last - len(lines), removed + len(lines)
+            run = self.compile(standalone)
+            if run["timed_out"]:
+                return {"outcome": "compile_timeout"}
+            msgs = run["messages"]
+            errors = gate.errors_in(msgs)
+        if removed and not errors:
+            lemma = "\n".join(standalone.split("\n")[above.count("\n") : last])
+            cand.proof = lemma[len(head) :]
+            self.repaired[hole.index] = removed
         axioms = gate.axioms_from_messages(msgs, hole.name)
         if errors or gate.uses_sorry(msgs) or axioms is None or not set(axioms) <= self.allowed:
             why = errors[:3] or [f"axioms: {axioms}" if axioms is not None else "no `#print axioms` report"]
             return {"outcome": "wrong_proof", "errors": why, "n_errors": len(errors),
                     "report": hf.error_report(standalone, msgs) or "\n".join(why)}  # fmt: skip
-        return self.in_place(hole, cand, helpers, lemma)
+        res = self.in_place(hole, cand, helpers, lemma)
+        if removed and not errors:
+            res["repaired"] = f"removed {removed} tactic line(s) that ran with no goals or made no progress"
+        return res
 
     def in_place(self, hole: Hole, cand: hf.Candidate, helpers: list[str], lemma: str) -> dict:
         """The proof that passed standalone, put into the hand-off: inline behind `rename_i`, else
@@ -535,7 +579,7 @@ class Worker:
                "outcome": outcome, "prompt_tokens": gen.get("prompt_tokens"), "budget": gen.get("budget"),
                "tokens": gen.get("tokens_predicted"),
                "stop_type": gen.get("stop_type"), "wall_s": gen.get("wall_s"), "tok_per_s": gen.get("tok_per_s"),
-               "form": res.get("form"), "rewrites": res.get("rewrites"),
+               "form": res.get("form"), "rewrites": res.get("rewrites"), "repaired": res.get("repaired"),
                "errors": res.get("errors") or res.get("reasons") or gen.get("error")}  # fmt: skip
         with self.lock:
             hole.outcomes[outcome] += 1

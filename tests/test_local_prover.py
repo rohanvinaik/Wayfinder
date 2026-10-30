@@ -160,6 +160,24 @@ class YieldTest(unittest.TestCase):
         self.assertEqual(w.stop_kind, "server")
 
 
+def _err(line: int, data: str) -> dict:
+    return {"severity": "error", "pos": {"line": line, "column": 4}, "data": data}
+
+
+class RepairTest(unittest.TestCase):
+    """Only errors that say a tactic acted on nothing are repaired, and only inside the proof."""
+
+    def test_no_goals_and_no_progress_lines_are_deleted(self):
+        msgs = [_err(12, "No goals to be solved"), _err(14, "ring_nf made no progress at h₁"),
+                {"severity": "warning", "pos": {"line": 3}, "data": "unused variable"}]  # fmt: skip
+        self.assertEqual(lp.repairable_lines(msgs, 10, 20), {12, 14})
+
+    def test_a_real_error_anywhere_means_no_repair(self):
+        self.assertIsNone(lp.repairable_lines([_err(12, "No goals to be solved"), _err(13, "unsolved goals")], 10, 20))
+        self.assertIsNone(lp.repairable_lines([_err(5, "No goals to be solved")], 10, 20))  # outside the proof
+        self.assertIsNone(lp.repairable_lines([], 10, 20))
+
+
 class RenameTest(unittest.TestCase):
     def test_the_whole_statements_helper_takes_its_own_name(self):
         lemma = "set_option maxHeartbeats 400000 in\ntheorem kappa {n : ℕ} : n = n := by\n  rfl"
