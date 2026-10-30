@@ -429,12 +429,24 @@ def _finish_locally(row: dict, header: str, tree: rh.Tree, best: dict, deadline:
     tried for a counterexample (`plausible`): a refuted hole means the step that produced it
     committed to something false (a `left`, a witness), so that step is given back — its
     parent becomes the hole — and the new hole is tried in turn. A refutation that reaches
-    the root means the statement itself is false. Returns (candidate, report).
+    the root means the statement itself is false. A committing step with a hole still open
+    under it is given back too, refuted or not (plausible cannot search ℝ, nor find (16, 2)):
+    the residual keeps validated progress only, and what was tried goes with the hole as a
+    comment. Returns (candidate, report).
     """
     target = _lean_name(row)
     defs = _file_defs(row)
-    report: dict = {"closed": [], "backed_off": [], "refuted_statement": None, "notes": []}
+    report: dict = {"closed": [], "backed_off": [], "withdrawn": [], "refuted_statement": None, "notes": []}
     fills = dict(best.get("fills") or {})
+    tried: dict[int, list[str]] = {}
+
+    def withdraw(holes: list[int], forced: set[int]) -> set[int]:
+        out = rh.unvalidated_commitments(tree, holes, forced)
+        for nid in sorted(out):
+            tried[nid] = rh.attempted(tree, nid)
+            report["withdrawn"].append({"goal": rh.target_of(tree.nodes[nid].goal), "steps": tried[nid]})
+        return out
+
     for _ in range(HANDOFF_FINISH_ROUNDS):
         if time.monotonic() > deadline:
             report["notes"].append("finishing pass budget spent")
@@ -463,8 +475,6 @@ def _finish_locally(row: dict, header: str, tree: rh.Tree, best: dict, deadline:
                 report["closed"].append({"goal": goal, "by": o["closed_by"]})
             elif o["refuted"]:
                 refuted.append((nid, goal, o["refuted"]))
-        if not refuted:
-            break
         forced = set(best["forced"])
         for nid, goal, cex in refuted:
             parent = tree.nodes[nid].parent
@@ -476,13 +486,33 @@ def _finish_locally(row: dict, header: str, tree: rh.Tree, best: dict, deadline:
                 forced.add(parent)
         if report["refuted_statement"]:
             break
+        withdrawn = withdraw([nid for nid in current.holes if nid not in fills], forced)
+        if not refuted and not withdrawn:
+            break
+        forced |= withdrawn
         fills = {nid: t for nid, t in fills.items() if not _under_forced(tree, nid, forced)}
         cand = _skeleton_attempt(row, header, tree, best["revert"], deadline, forced=forced, fills=fills)
         if cand is None:
             report["notes"].append("the skeleton did not compile after giving a step back")
             break
         best, fills = cand, cand["fills"]
-    return {**best, "fills": fills}, report
+    if not report["refuted_statement"]:
+        # the guarantee, whatever the budget left: no unvalidated commitment stands in the residual
+        current = rh.render(tree, revert=best["revert"], forced_holes=best["forced"], fills=fills,
+                            hole_goals=best["goals"])  # fmt: skip
+        withdrawn = withdraw([nid for nid in current.holes if nid not in fills], set(best["forced"]))
+        if withdrawn:
+            forced = set(best["forced"]) | withdrawn
+            fills = {nid: t for nid, t in fills.items() if not _under_forced(tree, nid, forced)}
+            cand = _skeleton_attempt(row, header, tree, best["revert"], time.monotonic() + 300, forced=forced,
+                                     fills=fills)  # fmt: skip
+            if cand is None:
+                report["notes"].append("the skeleton did not compile after withdrawing a commitment")
+            else:
+                best, fills = cand, cand["fills"]
+    if report["withdrawn"]:
+        report["notes"].append(f"{len(report['withdrawn'])} unvalidated commitment(s) withdrawn")
+    return {**best, "fills": fills, "tried": tried}, report
 
 
 def _build_handoff(row: dict, d: dict) -> dict:
@@ -549,7 +579,7 @@ def _build_handoff(row: dict, d: dict) -> dict:
     fills = dict(best.get("fills") or {})
     for _ in range(3):  # the combined file must still compile; a fill that breaks it is dropped
         final = rh.render(tree, revert=best["revert"], forced_holes=best["forced"], hole_goals=best["goals"],
-                          fills=fills)  # fmt: skip
+                          fills=fills, tried=best.get("tried"))  # fmt: skip
         declaration = rh.assemble(header, final)
         text = _file_with_declaration(row, declaration)
         run = _compile_v428(text + gate.probe_suffix(target))

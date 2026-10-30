@@ -97,6 +97,56 @@ class TreeTest(unittest.TestCase):
         self.assertEqual(out.kept, [0])
 
 
+class CommitmentTest(unittest.TestCase):
+    """A residual keeps validated progress only: a step that chose (a disjunct, a witness) or gave
+    something up stands only if everything under it closed. imo_1997_p5's search kept `left`, so
+    its hole was `x = 1 ∧ y = 1`, false for (16, 2): no prover could ever close it."""
+
+    # imo_1997_p5's shape: intros, then `left` commits to the first solution and its hole stays open
+    LEFT_OPEN = [
+        rec("⊢ P → A ∨ B", 0, "intros", ["h : P\n⊢ A ∨ B"], ["⊢ P → A ∨ B"]),
+        rec("h : P\n⊢ A ∨ B", 0, "left", ["h : P\n⊢ A"], ["h : P\n⊢ A ∨ B"]),
+        rec("h : P\n⊢ A", 0, "norm_num", ["h : P\n⊢ A'"], ["h : P\n⊢ A"]),
+    ]
+
+    def test_a_choice_with_a_hole_under_it_is_unvalidated(self):
+        tree = rh.build_tree(["⊢ P → A ∨ B"], self.LEFT_OPEN)
+        self.assertEqual(rh.unvalidated_commitments(tree, tree.open_ids, set()), {1})
+        self.assertEqual(rh.attempted(tree, 1), ["left", "norm_num"])
+
+    def test_a_choice_whose_branch_closed_stands(self):
+        log = self.LEFT_OPEN[:2] + [rec("h : P\n⊢ A", 0, "exact h.1", [], ["h : P\n⊢ A"])]
+        tree = rh.build_tree(["⊢ P → A ∨ B"], log)
+        self.assertEqual(rh.unvalidated_commitments(tree, tree.open_ids, set()), set())
+
+    def test_splitting_steps_and_rewrites_never_commit(self):
+        tree = rh.build_tree(["p ∧ q"], BRANCH)  # constructor on ∧, one side left open
+        self.assertEqual(rh.unvalidated_commitments(tree, tree.open_ids, set()), set())
+        for tactic in ("intros", "simp_all", "norm_num at h ⊢", "field_simp", "rcases h with ⟨x, hx⟩", "aesop"):
+            self.assertFalse(rh.commits(rh.Node(goal="⊢ G", tactic=tactic)), tactic)
+
+    def test_witnesses_and_compound_steps_commit(self):
+        for tactic in ("use 1; aesop; congr; ring", "exists 0", "right", "congr 1", "apply foo", "exfalso"):
+            self.assertTrue(rh.commits(rh.Node(goal="⊢ G", tactic=tactic)), tactic)
+        self.assertTrue(rh.commits(rh.Node(goal="⊢ ∃ b > 0, f b = 0", tactic="constructor")))
+        self.assertFalse(rh.commits(rh.Node(goal="⊢ A ↔ B", tactic="constructor")))
+
+    def test_an_outer_withdrawal_covers_the_ones_under_it(self):
+        log = [
+            rec("⊢ ∃ b, A b ∨ B b", 0, "use 1", ["⊢ A 1 ∨ B 1"], ["⊢ ∃ b, A b ∨ B b"]),
+            rec("⊢ A 1 ∨ B 1", 0, "left", ["⊢ A 1"], ["⊢ A 1 ∨ B 1"]),
+        ]
+        tree = rh.build_tree(["⊢ ∃ b, A b ∨ B b"], log)
+        self.assertEqual(rh.unvalidated_commitments(tree, tree.open_ids, set()), {0})
+
+    def test_the_hole_carries_what_was_tried_and_none_of_it_stands(self):
+        tree = rh.build_tree(["⊢ P → A ∨ B"], self.LEFT_OPEN)
+        body = rh.render(tree, forced_holes={1}, tried={1: ["left", "norm_num"]}).body
+        steps = [ln.strip() for ln in body if not ln.strip().startswith("--")]
+        self.assertEqual(steps, ["intros", "sorry"])  # `left` and what followed are not in the residual
+        self.assertIn(f"-- {rh.TRIED_MARK}: left ; norm_num", "\n".join(ln.strip() for ln in body))
+
+
 class DeclarationTest(unittest.TestCase):
     def test_binder_names(self):
         head = (

@@ -28,6 +28,7 @@ from dataclasses import dataclass, field
 _INDENT = "  "
 HOLE_MARK = "WAYFINDER RESIDUAL"
 LOCAL_MARK = "closed locally by Wayfinder's finishing pass"
+TRIED_MARK = "Wayfinder tried here and withdrew it (nothing under it closed)"
 DATA_HOLE_ERROR = "wayfinder: data hole"
 # The compile-time instrument at each hole: refuse a hole whose goal is data
 # (a witness), then print the goal Lean has there.
@@ -106,6 +107,68 @@ def build_tree(initial_goals: list[str], close_log: list[dict]) -> Tree:
     return Tree(nodes=nodes, roots=roots, open_ids=open_ids)
 
 
+# ── what the residual may keep ────────────────────────────────────────────────
+
+# Steps that can turn a true goal into a false one: they choose (a disjunct, a witness, a middle
+# term, a lemma to apply, a claim to prove first) or give something up (a hypothesis, generality).
+# One stands in a residual only if everything under it closed; otherwise it is withdrawn and its
+# own goal is the hole. Rewriting, case analysis and introduction steps cannot lose the goal's
+# truth, so they stand as validated forward progress either way.
+COMMITTING = frozenset({
+    "left", "right", "use", "use!", "exists", "existsi", "refine", "refine'", "apply", "congr", "congr!",
+    "gcongr", "exfalso", "trans", "calc", "specialize", "clear", "generalize", "have", "suffices", "wlog",
+    "apply_fun", "constructorm",
+})  # fmt: skip
+_STEP_SPLIT = re.compile(r";|<;>|\n")
+_HEAD = re.compile(r"[·\s(]*([A-Za-z_][A-Za-z_0-9'!?]*)")
+
+
+def commits(node: Node) -> bool:
+    """Whether the step at `node` can lose the goal's truth (a choice or a weakening)."""
+    for part in _STEP_SPLIT.split(node.tactic or ""):
+        m = _HEAD.match(part)
+        if not m:
+            continue
+        head = m.group(1)
+        # `constructor` splits a conjunction or an iff without loss, but on `∃` it commits a witness
+        if head in COMMITTING or (head == "constructor" and target_of(node.goal).startswith("∃")):
+            return True
+    return False
+
+
+def subtree(tree: Tree, nid: int) -> list[int]:
+    """`nid` and every node under it, in pre-order."""
+    out, stack = [], [nid]
+    while stack:
+        k = stack.pop()
+        out.append(k)
+        stack.extend(reversed(tree.nodes[k].children))
+    return out
+
+
+def unvalidated_commitments(tree: Tree, open_holes: list[int] | set[int], forced: set[int]) -> set[int]:
+    """The committing steps with a hole still open under them — none of what they chose is proven,
+    so none of it may stand in the residual. (A step already given back is not counted again.)"""
+    holes = set(open_holes)
+    out = set()
+    for nid, node in enumerate(tree.nodes):
+        if nid in forced or node.closure < 0 or not commits(node):
+            continue
+        if any(k in holes for k in subtree(tree, nid)[1:]):
+            out.add(nid)
+    # an outer withdrawal drops everything under it, inner ones included
+    return {n for n in out if not any(m != n and n in subtree(tree, m) for m in out)}
+
+
+def attempted(tree: Tree, nid: int) -> list[str]:
+    """The steps Wayfinder tried from `nid` down (pre-order), each on one line."""
+    steps = []
+    for k in subtree(tree, nid):
+        if tree.nodes[k].tactic and tree.nodes[k].closure >= 0:
+            steps.append(" ".join(tree.nodes[k].tactic.split()))
+    return steps
+
+
 # ── the declaration ───────────────────────────────────────────────────────────
 
 
@@ -182,6 +245,7 @@ def render(
     probe: bool = False,
     hole_goals: dict[int, str] | None = None,
     fills: dict[int, str] | None = None,
+    tried: dict[int, list[str]] | None = None,
 ) -> Rendered:
     """The tactic block for the tree, with a `sorry` at every open (or forced) goal.
 
@@ -190,7 +254,8 @@ def render(
     otherwise each hole carries a comment with its goal — `hole_goals[nid]`,
     the goal Lean printed there — for the prover that finishes it. `fills`
     maps a hole to the tactic the local finishing pass closed it with; a filled
-    hole is rendered as that tactic, marked, and is no longer a hole.
+    hole is rendered as that tactic, marked, and is no longer a hole. `tried` maps a hole to the
+    steps Wayfinder tried there and withdrew (unvalidated), written above it as comments.
     """
     out = Rendered(body=[], holes=[], line_node={}, kept=[])
 
@@ -226,6 +291,9 @@ def render(
                 for line in _DATA_PROBE:
                     emit(line, nid, depth)
             else:
+                steps = (tried or {}).get(nid) or []
+                if steps:
+                    emit(f"-- {TRIED_MARK}: {' ; '.join(steps)}"[:400], nid, depth)
                 emit(f"-- {HOLE_MARK} {len(out.holes)}: close this goal", nid, depth)
                 for gl in ((hole_goals or {}).get(nid) or node.goal).splitlines():
                     emit(f"--   {gl}", nid, depth)
