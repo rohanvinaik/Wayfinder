@@ -81,6 +81,8 @@ HEAVY = "goedel-v2-32b"
 # let one runaway candidate hold the checker forever.
 HEARTBEATS = 400000
 SKELETON_HOLES = 4  # a rejected proof with more failing steps than this is revised, not repaired
+SEARCH_BUDGET = 200  # tactic attempts for Wayfinder's search on each lifted step
+SEARCH_GOALS = Path(__file__).resolve().parents[1] / "scripts" / "search_goals.py"
 # Errors this Mathlib raises where the model's 2024 Mathlib passed silently: a tactic run after its
 # goal was already closed, or one that changed nothing. Deleting exactly that line cannot change what
 # is proved — the tactic acted on nothing — and the result is compiled again. Only when every error
@@ -679,16 +681,67 @@ class Worker:
             return {**out, "why": "the closers timed out"}
         fates = rh.triage_outcomes(run["messages"], probe, start)
         closed = [f["closed_by"] for f in fates]
-        out.update(closed=[c for c in closed if c],
+        out.update(closed=[c for c in closed if c], fills=closed, text=text, opens=cand.opens, helpers=cand.helpers,
                    refuted={k + 1: f["refuted"] for k, f in enumerate(fates) if f["refuted"]})  # fmt: skip
         out["partial"] = hf.fill_holes(decl, closed, left="still open: the step that was here failed")
         if all(closed):
-            proof = hf.fill_holes(text, closed).split(f"{hole.statement} :=", 1)[1]
-            answer = (f"open {' '.join(cand.opens)}\n\n" if cand.opens else "") + "\n\n".join(
-                cand.helpers + [f"{hole.statement} :={proof}"]
-            )
-            check = self._check(hole, answer)
-            out.update(outcome="verified" if check["outcome"] == "verified" else "open", check=check)
+            out.update(self.assemble(hole, out, closed))
+            return out
+        still = [k for k in range(1, n + 1) if not closed[k - 1] and k not in out["refuted"]]
+        if still and self.job.get("search", True):
+            out["lifts"] = self.lift_steps(hole, decl, closed, still, above)
+        return out
+
+    def assemble(self, hole: Hole, res: dict, fills: list) -> dict:
+        """The rejected proof's skeleton with every hole filled, through the one acceptance path."""
+        proof = hf.fill_holes(res["text"], fills).split(f"{hole.statement} :=", 1)[1]
+        answer = (f"open {' '.join(res['opens'])}\n\n" if res["opens"] else "") + "\n\n".join(
+            res["helpers"] + [f"{hole.statement} :={proof}"]
+        )
+        check = self._check(hole, answer)
+        return {"outcome": "verified" if check["outcome"] == "verified" else "open", "check": check}
+
+    def lift_steps(self, hole: Hole, decl: str, closed: list, still: list[int], above: str) -> dict[int, str]:
+        """The skeleton's steps still open, each as a standalone lemma (`extract_goal` there, the
+        plain print if it elaborates back, else the typed one), for Wayfinder's search."""
+        partial, m = hf.renumber_holes(hf.fill_holes(decl, closed))  # the open holes, renumbered in order
+        run = self.compile(above + hf.lifting_probe(partial, hole.name))
+        variants = hf.lifted_variants(run["messages"], hole.name)
+        printed = {(j, i): st for j, pair in variants.items() for i, st in enumerate(pair) if st}
+        if not printed or m != len(still):
+            return {}
+        block, ranges = hf.validation_block(printed)
+        broken = hf.failing_ranges(self.compile(above + block)["messages"], ranges, above.count("\n") + 1)
+        out: dict[int, str] = {}
+        for j, k in enumerate(still, 1):
+            usable = [(i, st) for (jj, i), st in sorted(printed.items()) if jj == j and (jj, i) not in broken]
+            if usable:
+                i, st = usable[0]
+                out[k] = st if i == 0 else hf.untyped_name(st, hole.name, j)
+        return out
+
+    def search_steps(self, hole: Hole, lifts: dict[str, str]) -> dict[str, str]:
+        """Wayfinder's deterministic search (Pantograph-checked) on lifted steps, one kernel session
+        for the batch: name -> the tactic block that proves it."""
+        if not lifts:
+            return {}
+        row = self.job.get("row") or {}
+        rows = [{"theorem_id": name, "full_declaration": f"{st} := by\n  sorry", "goal_state": hf.closed_type(st) or "",
+                 "file_path": row.get("file_path", ""), "imports": row.get("imports") or [],
+                 "opens": row.get("opens") or []} for name, st in lifts.items()]  # fmt: skip
+        req, res = self.dir / f"search-{hole.index}.json", self.dir / f"search-{hole.index}-out.json"
+        timeout = min(900, 90 + 90 * len(rows))
+        req.write_text(json.dumps({"rows": rows, "budget": SEARCH_BUDGET, "timeout": timeout, "out": str(res)}))
+        try:
+            subprocess.run([sys.executable, str(SEARCH_GOALS), str(req)], cwd=str(SEARCH_GOALS.parents[1]),
+                           capture_output=True, text=True, timeout=timeout + 60, check=False)  # fmt: skip
+            found = json.loads(res.read_text())
+        except (OSError, ValueError, subprocess.TimeoutExpired):
+            return {}
+        out = {}
+        for name, r in found.items():
+            if r.get("proved") and r.get("declaration") and ":= by" in r["declaration"]:
+                out[name] = r["declaration"].split(":= by", 1)[1].strip("\n")
         return out
 
     def repair_round(self, hole: Hole, spec: ModelSpec, failures: list[dict], rnd: int
@@ -705,6 +758,20 @@ class Worker:
         # the skeletons are compiled side by side: the model waits on them
         with ThreadPoolExecutor(max_workers=max(1, len(picked))) as ex:
             repaired = list(ex.map(lambda f: self.skeleton_repair(hole, hf.extract_code(f["raw"]) or ""), picked))
+        # the steps neither the closers nor a refutation settled: Wayfinder's search, one batch for all
+        lifts = {f"{hole.name}_wf_s{i}_{k}": re.sub(r"^(theorem|lemma)\s+\S+", f"theorem {hole.name}_wf_s{i}_{k}", st,
+                                                    count=1)  # fmt: skip
+                 for i, res in enumerate(repaired) for k, st in (res.get("lifts") or {}).items()}
+        searched = self.search_steps(hole, lifts) if lifts and not self.stop.is_set() else {}
+        for i, res in enumerate(repaired):
+            found = {k: searched[f"{hole.name}_wf_s{i}_{k}"] for k in (res.get("lifts") or {})
+                     if f"{hole.name}_wf_s{i}_{k}" in searched}  # fmt: skip
+            if found:
+                fills = [found.get(k + 1) or c for k, c in enumerate(res["fills"])]
+                res["searched"] = len(found)
+                res["partial"] = hf.fill_holes(res["skeleton"], fills, left="still open: the step that was here failed")
+                if all(fills):
+                    res.update(self.assemble(hole, res, fills))
         for f, res in zip(picked, repaired):
             if self.stop.is_set():
                 break
@@ -717,8 +784,9 @@ class Worker:
                 check = res["check"]
                 self.log_sample(hole, spec, sid, rnd, f["id"], gen, check)
                 hole.solved_by = sid
-                source = (f"{f['id']}'s plan with {res['holes']} step(s) closed by Wayfinder's closers "
-                          f"({'; '.join(res['closed'])}), run {self.job['run_id']}")  # fmt: skip
+                source = (f"{f['id']}'s plan, its {res['holes']} failing step(s) closed by Wayfinder "
+                          f"({len(res['closed'])} by its closers, {res.get('searched', 0)} by its search), "
+                          f"run {self.job['run_id']}")  # fmt: skip
                 with self.lock:
                     self.fills.append({"hole": hole.index, "model": "wayfinder", "quant": "-", "sample": sid,
                                        "round": rnd, "form": check["form"], "fill": check["fill"],

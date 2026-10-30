@@ -607,6 +607,25 @@ def skeleton(lemma: str, errors: list[tuple[int, int, str]], max_holes: int = 4)
     return Skeleton(text="\n".join(out), holes=len(replaced), replaced=replaced)
 
 
+def closed_type(statement: str) -> str | None:
+    """`theorem n (x : A) (h : P x) : Q x` as the type `∀ (x : A) (h : P x), Q x` — how the search
+    harness starts a goal no file declares (a lifted step)."""
+    flat = " ".join(statement.split())
+    m = re.match(r"^(?:theorem|lemma)\s+\S+\s*", flat)
+    if not m:
+        return None
+    rest, depth = flat[m.end() :], 0
+    for i, ch in enumerate(rest):
+        if ch in "([{⦃":
+            depth += 1
+        elif ch in ")]}⦄":
+            depth -= 1
+        elif ch == ":" and depth == 0 and rest[i : i + 2] != ":=":
+            binders, concl = rest[:i].strip(), rest[i + 1 :].strip()
+            return f"∀ {binders}, {concl}" if binders else concl
+    return None
+
+
 def tried_at(declaration: str) -> dict[int, str]:
     """Per hole, the steps Wayfinder tried there and withdrew (the hand-off's comment above it)."""
     lines, out = declaration.splitlines(), {}
@@ -634,7 +653,10 @@ def fill_holes(text: str, fills: list[str | None], left: str = "") -> str:
     for k, site in sorted(hole_sites(text).items(), reverse=True):
         lead = site.indent + ("· " if site.bullet else "")
         if fills[k - 1] is not None:
-            lines[site.marker : site.sorry + 1] = [lead + str(fills[k - 1])]
+            # a fill of several lines (a search's tactic block) keeps its own shape under the hole
+            first, *more = textwrap.dedent(str(fills[k - 1])).strip("\n").split("\n")
+            under = site.indent + ("  " if site.bullet else "")
+            lines[site.marker : site.sorry + 1] = [lead + first] + [under + ln for ln in more]
         elif left:
             lines[site.marker : site.sorry + 1] = [f"{site.indent}-- {left}", lead + "sorry"]
     return "\n".join(lines)

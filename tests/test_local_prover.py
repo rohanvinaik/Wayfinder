@@ -356,6 +356,23 @@ class RepairRoundTest(ReviseTest):
         self.assertEqual((rnd, parent), (1, "h1-repair-h1-8b-r0-s1"))
         self.assertIn(partial, messages[0]["content"])
 
+    def test_a_step_wayfinders_search_proves_goes_in_and_the_proof_is_reassembled(self):
+        w, hole = self._worker(self.STATEMENT, "BAD", repair=True)
+        skeleton = "theorem nt_wf_hole_1 : (2 : ℤ) = 2 := by\n  -- WAYFINDER RESIDUAL 1: close this goal\n  sorry"
+        w.skeleton_repair = mock.Mock(return_value={
+            "outcome": "open", "holes": 1, "skeleton": skeleton, "claims": {}, "fills": [None], "closed": [],
+            "text": "set_option maxHeartbeats 400000 in\n" + skeleton, "opens": [], "helpers": [],
+            "lifts": {1: "theorem nt_wf_hole_1_wf_hole_1 : (2 : ℤ) = 2"}})  # fmt: skip
+        w.search_steps = mock.Mock(return_value={"nt_wf_hole_1_wf_s0_1": "  revert\n  norm_num"})
+        w._check = mock.Mock(return_value={"outcome": "verified", "form": "inline", "fill": "norm_num", "helpers": ""})
+        solved, _ = w.repair_round(hole, lp.MODELS["goedel-v2-8b"], [self._failure()], 0)
+        self.assertTrue(solved)
+        (lifts,) = w.search_steps.call_args.args[1:]
+        self.assertEqual(list(lifts), ["nt_wf_hole_1_wf_s0_1"])  # renamed per skeleton for the batch
+        answer = w._check.call_args.args[1]
+        self.assertIn("  revert\n  norm_num", answer)  # the search's proof, inline at the hole
+        self.assertIn("1 by its search", w.fills[0]["source"])
+
     def test_the_goal_carries_what_wayfinder_tried_and_withdrew(self):
         w, hole = self._worker(self.STATEMENT, "BAD")
         hole.tried = "left ; norm_num"
