@@ -276,7 +276,11 @@ def _run_arm(arm_dir: Path, job: dict, *, lenient: bool = False, timeout: int = 
     # escalation tier only first attempts must: a revision carries its failed answer in the prompt
     full = [s for s in samples if not lenient or s.get("round") == 0]
     short = [s["id"] for s in full if s.get("budget") is not None and int(s["budget"]) != int(job["max_new_tokens"])]
-    infra = status.get("state") != "done" or any(outcomes.get(o) for o in INFRA) or bool(lifting) or bool(short)
+    # an arm that produced no answer at all (no server answered, a remote-only run whose machine went
+    # away) tested nothing: infrastructure, to be rerun — never the model's failure
+    unserved = not samples and not fills
+    infra = (status.get("state") != "done" or any(outcomes.get(o) for o in INFRA) or bool(lifting) or bool(short)
+             or unserved)  # fmt: skip
     if lenient and fills:  # an escalation tier's proof the gate accepts stands, whatever else went wrong
         closed, why = _closed(job, fills)
         infra = infra and not closed
