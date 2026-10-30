@@ -7,6 +7,7 @@ sorry placeholder's visibility, and the projector-seam constructor's
 direct-attribute discipline against the real ProjectedProofProgram.
 """
 
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -114,12 +115,20 @@ class DuckyProgramSeamTest(unittest.TestCase):
 
 class EnvironmentPinTest(unittest.TestCase):
     @unittest.skipUnless(
-        Path("data/lean_project_v428/lean-toolchain").exists() and Path("data/lean_project/lean-toolchain").exists(),
+        Path("data/lean_project_v428/lean-toolchain").exists() and Path("data/lean_project_v427/lean-toolchain").exists(),
         "the Lean projects live under the gitignored data/",
     )
     def test_real_project_pins_read(self):
         self.assertIn("v4.28.0", read_environment_pin("data/lean_project_v428"))
-        self.assertIn("v4.27.0", read_environment_pin("data/lean_project"))
+        self.assertIn("v4.27.0", read_environment_pin("data/lean_project_v427"))  # the retired search project
+
+    @unittest.skipUnless(Path("data/lean_project_v428/lean-toolchain").exists(), "the Lean projects live under data/")
+    def test_search_and_gate_share_one_lean(self):
+        gate = Path("data/lean_project_v428").resolve()
+        config = Path("configs/wayfinder_deterministic.yaml").read_text()
+        root = re.search(r"(?m)^\s*project_root:\s*(\S+)", config).group(1)
+        self.assertEqual(Path(root).resolve(), gate)  # the search runs in the gate's project
+        self.assertEqual(Path("data/lean_project").resolve(), gate)  # older scripts' path, linked to it
 
     def test_missing_toolchain_is_an_explicit_unpinned_marker(self):
         with tempfile.TemporaryDirectory() as tmp:

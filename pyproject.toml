@@ -15,11 +15,21 @@ dependencies = [
 axle = [
     "axiom-axle>=1.0.0",
 ]
+lean = [
+    "pantograph",  # the live Lean kernel the search acts through
+]
 dev = [
     "pytest>=7.0",
     "ruff>=0.1",
     "mcp>=1.30,<2",  # wayfinder_mcp's tests import the server; 2.x renamed FastMCP
 ]
+
+[tool.uv.sources]
+# PyPantograph is not on PyPI. v0.3.14 is the release cut for Lean 4.28.0 — the version of the
+# soundness gate and of every saved proof (wayfinder_mcp.LEAN_VERSION) — but does not build on it;
+# scripts/setup_pantograph.sh checks it out here with upstream's v0.3.15 fix backported
+# (patches/pantograph-v0.3.14-lean4.28.patch).
+pantograph = { path = "data/vendor/PyPantograph-v0.3.14-lean428" }
 
 [build-system]
 requires = ["setuptools>=68.0"]

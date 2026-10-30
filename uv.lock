@@ -1246,6 +1246,20 @@ wheels = [
 ]
 
 [[package]]
+name = "pantograph"
+version = "0.3.14"
+source = { directory = "data/vendor/PyPantograph-v0.3.14-lean428" }
+
+[package.metadata]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "jupyter-book", specifier = ">=1.0.4.post1" },
+    { name = "notebook" },
+    { name = "pytest", specifier = ">=8.4.1" },
+]
+
+[[package]]
 name = "pluggy"
 version = "1.6.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2421,12 +2435,16 @@ dev = [
     { name = "pytest" },
     { name = "ruff" },
 ]
+lean = [
+    { name = "pantograph" },
+]
 
 [package.metadata]
 requires-dist = [
     { name = "axiom-axle", marker = "extra == 'axle'", specifier = ">=1.0.0" },
     { name = "mcp", marker = "extra == 'dev'", specifier = ">=1.30,<2" },
     { name = "numpy", specifier = ">=1.24" },
+    { name = "pantograph", marker = "extra == 'lean'", directory = "data/vendor/PyPantograph-v0.3.14-lean428" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1" },
@@ -2434,7 +2452,7 @@ requires-dist = [
     { name = "torch", specifier = ">=2.1" },
     { name = "transformers", specifier = ">=4.36" },
 ]
-provides-extras = ["axle", "dev"]
+provides-extras = ["axle", "lean", "dev"]
 
 [[package]]
 name = "yarl"

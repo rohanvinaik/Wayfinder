@@ -89,10 +89,11 @@ BENCH = WF / "scripts/run_benchmark.py"
 CONFIG = WF / "configs/wayfinder_deterministic.yaml"
 # run_benchmark requires `--checkpoint`; in deterministic mode it is recorded, never loaded.
 CHECKPOINT = WF / "models/NAV-004_step5000.pt"
-# v4.27.0 — Pantograph search env (REPL + premise DB match here)
-LEAN_PROJECT = WF / "data/lean_project"
-# v4.28.0 — soundness gate: reconstructed proofs re-verified here
+# v4.28.0 — one Lean for search and checking: the soundness gate re-verifies reconstructed proofs in
+# the project the search ran in (data/lean_project links to it for older scripts; the 4.27 project is
+# kept as data/lean_project_v427)
 VERIFY_PROJECT = WF / "data/lean_project_v428"
+LEAN_PROJECT = VERIFY_PROJECT
 # The environment pin every emitted artifact carries (THE_REFOUNDING §5).
 VERIFY_ENV = read_environment_pin(VERIFY_PROJECT)
 DB = WF / "data/proof_network_v3.db"  # absolute — kills the cwd DB error

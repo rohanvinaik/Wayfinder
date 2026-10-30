@@ -1,0 +1,83 @@
+Fixes to Pantograph v0.3.14 (48c63819) for Lean 4.28.0, the version of Wayfinder's gate:
+1. Backport of 842c0fe6 (v0.3.15): Lean 4.28.0 removed Options.setString/setName/setNat/setInt;
+   the generic Options.set replaces them. Without it v0.3.14 does not build on Lean 4.28.0.
+2. Fragment: a conversion goal whose parent conversion is not in the state's fragment map is a
+   tactic error, not a panic (`fMap[parent]!`, `map[parent]!`).
+3. GoalState.parentExprs: a parent goal left unassigned without a fragment (Lean 4.28 tactics can
+   leave one delayed-assigned) reads as the default fragment, not a panic (`fragments[goal]!`).
+Each panic surfaced on amc12a_2021_p14's search, where it ended the Pantograph session.
+
+diff --git a/Pantograph/Goal.lean b/Pantograph/Goal.lean
+index 1e14a8a..3422c52 100644
+--- a/Pantograph/Goal.lean
++++ b/Pantograph/Goal.lean
+@@ -206,8 +206,9 @@ protected def GoalState.getMVarEAssignment (goalState: GoalState) (mvarId: MVarI
+ protected def GoalState.parentExprs (state : GoalState) : List (Except Fragment Expr) :=
+   state.parentMVars.map λ goal => match state.getMVarEAssignment goal with
+     | .some e => .ok e
+-    -- A parent goal which is not assigned must have a fragment
+-    | .none => .error state.fragments[goal]!
++    -- A parent goal which is not assigned should have a fragment; one with neither (a parent left
++    -- delayed-assigned, as Lean 4.28 tactics can) reads as the default fragment rather than panicking
++    | .none => .error (state.fragments.getD goal default)
+ @[always_inline]
+ protected def GoalState.hasUniqueParent (state : GoalState) : Bool :=
+   state.parentMVars.length == 1
+diff --git a/Pantograph/Library.lean b/Pantograph/Library.lean
+index 91899e5..52e8eae 100644
+--- a/Pantograph/Library.lean
++++ b/Pantograph/Library.lean
+@@ -15,21 +15,21 @@ def setOptionFromString' (opts : Options) (entry : String) : ExceptT String IO O
+   let key := key.toName
+   let defValue ← getOptionDefaultValue key
+   match defValue with
+-  | DataValue.ofString _ => pure $ opts.setString key val.toString
++  | DataValue.ofString _ => pure $ opts.set key val.toString
+   | DataValue.ofBool _   =>
+     match val with
+     | "true" => pure $ opts.setBool key true
+     | "false" => pure $ opts.setBool key false
+     | _ => throw  s!"invalid Bool option value '{val}'"
+-  | DataValue.ofName _   => pure $ opts.setName key val.toName
++  | DataValue.ofName _   => pure $ opts.set key val.toName
+   | DataValue.ofNat _    =>
+     match val.toNat? with
+     | none   => throw s!"invalid Nat option value '{val}'"
+-    | some v => pure $ opts.setNat key v
++    | some v => pure $ opts.set key v
+   | DataValue.ofInt _    =>
+     match val.toInt? with
+     | none   => throw s!"invalid Int option value '{val}'"
+-    | some v => pure $ opts.setInt key v
++    | some v => pure $ opts.set key v
+   | DataValue.ofSyntax _ => throw s!"invalid Syntax option value"
+ 
+ def runMetaM { α } (metaM: MetaM α): CoreM α :=
+diff --git a/Pantograph/Tactic/Fragment.lean b/Pantograph/Tactic/Fragment.lean
+index 0b5b1c9..e714c77 100644
+--- a/Pantograph/Tactic/Fragment.lean
++++ b/Pantograph/Tactic/Fragment.lean
+@@ -91,8 +91,9 @@ protected partial def Fragment.exit (fragment : Fragment) (goal : MVarId) (fMap:
+       !(mvarId == goal || fragment == .convSentinel goal)
+     return (fMap, [mvarId])
+   | .convSentinel parent =>
+-    let parentFragment := fMap[parent]!
+-    parentFragment.exit parent (fMap.erase goal)
++    match fMap[parent]? with
++    | .some parentFragment => parentFragment.exit parent (fMap.erase goal)
++    | .none => throwError "conversion goal {goal.name} has no parent conversion in this state"
+ 
+ protected def Fragment.step (fragment : Fragment) (goal : MVarId) (s : String) (map : FragmentMap)
+   : Elab.Tactic.TacticM FragmentMap := goal.withContext do
+@@ -180,9 +181,9 @@ protected def Fragment.step (fragment : Fragment) (goal : MVarId) (s : String) (
+           | .convSentinel parent' => parent == parent'
+           | _ => false
+       if ¬ hasSiblingFragment then
+-        -- This fragment must exist since we have conv goals
+-        let parentFragment := map[parent]!
+         -- All descendants exhausted. Exit from the parent conv.
++        let .some parentFragment := map[parent]?
++          | throwError "conversion goal {goal.name} has no parent conversion in this state"
+         return ← Prod.fst <$> parentFragment.exit parent map
+     return newConvGoals.foldl (init := map) λ acc g =>
+       acc.insert g fragment

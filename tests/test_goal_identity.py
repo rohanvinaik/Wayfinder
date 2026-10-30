@@ -20,7 +20,7 @@ from src.lean_interface import GoalRef, LeanConfig, LeanKernel
 from src.nav_contracts import TacticResult
 
 WF = Path(__file__).resolve().parents[1]
-MATHLIB_PROJECT = WF / "data" / "lean_project"
+MATHLIB_PROJECT = WF / "data" / "lean_project_v428"  # the search and the gate: Lean 4.28
 _LIVE = importlib.util.find_spec("pantograph") is not None and (MATHLIB_PROJECT / ".lake").exists()
 
 
@@ -166,7 +166,7 @@ class DuckyFrontierTest(unittest.TestCase):
 
 @unittest.skipUnless(_LIVE, "PyPantograph or the local Mathlib project is missing")
 class LiveGoalIdentityTest(unittest.TestCase):
-    """Against Lean itself (Mathlib, Lean 4.27): the three moves measured to fail before."""
+    """Against Lean itself (Mathlib, the search's Lean): the three moves measured to fail before."""
 
     @classmethod
     def setUpClass(cls):

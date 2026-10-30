@@ -42,7 +42,7 @@ search:
 # --- Lean kernel (Lane A) ---
 lean:
   backend: pantograph
-  project_root: data/lean_project
+  project_root: data/lean_project_v428
   imports: ["Mathlib"]
 
 axle:
