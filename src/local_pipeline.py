@@ -30,20 +30,28 @@ STAGE_TIMEOUT_S = 6 * 3600
 
 
 def stages(spec: dict) -> list[dict]:
-    """The stage list: (name, job overrides, when it runs). The 32B comes last: it is the slowest."""
+    """The ladder, in the order it runs. Cheapest first, the 32B last (the slowest by far) — unless
+    Wayfinder reads a hole as hard (`heavy`: the 32B goes first) or the caller named a model (only
+    that model's stages)."""
     base = {"repl": True, "repair": True, "correction_rounds": 2, "fix_attempts": 4, "fix_samples": 2}
-    out = [
-        {"name": "8b", "job": {**base, "model": "goedel-v2-8b", "samples": 8, "max_new_tokens": 8192, "ctx": 20480}},
-        {"name": "8b-long", "when": "capped", "seed_from": ["8b"],
-         "job": {**base, "model": "goedel-v2-8b", "samples": 8, "max_new_tokens": 30000, "ctx": 40960}},
-    ]  # fmt: skip
+    s8 = {"name": "8b", "job": {**base, "model": "goedel-v2-8b", "samples": 8, "max_new_tokens": 8192, "ctx": 20480}}
+    long = {"name": "8b-long", "when": "capped", "seed_from": ["8b"],
+            "job": {**base, "model": "goedel-v2-8b", "samples": 8, "max_new_tokens": 30000, "ctx": 40960}}  # fmt: skip
+    s32 = {"name": "32b", "seed_from": ["8b", "8b-long"],
+           "job": {**base, "model": "goedel-v2-32b", "samples": 4, "max_new_tokens": 8192, "ctx": 16384,
+                   "fix_attempts": 2, "fix_samples": 2}}  # fmt: skip
+    whole = []
     if spec.get("whole_job") and spec["job"].get("status") != "bare":
-        whole = {**base, "model": "goedel-v2-8b", "samples": 8, "max_new_tokens": 16384, "ctx": 28672}
-        out.append({"name": "whole", "whole": True, "job": whole})
-    out.append({"name": "32b", "seed_from": ["8b", "8b-long"],
-                "job": {**base, "model": "goedel-v2-32b", "samples": 4, "max_new_tokens": 8192, "ctx": 16384,
-                        "fix_attempts": 2, "fix_samples": 2}})  # fmt: skip
-    return out
+        job = {**base, "model": "goedel-v2-8b", "samples": 8, "max_new_tokens": 16384, "ctx": 28672}
+        whole = [{"name": "whole", "whole": True, "job": job}]
+    model = spec.get("model") or "auto"
+    if model == "goedel-v2-8b":
+        return [s8, long, *whole]
+    if model == "goedel-v2-32b":
+        return [s32]
+    if spec.get("heavy"):
+        return [s32, s8, long, *whole]
+    return [s8, long, *whole, s32]
 
 
 def _read(path: Path, default):

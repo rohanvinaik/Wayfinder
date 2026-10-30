@@ -63,6 +63,7 @@ import sys  # noqa: E402
 if str(WF) not in sys.path:
     sys.path.insert(0, str(WF))
 import src.hole_fill as hf  # noqa: E402
+import src.local_pipeline as lpipe  # noqa: E402
 import src.local_prover as lp  # noqa: E402
 import src.proof_gate as gate  # noqa: E402
 import src.residual_handoff as rh  # noqa: E402
@@ -1703,9 +1704,11 @@ def send_to_local_prover(
     model's rejected proofs and drafts made skeletons, their failing steps to Wayfinder's closers
     and search, the rest back to the model to complete — then the 8B at 30K where answers ran out
     of tokens, then the whole statement, then the 32B revising the 8B's best proofs; every check
-    through the persistent Lean REPL, every acceptance through a fresh compile. `start_at` begins
-    further down the ladder ("8b-long" | "whole" | "32b"). `pipeline=False` runs one worker with
-    the arguments below, as before.
+    through the persistent Lean REPL, every acceptance through a fresh compile. The ladder's order
+    follows Wayfinder's reads: a hole that reads as hard puts the 32B first; `model` names one model
+    and runs only its stages. The ladder sets its own samples, rounds and token caps. `start_at`
+    begins further down it ("8b-long" | "whole" | "32b"). `pipeline=False` runs one worker with the
+    arguments below, as before.
 
     Goedel-Prover-V2 8B (Q8_0) and 32B (Q4_K_M), GGUFs under models/gguf/, each served by its own
     llama-server. Each hole is lifted to a standalone lemma and routed by how hard Wayfinder's
@@ -1760,6 +1763,7 @@ def send_to_local_prover(
     }  # fmt: skip
     (run_dir / "job.json").write_text(json.dumps(job, indent=2))
     command = [sys.executable, "-m", "src.local_prover", str(run_dir / "job.json")]
+    ladder: list[str] = []
     if pipeline:
         # the standard treatment's job: the theorem itself, one hole where its proof goes
         whole_decl = header.rstrip() + f"\n  -- {rh.HOLE_MARK} 1: close this goal\n  sorry\n"
@@ -1768,8 +1772,10 @@ def send_to_local_prover(
                      "statement": re.sub(r":=\s*by\s*$", "", header).rstrip(),
                      "holes": [{"index": 1, "lean_goal": str(row.get("goal_state") or "")}],
                      "as_built_sha256": job["as_built_sha256"]}  # fmt: skip
-        (run_dir / "pipeline.json").write_text(json.dumps({"job": job, "whole_job": whole_job, "start_at": start_at},
-                                                          indent=2))  # fmt: skip
+        heavy = any(r["plan"] and r["plan"][0] == lp.HEAVY for r in routing.values())
+        spec = {"job": job, "whole_job": whole_job, "start_at": start_at, "model": model, "heavy": heavy}
+        (run_dir / "pipeline.json").write_text(json.dumps(spec, indent=2))
+        ladder = [st["name"] for st in lpipe.stages(spec)]
         command = [sys.executable, "-m", "src.local_pipeline", str(run_dir)]
     log = open(run_dir / "worker.log", "w")  # noqa: SIM115 — handed to the detached worker
     proc = subprocess.Popen(
@@ -1787,6 +1793,7 @@ def send_to_local_prover(
             "theorem_id": theorem_id,
             "holes": len(holes),
             "routing": routing,
+            "ladder": ladder if pipeline else None,
             "not_downloaded": missing,
             "run_dir": str(run_dir),
             "note": "Running in the background on this machine. Poll with local_prover_result(run_id); verified "

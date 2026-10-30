@@ -80,6 +80,14 @@ class PipelineTest(unittest.TestCase):
         ran = [Path(c.args[0][-1]).parent.name for c in sub.call_args_list]
         self.assertEqual(ran, ["8b-long", "whole", "32b"])  # a forced long stage runs without stage 1's cap hits
 
+    def test_the_ladders_order_follows_wayfinders_reads_and_the_callers_model(self):
+        spec = {"job": {"status": "residual"}, "whole_job": {"file": "WF"}}
+        names = lambda **kw: [s["name"] for s in pl.stages({**spec, **kw})]  # noqa: E731
+        self.assertEqual(names(), ["8b", "8b-long", "whole", "32b"])
+        self.assertEqual(names(heavy=True), ["32b", "8b", "8b-long", "whole"])  # a hard-reading hole
+        self.assertEqual(names(model="goedel-v2-8b"), ["8b", "8b-long", "whole"])
+        self.assertEqual(names(model="goedel-v2-32b"), ["32b"])
+
     def test_every_stages_answers_are_counted_in_the_run(self):
         run_dir, _ = self._run({"8b": {"samples": [("wrong_proof", "eos")]}})
         stages = [json.loads(x)["stage"] for x in (run_dir / "samples.jsonl").read_text().splitlines()]
