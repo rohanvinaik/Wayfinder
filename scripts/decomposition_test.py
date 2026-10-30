@@ -495,6 +495,8 @@ def _escalate(exp: Path, model: str, order: list[str], below: str, corrections: 
     ctx = ctx or max(CTX, min(40960, cap + 12288))  # room for a revision's prompt beside the full cap
     timeout = max(ARM_TIMEOUT_S, 12 * 3600 if revise or cap > CAP else 0)
     done: set[str] = set()
+    no_residual = set(_unstarted(exp))
+    order = order + [t for t in sorted(no_residual) if t not in order]  # the lower tier took these too
     quiet = 0
     while True:
         below_recs = {t: json.loads((src / f"{t}.json").read_text()) for t in order if (src / f"{t}.json").exists()}
@@ -527,10 +529,13 @@ def _escalate(exp: Path, model: str, order: list[str], below: str, corrections: 
             return
         quiet = 0
         tid = todo[0]
-        handoff = _whole_handoff(exp, tid, rows[tid]) if whole else json.loads((exp / "handoffs" / f"{tid}.json").read_text())["handoff"]
+        # a theorem with no usable residual is on its whole statement in every tier
+        on_whole = whole or tid in no_residual
+        handoff = (_whole_handoff(exp, tid, rows[tid]) if on_whole
+                   else json.loads((exp / "handoffs" / f"{tid}.json").read_text())["handoff"])  # fmt: skip
         hit_cap = _hit_cap(exp / "demo" / below / "arms" / tid)
         fresh = samples if (hit_cap or not revise or whole) else fresh_uncapped
-        if whole and handoff.get("status") in ("closed", "refuted", "failed"):
+        if on_whole and handoff.get("status") in ("closed", "refuted", "failed"):
             # the finishing pass settled it on the whole statement (closed by Wayfinder alone, false, or
             # not elaborating): nothing for a model to do
             closed = handoff["status"] == "closed"
@@ -540,10 +545,11 @@ def _escalate(exp: Path, model: str, order: list[str], below: str, corrections: 
             done.add(tid)
             print(f"[{out.name}] {tid}: the finishing pass on the whole statement: {handoff['status']}", flush=True)
             continue
-        job = _job(f"{tid}-{out.name}", rows[tid], handoff, model, whole=whole, samples=fresh, cap=cap, ctx=ctx)
+        job = _job(f"{tid}-{out.name}", rows[tid], handoff, model, whole=on_whole, samples=fresh, cap=cap, ctx=ctx)
         # repair: between revision rounds, rejected proofs' skeletons to Wayfinder's closers (§5)
         job.update(correction_rounds=corrections, fix_attempts=fix[0], fix_samples=fix[1], repair=True, repl=True)
-        if revise and not whole:  # the lower tier's rejected proofs, revised with Lean's errors (Goedel's self-correction)
+        if revise and not whole:  # the lower tier's rejected proofs (Goedel's self-correction); seeds answered
+            # the same statement either way: the lower tier gave a no-residual theorem its whole statement too
             below_arm = exp / "demo" / below / "arms" / tid
             seeds = [{k: s.get(k) for k in ("id", "quant", "server", "model", "stop_type")}
                      for s in _jsonl(below_arm / "samples.jsonl") if s.get("outcome") == "wrong_proof"]  # fmt: skip
