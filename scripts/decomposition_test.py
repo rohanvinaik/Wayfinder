@@ -352,7 +352,8 @@ DEMO_SEED = 20261030
 def demo(exp: Path, model: str, limit: int | None, remote_only: bool = False, reverse: bool = False,
          pool_key: str = "", start: int = 0, escalate_from: str = "", corrections: int = 0,
          cap: int = CAP, capped: str = "any", tier: str = "", revise: bool = False, samples: int = K,
-         fresh_uncapped: int = K, ctx: int = 0, fix: tuple[int, int] = (4, 2)) -> None:  # fmt: skip
+         fresh_uncapped: int = K, ctx: int = 0, fix: tuple[int, int] = (4, 2), whole: bool = False,
+         theorems: str = "open") -> None:  # fmt: skip
     """The capacity run: the production lane on every residual — Wayfinder's holes to the local model,
     the completed file through the gate, each accepted proof saved with its provenance — in a seeded
     random order, so the tally at any point is an unbiased sample of the residual population. Same
@@ -370,7 +371,7 @@ def demo(exp: Path, model: str, limit: int | None, remote_only: bool = False, re
     (out / "proofs").mkdir(parents=True, exist_ok=True)
     if escalate_from:
         return _escalate(exp, model, order, escalate_from, corrections, rows, cap, capped, tier, revise, samples,
-                         fresh_uncapped, ctx, fix)
+                         fresh_uncapped, ctx, fix, whole, theorems)
     for i, tid in enumerate(order, 1):
         rec_path = out / "records" / f"{tid}.json"
         prior = json.loads(rec_path.read_text()) if rec_path.exists() else None
@@ -425,14 +426,52 @@ def _closeness(arm_dir: Path) -> int:
     return min((len(s.get("errors") or []) for s in wrong), default=99)
 
 
+def _closed_anywhere(exp: Path) -> set[str]:
+    """Theorems some demo tier has closed (a later tier never redoes one)."""
+    out = set()
+    for f in (exp / "demo").glob("*/records/*.json"):
+        r = json.loads(f.read_text())
+        if not r.get("in_progress") and (r.get("arm") or {}).get("closed"):
+            out.add(r["theorem_id"])
+    return out
+
+
+def _unstarted(exp: Path) -> list[str]:
+    """Theorems the search never started (it crashed on them): no residual exists to hand over."""
+    out = []
+    for f in sorted((exp / "handoffs").glob("*.json")):
+        rec = json.loads(f.read_text())
+        if rec.get("status") in ("skipped_start", "handoff_error"):
+            out.append(rec["theorem_id"])
+    return out
+
+
+def _whole_handoff(exp: Path, tid: str, row: dict) -> dict:
+    """What a whole-statement attempt needs (target, checked type): the residual's hand-off, or for
+    a theorem the search never started a bare one, built once — the finishing pass's closers try
+    the whole statement first, so it may come back closed by Wayfinder alone."""
+    rec = json.loads((exp / "handoffs" / f"{tid}.json").read_text())
+    if rec.get("handoff"):
+        return rec["handoff"]
+    cache = exp / "handoffs_whole" / f"{tid}.json"
+    if not cache.exists():
+        cache.parent.mkdir(exist_ok=True)
+        cache.write_text(json.dumps(m._build_handoff(row, {"initial_goal_tier": ""}), indent=2))
+    return json.loads(cache.read_text())
+
+
 def _escalate(exp: Path, model: str, order: list[str], below: str, corrections: int, rows: dict,
               cap: int = CAP, capped: str = "any", tier: str = "", revise: bool = False, samples: int = K,
-              fresh_uncapped: int = K, ctx: int = 0, fix: tuple[int, int] = (4, 2)) -> None:  # fmt: skip
+              fresh_uncapped: int = K, ctx: int = 0, fix: tuple[int, int] = (4, 2), whole: bool = False,
+              theorems: str = "open") -> None:  # fmt: skip
     """The next tier: `model` on every residual the `below` model tried and left open, with
     `corrections` self-correction rounds, rescanning while `below`'s streams still have theorems in
     progress — the ladder Wayfinder → small model → large model, all on this machine. `capped`
     splits the open residuals by whether any of `below`'s answers ran out of tokens ("only": a
-    longer-cap retry; "none": everything else); a tier with its own `cap` gets its own directory."""
+    longer-cap retry; "none": everything else); a tier with its own `cap` gets its own directory.
+    `whole` is the standard treatment: the model on the theorem itself, as it would work alone — for
+    the theorems the search never started (`theorems="unstarted"`) and the residuals no tier closed
+    (`"open"`, infrastructure failures included). No tier redoes a theorem another has closed."""
     name = tier or (model if cap == CAP else f"{model}-cap{cap}")
     if name == below:
         raise SystemExit(f"tier {name!r} would write over the tier it escalates from: name it with --tier")
@@ -447,12 +486,23 @@ def _escalate(exp: Path, model: str, order: list[str], below: str, corrections: 
         below_recs = {t: json.loads((src / f"{t}.json").read_text()) for t in order if (src / f"{t}.json").exists()}
         open_ = [t for t in order if t in below_recs and not below_recs[t].get("in_progress")
                  and not below_recs[t]["arm"]["closed"] and not below_recs[t]["arm"]["infra"]]  # fmt: skip
+        if whole:  # the standard treatment also takes what failed for infrastructure
+            open_ = [t for t in order if t in below_recs and not below_recs[t].get("in_progress")
+                     and not below_recs[t]["arm"]["closed"]]  # fmt: skip
         if capped != "any":
             open_ = [t for t in open_ if _hit_cap(exp / "demo" / below / "arms" / t) == (capped == "only")]
-        todo = [t for t in open_ if t not in done and not (out / "records" / f"{t}.json").exists()]
+        if theorems == "unstarted":
+            open_ = []
+        if theorems in ("unstarted", "all"):
+            open_ += _unstarted(exp)
+        closed_elsewhere = _closed_anywhere(exp)
+        todo = [t for t in open_ if t not in done and t not in closed_elsewhere
+                and not (out / "records" / f"{t}.json").exists()]  # fmt: skip
         # revising is cheap where the lower tier's answers ran to completion: those first, closest first
         todo.sort(key=lambda t: (_hit_cap(exp / "demo" / below / "arms" / t), _closeness(exp / "demo" / below / "arms" / t)))
         if not todo:
+            if theorems == "unstarted":
+                return  # nothing the lower tier is still finishing can add to these
             # wait while a lower-tier claim is live; leave after two quiet looks (a stream may be
             # between theorems), so a stopped stream's leftover claim cannot hold this tier forever
             live = any(r.get("in_progress") and _alive(r.get("pid")) for r in below_recs.values())
@@ -463,25 +513,37 @@ def _escalate(exp: Path, model: str, order: list[str], below: str, corrections: 
             return
         quiet = 0
         tid = todo[0]
-        handoff = json.loads((exp / "handoffs" / f"{tid}.json").read_text())["handoff"]
+        handoff = _whole_handoff(exp, tid, rows[tid]) if whole else json.loads((exp / "handoffs" / f"{tid}.json").read_text())["handoff"]
         hit_cap = _hit_cap(exp / "demo" / below / "arms" / tid)
-        fresh = samples if (hit_cap or not revise) else fresh_uncapped
-        job = _job(f"{tid}-{out.name}", rows[tid], handoff, model, whole=False, samples=fresh, cap=cap, ctx=ctx)
+        fresh = samples if (hit_cap or not revise or whole) else fresh_uncapped
+        if whole and handoff.get("status") in ("closed", "refuted", "failed"):
+            # the finishing pass settled it on the whole statement (closed by Wayfinder alone, false, or
+            # not elaborating): nothing for a model to do
+            closed = handoff["status"] == "closed"
+            rec = {"theorem_id": tid, "whole": True, "settled_by_wayfinder": handoff["status"],
+                   "arm": {"closed": closed, "infra": handoff["status"] == "failed", "outcomes": {}, "wall_s": 0}}  # fmt: skip
+            (out / "records" / f"{tid}.json").write_text(json.dumps(rec, indent=2))
+            done.add(tid)
+            print(f"[{out.name}] {tid}: the finishing pass on the whole statement: {handoff['status']}", flush=True)
+            continue
+        job = _job(f"{tid}-{out.name}", rows[tid], handoff, model, whole=whole, samples=fresh, cap=cap, ctx=ctx)
         job.update(correction_rounds=corrections, fix_attempts=fix[0], fix_samples=fix[1])
-        if revise:  # the lower tier's rejected proofs, revised with Lean's errors (Goedel's self-correction)
+        if revise and not whole:  # the lower tier's rejected proofs, revised with Lean's errors (Goedel's self-correction)
             below_arm = exp / "demo" / below / "arms" / tid
             seeds = [{k: s.get(k) for k in ("id", "quant", "server", "model", "stop_type")}
                      for s in _jsonl(below_arm / "samples.jsonl") if s.get("outcome") == "wrong_proof"]  # fmt: skip
             job["seed"] = {"arm": str(below_arm), "samples": seeds}
         arm = _run_arm(out / "arms" / tid, job, lenient=True, timeout=timeout)
         rec = {"theorem_id": tid, "holes": len(handoff["holes"]), "kept": handoff.get("closures_kept"), "arm": arm,
-               "escalated_from": below, "revised": revise, "fresh": fresh, "hit_cap_below": hit_cap}  # fmt: skip
+               "escalated_from": below, "revised": revise, "fresh": fresh, "hit_cap_below": hit_cap,
+               "whole": whole}  # fmt: skip
         if arm["closed"]:
             fills = json.loads((out / "arms" / tid / "fills.json").read_text())
             ok, _, completed, res = _complete(job, fills)
             if ok and completed and res:
-                provenance = (f"Wayfinder deterministic search ({handoff.get('closures_kept', 0)} kept closures) + "
-                              + "; ".join(f"hole {f['hole']}: {f['source']}" for f in fills))  # fmt: skip
+                how = ("the whole statement (standard treatment)" if whole else
+                       f"Wayfinder deterministic search ({handoff.get('closures_kept', 0)} kept closures)")
+                provenance = f"{how} + " + "; ".join(f"hole {f['hole']}: {f['source']}" for f in fills)
                 (out / "proofs" / f"{tid}.lean").write_text(m._acceptance_header(res, provenance) + completed)
         (out / "records" / f"{tid}.json").write_text(json.dumps(rec, indent=2))
         done.add(tid)
@@ -615,6 +677,10 @@ def main() -> int:
     ap.add_argument("--fresh-uncapped", type=int, default=K,
                     help="demo --escalate-from --revise: fresh attempts where the lower tier never ran out of tokens")
     ap.add_argument("--ctx", type=int, default=0, help="demo --escalate-from: tokens of context per slot (0: cap + 12K)")
+    ap.add_argument("--whole", action="store_true",
+                    help="demo --escalate-from: the standard treatment — the model on the theorem itself")
+    ap.add_argument("--theorems", default="open", choices=["open", "unstarted", "all"],
+                    help="demo --escalate-from: the lower tier's open residuals, the theorems the search never started, or both")
     ap.add_argument("--fix", type=int, nargs=2, default=[4, 2], metavar=("PROOFS", "TRIES"),
                     help="demo --escalate-from: per correction round, how many failed proofs and tries at each")
     args = ap.parse_args()
@@ -635,7 +701,8 @@ def main() -> int:
         demo(exp, args.model, args.limit, remote_only=args.remote_only, reverse=args.reverse,
              pool_key=args.pool_key, start=args.start, escalate_from=args.escalate_from,
              corrections=args.corrections, cap=args.cap, capped=args.capped, tier=args.tier, revise=args.revise,
-             samples=args.samples, fresh_uncapped=args.fresh_uncapped, ctx=args.ctx, fix=tuple(args.fix))
+             samples=args.samples, fresh_uncapped=args.fresh_uncapped, ctx=args.ctx, fix=tuple(args.fix),
+             whole=args.whole, theorems=args.theorems)
     else:
         report(exp)
     return 0
