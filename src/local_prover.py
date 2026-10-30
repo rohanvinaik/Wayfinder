@@ -43,6 +43,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import src.hole_fill as hf
+import src.lean_repl as lr
 import src.proof_gate as gate
 import src.residual_handoff as rh
 from src.structural_reads import goal_target, read_goal
@@ -84,6 +85,8 @@ SKELETON_HOLES = 4  # a rejected proof with more failing steps than this is revi
 DRAFT_HOLES = 8  # a draft's own `sorry`s count too: Goedel's sketches leave one on every `have`
 SEARCH_BUDGET = 200  # tactic attempts for Wayfinder's search on each lifted step
 SEARCH_GOALS = Path(__file__).resolve().parents[1] / "scripts" / "search_goals.py"
+REPL_BIN = Path(__file__).resolve().parents[1] / "data" / "repl_v428" / ".lake" / "build" / "bin" / "repl"
+REPL_SIZE = 3  # REPLs per worker: the verification threads and the parallel skeleton repairs check side by side
 # Errors this Mathlib raises where the model's 2024 Mathlib passed silently: a tactic run after its
 # goal was already closed, or one that changed nothing. Deleting exactly that line cannot change what
 # is proved — the tactic acted on nothing — and the result is compiled again. Only when every error
@@ -500,7 +503,28 @@ class Worker:
             self.status["notes"].append(text)
 
     def compile(self, text: str, timeout: int = 300) -> dict:
+        """One check: through the persistent REPL when the job allows it (Mathlib imported once),
+        else — and on any doubt about the REPL — a fresh `lake env lean`. The run's final
+        acceptance never comes through here."""
+        pool = self._repl_pool()
+        if pool is not None:
+            try:
+                return pool.check(text, timeout)
+            except Exception as e:  # noqa: BLE001 — any doubt: a fresh compile
+                with self.lock:
+                    self.repl_fallbacks = getattr(self, "repl_fallbacks", 0) + 1
+                    if self.repl_fallbacks <= 3:
+                        self.status["notes"].append(f"REPL fell back to a fresh compile: {type(e).__name__}: {e}"[:200])
         return gate.run_lean_json(self.job["lake_bin"], self.job["verify_project"], text, timeout=timeout)
+
+    def _repl_pool(self) -> lr.ReplPool | None:
+        if not self.job.get("repl", False) or not REPL_BIN.exists():
+            return None
+        with self.lock:
+            if getattr(self, "repl_pool", None) is None:
+                self.repl_pool = lr.ReplPool(REPL_SIZE, project=Path(self.job["verify_project"]), repl_bin=REPL_BIN,
+                                             lake_bin=str(self.job["lake_bin"]))  # fmt: skip
+            return self.repl_pool
 
     # ── lifting ──
 
@@ -1187,6 +1211,8 @@ class Worker:
         except Exception:  # noqa: BLE001 — the run's record must say how it ended
             self.note(traceback.format_exc()[-2000:])
         finally:
+            if getattr(self, "repl_pool", None) is not None:
+                self.repl_pool.stop()
             self.publish(state=state, finished_at=time.strftime("%Y-%m-%d %H:%M:%S"),
                          verified=[f["hole"] for f in self.fills])  # fmt: skip
 
