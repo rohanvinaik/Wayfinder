@@ -990,7 +990,11 @@ class Worker:
             if self.run_round(hole, pool, attempts, failures, seeds):
                 return True
             if self.job.get("repair", True) and failures:  # on unless a protocol turns it off
-                solved, completions = self.repair_round(hole, pool.local.spec, failures, rnd)
+                try:
+                    solved, completions = self.repair_round(hole, pool.local.spec, failures, rnd)
+                except Exception as e:  # noqa: BLE001 — the repair loop never costs the theorem its rounds
+                    self.note(f"repair round failed: {type(e).__name__}: {e}"[:300])
+                    solved, completions = False, []
                 if solved:
                     return True
             if self.stop.is_set():
