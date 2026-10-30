@@ -207,6 +207,17 @@ def _job(
     }  # fmt: skip
 
 
+def _alive(pid: object) -> bool:
+    """Whether the stream that wrote a claim is still running."""
+    try:
+        os.kill(int(pid), 0)  # type: ignore[call-overload]
+    except (TypeError, ValueError, ProcessLookupError):
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
 def _closed(job: dict, fills: list[dict]) -> tuple[bool, list[str]]:
     """Apply every fill to the arm's file, then the acceptance gate on the completed file."""
     accepted, reasons, _, _ = _complete(job, fills)
@@ -353,23 +364,26 @@ def demo(exp: Path, model: str, limit: int | None, remote_only: bool = False, re
         return _escalate(exp, model, order, escalate_from, corrections, rows)
     for i, tid in enumerate(order, 1):
         rec_path = out / "records" / f"{tid}.json"
-        if rec_path.exists():
-            prior = json.loads(rec_path.read_text())
-            if not prior["arm"]["infra"] or prior.get("reruns", 0) >= 1:
-                continue
+        prior = json.loads(rec_path.read_text()) if rec_path.exists() else None
+        if prior and prior.get("in_progress"):
+            if _alive(prior.get("pid")):
+                continue  # another stream is on it
+            prior = None  # a claim left by a stream that stopped: the theorem is free
+        if prior and (not prior["arm"]["infra"] or prior.get("reruns", 0) >= 1):
+            continue
         handoff = json.loads((exp / "handoffs" / f"{tid}.json").read_text())["handoff"]
         job = _job(f"{tid}-demo", rows[tid], handoff, model, whole=False, samples=K)
         if pool_key:
             job["pool_key"] = pool_key
         if remote_only:
             job["remote_only"] = True
-            # claim the theorem: the other stream skips any theorem that has a record
-            claim = {"theorem_id": tid, "in_progress": True, "arm": {"infra": False, "closed": False}}
-            rec_path.write_text(json.dumps(claim))
+        # every stream claims its theorem, so none starts one another live stream is working
+        claim = {"theorem_id": tid, "in_progress": True, "pid": os.getpid(), "arm": {"infra": False, "closed": False}}
+        rec_path.write_text(json.dumps(claim))
         arm = _run_arm(out / "arms" / tid, job)
         rec = {"theorem_id": tid, "holes": len(handoff["holes"]), "kept": handoff.get("closures_kept"), "arm": arm}
-        if rec_path.exists():
-            rec["reruns"] = json.loads(rec_path.read_text()).get("reruns", 0) + 1
+        if prior:
+            rec["reruns"] = prior.get("reruns", 0) + 1
         if arm["closed"]:
             fills = json.loads((out / "arms" / tid / "fills.json").read_text())
             ok, _, completed, res = _complete(job, fills)
@@ -377,6 +391,9 @@ def demo(exp: Path, model: str, limit: int | None, remote_only: bool = False, re
                 provenance = (f"Wayfinder deterministic search ({handoff.get('closures_kept', 0)} kept closures) + "
                               + "; ".join(f"hole {f['hole']}: {f['source']}" for f in fills))  # fmt: skip
                 (out / "proofs" / f"{tid}.lean").write_text(m._acceptance_header(res, provenance) + completed)
+        current = json.loads(rec_path.read_text()) if rec_path.exists() else {}
+        if not current.get("in_progress") and (current.get("arm") or {}).get("closed") and not arm["closed"]:
+            continue  # another stream closed it meanwhile: a closure is never overwritten
         rec_path.write_text(json.dumps(rec, indent=2))
         done = [r for f in (out / "records").glob("*.json") if not (r := json.loads(f.read_text())).get("in_progress")]
         closed = sum(1 for r in done if r["arm"]["closed"])
@@ -392,16 +409,22 @@ def _escalate(exp: Path, model: str, order: list[str], below: str, corrections: 
     progress — the ladder Wayfinder → small model → large model, all on this machine."""
     src, out = exp / "demo" / below / "records", exp / "demo" / model
     done: set[str] = set()
+    quiet = 0
     while True:
         below_recs = {t: json.loads((src / f"{t}.json").read_text()) for t in order if (src / f"{t}.json").exists()}
         open_ = [t for t in order if t in below_recs and not below_recs[t].get("in_progress")
                  and not below_recs[t]["arm"]["closed"] and not below_recs[t]["arm"]["infra"]]  # fmt: skip
         todo = [t for t in open_ if t not in done and not (out / "records" / f"{t}.json").exists()]
         if not todo:
-            if any(r.get("in_progress") for r in below_recs.values()) or len(below_recs) < len(order):
-                time.sleep(300)  # the lower tier is still finishing: look again
+            # wait while a lower-tier claim is live; leave after two quiet looks (a stream may be
+            # between theorems), so a stopped stream's leftover claim cannot hold this tier forever
+            live = any(r.get("in_progress") and _alive(r.get("pid")) for r in below_recs.values())
+            quiet = 0 if live else quiet + 1
+            if quiet < 2:
+                time.sleep(300)
                 continue
             return
+        quiet = 0
         tid = todo[0]
         handoff = json.loads((exp / "handoffs" / f"{tid}.json").read_text())["handoff"]
         job = _job(f"{tid}-{model}", rows[tid], handoff, model, whole=False, samples=K)
