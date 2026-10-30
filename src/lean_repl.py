@@ -5,11 +5,12 @@ skeleton, the closer probe and the lift probes, so most of its time went to impo
 check runs as one REPL command against the environment saved right after the file's imports
 (never a chain of environments: a name declared by one check would clash with the next).
 
-A Lean process kept alive drifts (Pantograph "starts to go a little weird and crashes silently"),
-so each REPL is distrusted: recycled after `recycle_after` commands, a timeout on every command
-(the process is killed and restarted), and a canary — a known-true and a known-false theorem —
-on every start and every `canary_every` checks. Any error is the caller's cue to fall back to a
-fresh compile; final acceptance never runs here (the gate compiles from scratch).
+A Lean process kept alive drifts (Pantograph "starts to go a little weird and crashes silently"), so
+each REPL is distrusted: recycled after `recycle_after` commands (it keeps every environment it
+makes), a timeout on every command (the process is killed and restarted), and a canary — a known-
+true and a known-false theorem — on every start and every `canary_every` checks. Any error is the
+caller's cue to fall back to a fresh compile; final acceptance never runs here (the gate compiles
+from scratch).
 
 Returns what `proof_gate.run_lean_json` returns — {"returncode", "messages", "timed_out",
 "tail"} — with message positions in the whole text's lines.
@@ -45,8 +46,10 @@ def _split(text: str) -> tuple[str, str, int]:
 
 
 class LeanRepl:
-    def __init__(self, project: Path, repl_bin: Path, lake_bin: str = "lake", recycle_after: int = 100,
-                 canary_every: int = 25):  # fmt: skip
+    # the REPL keeps every environment a command makes (there is no command to free one): it grows
+    # ~0.04 GB a command, so it is recycled often — 30 commands, then a 7 s re-import
+    def __init__(self, project: Path, repl_bin: Path, lake_bin: str = "lake", recycle_after: int = 30,
+                 canary_every: int = 15):  # fmt: skip
         self.project, self.repl_bin, self.lake_bin = Path(project), Path(repl_bin), lake_bin
         self.recycle_after, self.canary_every = recycle_after, canary_every
         self.proc: subprocess.Popen | None = None
