@@ -1085,6 +1085,7 @@ class LeanKernel:
         # ends the session they live in (`_epoch`), and a handle from before it is refused.
         self._live: dict[int, _LiveGoal] = {}
         self._epoch = 0
+        self._restart_pending = False  # a tactic timed out: restart before the next goal is created
         self._gids = itertools.count(1)
         self._current_env_key: str = ""  # default empty for backward compat
         self._server_contaminated: bool = False  # set after load_sorry-backed goal creation
@@ -1131,6 +1132,17 @@ class LeanKernel:
         if live is not None:
             return live.state
         return self._goal_states.get((self._current_env_key, str.__str__(goal) if isinstance(goal, str) else goal))
+
+    @staticmethod
+    def _is_heartbeat_timeout(e: Exception) -> bool:
+        msg = str(e).lower()
+        return "deterministic) timeout" in msg or "maximum number of heartbeats" in msg
+
+    def _restart_if_pending(self) -> None:
+        """A tactic ran out of heartbeats since the last goal was created: restart before creating one."""
+        if self._restart_pending:
+            self._restart_pending = False
+            self._restart_server()
 
     def _forget_live(self) -> None:
         self._live.clear()
@@ -1495,6 +1507,7 @@ class LeanKernel:
         Returns the goal state string for the initial goal.
         Falls back to load_sorry with namespace-open for universe-polymorphic types.
         """
+        self._restart_if_pending()
         server = self._ensure_server()
         try:
             state = self._quiet_goal_start(server, theorem_type)
@@ -1601,9 +1614,15 @@ class LeanKernel:
             self._tactic_cache[cache_key] = fail_result
             return fail_result
         except Exception as e:
-            if self._is_crash_error(e):
+            timed_out = self._is_heartbeat_timeout(e)
+            if self._is_crash_error(e) and not timed_out:
                 self._restart_server()
                 raise ServerCrashError(str(e)) from e
+            if timed_out:
+                # The tactic ran out of heartbeats: it failed, and the search goes on. A timeout at
+                # `whnf` can leave goal creation broken (see `_is_crash_error`), so the server is
+                # restarted before the next goal is created — never under a search's live goals.
+                self._restart_pending = True
             fail_result = TacticResult(
                 success=False,
                 tactic=tactic,
@@ -2225,6 +2244,7 @@ class LeanKernel:
         # Previous examples may have created load_sorry goal states. Those do
         # not require a full process restart; GC the old states and clear local
         # caches so the server can stay hot across examples.
+        self._restart_if_pending()
         self._prepare_for_new_example()
 
         # ----------------------------------------------------------

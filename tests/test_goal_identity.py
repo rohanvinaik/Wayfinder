@@ -164,6 +164,51 @@ class DuckyFrontierTest(unittest.TestCase):
         self.assertEqual((chain["script"], len(chain["goals_after"])), ("constructor", 2))
 
 
+class _Goal:
+    variables: list = []
+    target = "p"
+
+
+class _State:
+    goals = [_Goal()]
+
+
+class _Server:
+    def __init__(self, error: str):
+        self.error = error
+
+    def goal_tactic(self, state, tactic, site):
+        raise RuntimeError(self.error)
+
+
+class HeartbeatTimeoutTest(unittest.TestCase):
+    """A tactic that runs out of heartbeats has failed: the search goes on, and the server restarts
+    before the next goal is created — never under a search's live goals. A dead server still ends it."""
+
+    def kernel(self, error: str) -> tuple[LeanKernel, list]:
+        k = LeanKernel(LeanConfig(backend="pantograph"))
+        restarts: list = []
+        k._server = _Server(error)
+        k._ensure_server = lambda: k._server  # type: ignore[method-assign]
+        k._restart_server = lambda: restarts.append(1)  # type: ignore[method-assign]
+        return k, restarts
+
+    def test_a_timeout_fails_the_tactic_and_defers_the_restart(self):
+        k, restarts = self.kernel("{'desc': '(deterministic) timeout at `whnf`, maximum number of heartbeats (200000)'}")
+        r = k.try_tactic(k._register(_State(), 0), "apply?")
+        self.assertEqual((r.success, restarts, k._restart_pending), (False, [], True))
+        k._restart_if_pending()
+        self.assertEqual((restarts, k._restart_pending), ([1], False))
+
+    def test_a_broken_pipe_still_ends_the_search(self):
+        from src.lean_interface import ServerCrashError
+
+        k, restarts = self.kernel("broken pipe")
+        with self.assertRaises(ServerCrashError):
+            k.try_tactic(k._register(_State(), 0), "simp")
+        self.assertEqual(restarts, [1])
+
+
 @unittest.skipUnless(_LIVE, "PyPantograph or the local Mathlib project is missing")
 class LiveGoalIdentityTest(unittest.TestCase):
     """Against Lean itself (Mathlib, the search's Lean): the three moves measured to fail before."""
