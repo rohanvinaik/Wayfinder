@@ -90,9 +90,14 @@ def run(run_dir: Path) -> None:
     status = {"run_id": spec["job"]["run_id"], "theorem_id": spec["job"]["theorem_id"], "pid": os.getpid(),
               "state": "starting", "pipeline": trail, "notes": []}  # fmt: skip
     _mirror(run_dir, status)
-    for st in stages(spec):
+    ladder = stages(spec)
+    names = [st["name"] for st in ladder]
+    begin = names.index(spec["start_at"]) if spec.get("start_at") in names else 0
+    for i, st in enumerate(ladder):
         d = run_dir / "stages" / st["name"]
-        if st.get("when") == "capped" and not _hit_cap(run_dir / "stages" / "8b"):
+        if i < begin:  # started further down the ladder (a forced stage, or a test of one)
+            continue
+        if st.get("when") == "capped" and i > begin and not _hit_cap(run_dir / "stages" / "8b"):
             trail.append({"stage": st["name"], "skipped": "stage 1's answers ran to completion"})
             continue
         base = spec["whole_job"] if st.get("whole") else spec["job"]

@@ -70,6 +70,16 @@ class PipelineTest(unittest.TestCase):
         self.assertTrue(json.loads((run_dir / "fills.json").read_text())[0]["whole"])
         self.assertEqual(json.loads((run_dir / "job.json").read_text())["file"], "WF")
 
+    def test_a_run_can_start_further_down_the_ladder(self):
+        run_dir = Path(tempfile.mkdtemp())
+        _spec(run_dir)
+        spec = json.loads((run_dir / "pipeline.json").read_text())
+        (run_dir / "pipeline.json").write_text(json.dumps({**spec, "start_at": "8b-long"}))
+        with mock.patch.object(pl.subprocess, "run", side_effect=_worker({})) as sub:
+            pl.run(run_dir)
+        ran = [Path(c.args[0][-1]).parent.name for c in sub.call_args_list]
+        self.assertEqual(ran, ["8b-long", "whole", "32b"])  # a forced long stage runs without stage 1's cap hits
+
     def test_every_stages_answers_are_counted_in_the_run(self):
         run_dir, _ = self._run({"8b": {"samples": [("wrong_proof", "eos")]}})
         stages = [json.loads(x)["stage"] for x in (run_dir / "samples.jsonl").read_text().splitlines()]

@@ -1694,6 +1694,7 @@ def send_to_local_prover(
     max_new_tokens: int = 32768,
     reserve_gb: float = 6.0,
     pipeline: bool = True,
+    start_at: str = "",
 ) -> str:
     """Hand the residual's open holes to open-weights Lean provers on THIS machine, in the background.
 
@@ -1702,8 +1703,9 @@ def send_to_local_prover(
     model's rejected proofs and drafts made skeletons, their failing steps to Wayfinder's closers
     and search, the rest back to the model to complete — then the 8B at 30K where answers ran out
     of tokens, then the whole statement, then the 32B revising the 8B's best proofs; every check
-    through the persistent Lean REPL, every acceptance through a fresh compile. `pipeline=False`
-    runs one worker with the arguments below, as before.
+    through the persistent Lean REPL, every acceptance through a fresh compile. `start_at` begins
+    further down the ladder ("8b-long" | "whole" | "32b"). `pipeline=False` runs one worker with
+    the arguments below, as before.
 
     Goedel-Prover-V2 8B (Q8_0) and 32B (Q4_K_M), GGUFs under models/gguf/, each served by its own
     llama-server. Each hole is lifted to a standalone lemma and routed by how hard Wayfinder's
@@ -1766,7 +1768,8 @@ def send_to_local_prover(
                      "statement": re.sub(r":=\s*by\s*$", "", header).rstrip(),
                      "holes": [{"index": 1, "lean_goal": str(row.get("goal_state") or "")}],
                      "as_built_sha256": job["as_built_sha256"]}  # fmt: skip
-        (run_dir / "pipeline.json").write_text(json.dumps({"job": job, "whole_job": whole_job}, indent=2))
+        (run_dir / "pipeline.json").write_text(json.dumps({"job": job, "whole_job": whole_job, "start_at": start_at},
+                                                          indent=2))  # fmt: skip
         command = [sys.executable, "-m", "src.local_pipeline", str(run_dir)]
     log = open(run_dir / "worker.log", "w")  # noqa: SIM115 — handed to the detached worker
     proc = subprocess.Popen(
