@@ -49,7 +49,12 @@ SEED = 20261029  # the sample of residual theorems, drawn once and frozen
 N = 40
 K = 8  # attempts per hole (arm B) and per hole of B's residual (arm A: K x holes)
 ARM_TIMEOUT_S = 4 * 3600
-INFRA = {"server_error", "memory_yield", "context_full", "in_place_failed"}
+INFRA = {"server_error", "memory_yield", "stopped", "context_full", "in_place_failed"}
+# Amendment 1 (EXPERIMENT_RESULTS.md): every attempt gets exactly CAP new tokens; a slot holds
+# CTX, room for the prompt beside them, so eight slots fit beside the 8B and a one-hole arm's
+# eight attempts run in one wave. The recheck reruns a discordant pair's losing arm at RECHECK_CAP.
+CAP, CTX, SLOTS = 8192, 16384, 8
+RECHECK_CAP, RECHECK_CTX, RECHECK_SLOTS = 32768, 40960, 4
 
 
 def _rows() -> dict[str, dict]:
@@ -176,7 +181,10 @@ def _sample(exp: Path) -> list[str]:
     return pick
 
 
-def _job(run_id: str, row: dict, handoff: dict, model: str, *, whole: bool, samples: int) -> dict:
+def _job(
+    run_id: str, row: dict, handoff: dict, model: str, *, whole: bool, samples: int,
+    cap: int = CAP, ctx: int = CTX, slots: int = SLOTS,
+) -> dict:
     target = handoff["target"]
     header, _ = rh.split_declaration(str(row["full_declaration"]))
     if whole:
@@ -193,8 +201,8 @@ def _job(run_id: str, row: dict, handoff: dict, model: str, *, whole: bool, samp
         "file": file_text, "declaration": declaration, "statement": statement, "holes": holes,
         "pp_type": handoff.get("pp_type"), "allowed_axioms": list(row.get("allowed_axioms") or []),
         "defs": m._file_defs(row), "as_built_sha256": m._sha256(file_text), "model": model, "samples": samples,
-        "correction_rounds": 0, "fix_attempts": 0, "fix_samples": 0, "max_new_tokens": 32768, "reserve_gb": 6.0,
-        "max_slots": 4, "lake_bin": str(m.LAKE_BIN), "verify_project": str(m.VERIFY_PROJECT),
+        "correction_rounds": 0, "fix_attempts": 0, "fix_samples": 0, "max_new_tokens": cap, "ctx": ctx,
+        "reserve_gb": 6.0, "max_slots": slots, "lake_bin": str(m.LAKE_BIN), "verify_project": str(m.VERIFY_PROJECT),
         "gguf_dir": str(m.GGUF_DIR), "llama_server": str(m.LLAMA_SERVER),
     }  # fmt: skip
 
@@ -252,11 +260,14 @@ def _run_arm(arm_dir: Path, job: dict) -> dict:
         note for h in (status.get("holes") or {}).values()
         if not h.get("plan") and ("re-elaborate" in (note := h.get("note") or "") or "printed no statement" in note)
     ]  # fmt: skip
-    infra = status.get("state") != "done" or any(outcomes.get(o) for o in INFRA) or bool(lifting)
+    # every attempt that ran must have had the full budget (a long prompt must not shorten it)
+    short = [s["id"] for s in samples if s.get("budget") is not None and int(s["budget"]) != int(job["max_new_tokens"])]
+    infra = status.get("state") != "done" or any(outcomes.get(o) for o in INFRA) or bool(lifting) or bool(short)
     closed, why = (False, ["infrastructure"]) if infra else _closed(job, fills)
     model = (status.get("models") or {}).get(job["model"]) or {}
     return {
         "state": status.get("state"), "infra": infra, "closed": closed, "why": why, "lifting": lifting,
+        "budget_short": short, "truncated": outcomes.get("truncated", 0), "cap": job["max_new_tokens"],
         "holes": len(job["holes"]), "holes_verified": len({f["hole"] for f in fills}), "budget": job["samples"],
         "outcomes": outcomes, "tokens": model.get("tokens"), "gen_seconds": model.get("gen_seconds"),
         "wall_s": round(time.monotonic() - start), "verified_samples": [f["sample"] for f in fills],
@@ -291,6 +302,32 @@ def pairs(exp: Path, model: str, limit: int | None) -> None:
                   f"outcomes={a['outcomes']} wall={a['wall_s']}s", flush=True)  # fmt: skip
 
 
+def recheck(exp: Path, model: str) -> None:
+    """Amendment 1's robustness check: in every scored discordant pair whose losing arm truncated an
+    attempt, rerun that arm alone at RECHECK_CAP tokens. Reported beside the primary, never instead."""
+    rows = _rows()
+    for rec_path in sorted((exp / "pairs" / model).glob("*.json")):
+        rec = json.loads(rec_path.read_text())
+        arms = rec.get("arms") or {}
+        if {"A", "B"} - set(arms) or arms["A"]["infra"] or arms["B"]["infra"]:
+            continue
+        if arms["A"]["closed"] == arms["B"]["closed"]:
+            continue
+        loser = "B" if arms["A"]["closed"] else "A"
+        if not arms[loser].get("truncated") or loser in (rec.get("recheck") or {}):
+            continue
+        tid = rec["theorem_id"]
+        handoff = json.loads((exp / "handoffs" / f"{tid}.json").read_text())["handoff"]
+        job = _job(f"{tid}-{loser}-recheck", rows[tid], handoff, model, whole=(loser == "A"),
+                   samples=K * len(handoff["holes"]) if loser == "A" else K,
+                   cap=RECHECK_CAP, ctx=RECHECK_CTX, slots=RECHECK_SLOTS)  # fmt: skip
+        print(f"recheck {tid} arm {loser} at {RECHECK_CAP} tokens", flush=True)
+        rec.setdefault("recheck", {})[loser] = _run_arm(exp / "arms" / model / tid / f"{loser}_recheck", job)
+        rec_path.write_text(json.dumps(rec, indent=2))
+        print(f"    {loser} recheck: closed={rec['recheck'][loser]['closed']} infra={rec['recheck'][loser]['infra']}",
+              flush=True)  # fmt: skip
+
+
 # ── phase 4: the report ───────────────────────────────────────────────────────
 
 
@@ -314,8 +351,19 @@ def report(exp: Path) -> dict:
         def tot(arm: str, key: str) -> float:
             return round(sum(float(r["arms"][arm].get(key) or 0) for r in scored), 1)
 
+        checked = dict(cell)
+        for r in scored:
+            for arm, res in (r.get("recheck") or {}).items():
+                if res["infra"] or not res["closed"]:
+                    continue
+                before = f"A{'+' if r['arms']['A']['closed'] else '-'}B{'+' if r['arms']['B']['closed'] else '-'}"
+                checked[before] -= 1
+                checked["A+B+"] += 1  # the losing arm closed it given the longer budget: concordant
+
         out["models"][model_dir.name] = {
             "pairs_run": len(recs), "pairs_scored": len(scored), "excluded_infra": len(recs) - len(scored),
+            "cells_after_32k_recheck": checked,
+            "truncated_attempts": {"A": tot("A", "truncated"), "B": tot("B", "truncated")},
             "cells": cell, "A_closed": cell["A+B+"] + cell["A+B-"], "B_closed": cell["A+B+"] + cell["A-B+"],
             "B_holes_verified": f"{holes_ok}/{holes}",
             "tokens": {"A": tot("A", "tokens"), "B": tot("B", "tokens")},
@@ -328,7 +376,7 @@ def report(exp: Path) -> dict:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
-    ap.add_argument("phase", choices=["search", "handoffs", "pairs", "report"])
+    ap.add_argument("phase", choices=["search", "handoffs", "pairs", "recheck", "report"])
     ap.add_argument("--dir", default=str(WF / "runs" / "exp_dec_001"))
     ap.add_argument("--workers", type=int, default=3, help="hand-off builders in parallel")
     ap.add_argument("--model", default=lp.LIGHT, choices=sorted(lp.MODELS))
@@ -343,6 +391,8 @@ def main() -> int:
         handoffs(exp, args.workers)
     elif args.phase == "pairs":
         pairs(exp, args.model, args.limit)
+    elif args.phase == "recheck":
+        recheck(exp, args.model)
     else:
         report(exp)
     return 0

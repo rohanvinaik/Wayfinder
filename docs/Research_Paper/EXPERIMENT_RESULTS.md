@@ -4402,6 +4402,27 @@ entry when the run completes; nothing above this line changes after it starts.
   `sheaf_gluing_global_kill`, which `grind` closes whole, into a hole no closer took — and lifted
   statements print in current Mathlib notation. A null or negative result is a result.
 
+**Amendment 1 — 2026-10-30, before any pair outcome; for runtime alone.**
+- **Change:** each attempt's cap drops from 32,768 to **8,192 new tokens**, and each server slot holds
+  16,384 tokens (the prompt beside the 8,192), so up to eight slots fit beside the 8B and a one-hole
+  arm's eight attempts run in one wave. Both arms, every attempt; the harness checks that each
+  attempt actually received the full 8,192 and treats a shortfall as infrastructure.
+- **Reason:** the pilot measured ~16.5 tokens/s per slot with four slots, the first theorem's attempts
+  all ran past 10,000 tokens, and at 32,768 the 736 attempts (368 per arm; 37 of the 40 sampled
+  theorems have one hole) come to roughly 100 hours in the worst case.
+- **Disclosure:** when the 32K pilot was stopped, one attempt had finished (arm A of
+  `aime_1999_p11`, a wrong proof at 10,689 tokens); no pair outcome had been seen. Its files are kept
+  under `runs/exp_dec_001/stopped_pilot_32k/`.
+- **The cap is not neutral, so its handling is fixed now:** truncated attempts are reported per arm
+  as a secondary, and in every scored discordant pair whose losing arm truncated an attempt, that arm
+  is rerun alone at 32,768 tokens (`decomposition_test.py recheck`); the primary table and the table
+  after the recheck are reported side by side.
+- **The 32B arm is deferred** to its own pre-registered experiment (EXP-DEC-002): at these settings it
+  gets about one slot and the same sample would take 100+ hours; choosing a subset after seeing the
+  8B results would be selection on outcomes.
+- **Unchanged:** population rule, N, seed, the frozen sample, the matched budgets, the success rule and
+  the exclusions.
+
 ## Cumulative Findings
 
 ### Hypothesis Status Tracker

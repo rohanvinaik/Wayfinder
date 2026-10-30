@@ -150,10 +150,13 @@ def pressure_level() -> int:
         return 0
 
 
-def plan_slots(spec: ModelSpec, weights: int, available: int, reserve: int, max_slots: int) -> int:
-    """How many full-context sequences fit beside the weights, keeping `reserve` bytes free."""
+def plan_slots(
+    spec: ModelSpec, weights: int, available: int, reserve: int, max_slots: int, ctx: int | None = None
+) -> int:
+    """How many `ctx`-token sequences (default: the model's full context) fit beside the weights,
+    keeping `reserve` bytes free."""
     overhead = int(1.5 * GiB)  # compute buffers and the server itself
-    per_slot = spec.ctx * spec.kv_bytes_per_token()
+    per_slot = (ctx or spec.ctx) * spec.kv_bytes_per_token()
     return max(0, min(max_slots, (available - reserve - weights - overhead) // per_slot))
 
 
@@ -201,8 +204,11 @@ def read_events(lines: Iterable[bytes], should_stop: Callable[[], bool]) -> dict
 class LlamaServer:
     """One llama-server for one model, on a free localhost port, for as long as its holes last."""
 
-    def __init__(self, binary: str, model_path: Path, spec: ModelSpec, slots: int, log_path: Path):
+    def __init__(
+        self, binary: str, model_path: Path, spec: ModelSpec, slots: int, log_path: Path, ctx: int | None = None
+    ):
         self.binary, self.model_path, self.spec, self.slots, self.log_path = binary, model_path, spec, slots, log_path
+        self.ctx = ctx or spec.ctx  # tokens per slot: the prompt and the answer
         self.proc: subprocess.Popen | None = None
         self.port = 0
         self.stopping = False
@@ -210,7 +216,7 @@ class LlamaServer:
     def command(self) -> list[str]:
         return [
             self.binary, "-m", str(self.model_path), "--host", "127.0.0.1", "--port", str(self.port),
-            "-c", str(self.spec.ctx * self.slots), "-np", str(self.slots), "-fa", "on", "-ctk", "q8_0",
+            "-c", str(self.ctx * self.slots), "-np", str(self.slots), "-fa", "on", "-ctk", "q8_0",
             "-ctv", "q8_0", "-ngl", "999", "--no-context-shift",
         ]  # fmt: skip
 
@@ -492,11 +498,11 @@ class Worker:
             return cancel.is_set() or self.stop.is_set()
 
         if halted():
-            return {"outcome": "memory_yield" if self.stop.is_set() else "cancelled"}
+            return {"outcome": self.halt_outcome()}
         prompt = chatml(messages)
         try:
             n_prompt = srv.count_tokens(prompt)
-            budget = min(int(self.job["max_new_tokens"]), srv.spec.ctx - n_prompt - 64)
+            budget = min(int(self.job["max_new_tokens"]), srv.ctx - n_prompt - 64)
             if budget < 1024:
                 return {"outcome": "context_full", "prompt_tokens": n_prompt}
             start = time.monotonic()
@@ -506,17 +512,24 @@ class Worker:
         out.update(prompt_tokens=n_prompt, budget=budget, wall_s=round(time.monotonic() - start, 1))
         (self.dir / "outputs" / f"{sample_id}.txt").write_text(out["content"])
         if out.pop("cancelled"):
-            out["outcome"] = "memory_yield" if self.stop.is_set() else "cancelled"
+            out["outcome"] = self.halt_outcome()
         else:
             out["outcome"] = "generated"
         return out
+
+    def halt_outcome(self) -> str:
+        """Why a sample stopped short: the run was stopped (asked, or for memory), or its hole was solved."""
+        if self.stop.is_set():
+            return "memory_yield" if self.stop_kind == "memory" else "stopped"
+        return "cancelled"
 
     def log_sample(
         self, hole: Hole, spec: ModelSpec, sid: str, rnd: int, parent: str | None, gen: dict, res: dict
     ) -> None:
         outcome = res.get("outcome") or gen.get("outcome")
         rec = {"id": sid, "hole": hole.index, "model": spec.name, "quant": spec.quant, "round": rnd, "parent": parent,
-               "outcome": outcome, "prompt_tokens": gen.get("prompt_tokens"), "tokens": gen.get("tokens_predicted"),
+               "outcome": outcome, "prompt_tokens": gen.get("prompt_tokens"), "budget": gen.get("budget"),
+               "tokens": gen.get("tokens_predicted"),
                "stop_type": gen.get("stop_type"), "wall_s": gen.get("wall_s"), "tok_per_s": gen.get("tok_per_s"),
                "form": res.get("form"), "rewrites": res.get("rewrites"),
                "errors": res.get("errors") or res.get("reasons") or gen.get("error")}  # fmt: skip
@@ -633,17 +646,18 @@ class Worker:
                 h.note = f"{model}: model file not downloaded ({path})"
             return
         avail = available_bytes()
+        ctx = int(self.job.get("ctx") or spec.ctx)
         slots = plan_slots(spec, path.stat().st_size, avail, int(float(self.job["reserve_gb"]) * GiB),
-                           int(self.job["max_slots"]))  # fmt: skip
-        need = path.stat().st_size + spec.ctx * spec.kv_bytes_per_token() + int(1.5 * GiB)
+                           int(self.job["max_slots"]), ctx=ctx)  # fmt: skip
+        need = path.stat().st_size + ctx * spec.kv_bytes_per_token() + int(1.5 * GiB)
         if slots < 1:
             for h in holes:
                 h.note = (f"{model}: not enough free memory (needs {need / GiB:.1f} GB plus a "
                           f"{self.job['reserve_gb']} GB reserve; {avail / GiB:.1f} GB free)")  # fmt: skip
             return
-        srv = LlamaServer(self.job["llama_server"], path, spec, slots, self.dir / f"server-{model}.log")
+        srv = LlamaServer(self.job["llama_server"], path, spec, slots, self.dir / f"server-{model}.log", ctx=ctx)
         self.models.setdefault(model, {"samples": 0, "tokens": 0, "gen_seconds": 0.0}).update(
-            slots=slots, ctx_per_slot=spec.ctx, free_gb_at_start=round(avail / GiB, 1), quant=spec.quant
+            slots=slots, ctx_per_slot=ctx, free_gb_at_start=round(avail / GiB, 1), quant=spec.quant
         )
         self.publish(state="loading", model=model)
         start = time.monotonic()

@@ -95,6 +95,13 @@ class MemoryPlanTest(unittest.TestCase):
         self.assertEqual(lp.plan_slots(spec, weights, room + 9 * per_slot, reserve, 4), 4)
         self.assertEqual(lp.plan_slots(spec, weights, room, reserve, 4), 0)
 
+    def test_a_shorter_context_fits_more_slots(self):
+        spec = lp.MODELS[lp.LIGHT]
+        weights, reserve = 9 * lp.GiB, 6 * lp.GiB
+        available = 29 * lp.GiB  # free memory measured on this machine before a run
+        self.assertEqual(lp.plan_slots(spec, weights, available, reserve, 8), 4)  # full 40,960-token slots
+        self.assertEqual(lp.plan_slots(spec, weights, available, reserve, 8, ctx=16384), 8)
+
 
 def _event(**kw) -> bytes:
     return f"data: {json.dumps(kw)}\n".encode()
