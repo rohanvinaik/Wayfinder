@@ -218,6 +218,34 @@ def _alive(pid: object) -> bool:
     return True
 
 
+def _pool_alive(key: str) -> bool:
+    """Whether any server under a pool-file key answers its health check."""
+    import http.client
+
+    for r in lp.pool_config().get(key) or []:
+        try:
+            conn = http.client.HTTPConnection("127.0.0.1", int(r["port"]), timeout=5)
+            conn.request("GET", "/health")
+            if conn.getresponse().status == 200:
+                return True
+        except (OSError, http.client.HTTPException, ValueError):
+            continue
+    return False
+
+
+def _await_servers(key: str, patience_s: int = 1800) -> bool:
+    """A remote-only stream's circuit breaker: before it claims a theorem, a server must answer. A
+    machine that goes away (asleep, off the network) is waited for, then the stream stops — it never
+    claims theorems it cannot try (the Air's server died once and its stream ran through 103 theorems
+    in ~20 s apiece)."""
+    deadline = time.monotonic() + patience_s
+    while not _pool_alive(key):
+        if time.monotonic() > deadline:
+            return False
+        time.sleep(60)
+    return True
+
+
 def _closed(job: dict, fills: list[dict]) -> tuple[bool, list[str]]:
     """Apply every fill to the arm's file, then the acceptance gate on the completed file."""
     accepted, reasons, _, _ = _complete(job, fills)
@@ -401,6 +429,9 @@ def demo(exp: Path, model: str, limit: int | None, remote_only: bool = False, re
             job["pool_key"] = pool_key
         if remote_only:
             job["remote_only"] = True
+            if not _await_servers(pool_key or model):
+                print(f"no server under {pool_key or model!r} answered for 30 min: this stream stops", flush=True)
+                return
         # every stream claims its theorem, so none starts one another live stream is working
         claim = {"theorem_id": tid, "in_progress": True, "pid": os.getpid(), "arm": {"infra": False, "closed": False}}
         rec_path.write_text(json.dumps(claim))

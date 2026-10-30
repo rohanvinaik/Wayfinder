@@ -596,21 +596,13 @@ class Worker:
         return not run["timed_out"] and not gate.errors_in(run["messages"])
 
     def formal(self, hole: Hole) -> str:
-        # a residual's goal is a step of a theorem the model never sees otherwise: the theorem goes with
-        # it as context; what Wayfinder tried and withdrew there goes too, as information, not as a step
-        context = ""
-        declaration = str((self.job.get("row") or {}).get("full_declaration", ""))
-        if self.job.get("status") == "residual" and ":=" in declaration:
-            try:
-                header = rh.split_declaration(declaration)[0]
-            except (ValueError, IndexError):
-                header = ""
-            header = re.sub(r"\s*:=\s*by\s*$", "", header).strip()
-            if header and "-/" not in header:
-                context = f"/- This goal is a step of the theorem below; Wayfinder proved the rest:\n{header} -/\n"
+        # What Wayfinder tried and withdrew here goes with the goal, as information, not as a step.
+        # The theorem the goal is a step of does NOT: shown as a commented header, the model answered
+        # that theorem instead of the goal (26 answers with no usable theorem in 37 theorems, against 5
+        # without it), copying it — often with `sorry` — under a name the file already declares.
         note = (f"/- Wayfinder tried these steps on this goal and withdrew them, as nothing under them "
                 f"closed: {hole.tried} -/\n") if hole.tried else ""  # fmt: skip
-        return f"{self.prefix}{context}{note}{hole.statement} := by sorry"
+        return f"{self.prefix}{note}{hole.statement} := by sorry"
 
     # ── checking one answer ──
 
@@ -726,16 +718,21 @@ class Worker:
         base = rh.closers(rh.defs_mentioned(hole.goal, self.job.get("defs") or []), "")
         heavy = [c for c in base if c in rh._HEAVY_CLOSERS]
         seeds = list(dict.fromkeys(c for st in steps for c in hf.seeded_closers(st)))[:6]
-        battery = [[c for c in base if c not in heavy] + seeds + heavy] * n
-        # heartbeats per copy above the model's own 400K, so its seeded step gets more than it had, but
-        # bounded: the probe runs two copies a hole, and the model waits on it
-        probe = rh.triage_block(decl, hole.name, battery, heartbeats=600000)
-        run = self.compile(above + probe.text, timeout=900)
+        battery = [c for c in base if c not in heavy] + seeds + heavy
+
+        def probe(k: int) -> dict:
+            # one hole a probe, the probes side by side (the model waits on them); heartbeats a copy
+            # above the model's own 400K, so its seeded step gets more than it had, but bounded
+            one = rh.triage_block(hf.only_hole(decl, k), hole.name, [battery], heartbeats=600000)
+            run = self.compile(above + one.text, timeout=900)
+            if run["timed_out"]:
+                return {"closed_by": None, "refuted": None, "refute_note": "the closers timed out"}
+            return rh.triage_outcomes(run["messages"], one, start)[0]
+
+        with ThreadPoolExecutor(max_workers=max(1, min(n, REPL_SIZE))) as ex:
+            fates = list(ex.map(probe, range(1, n + 1)))
         out = {"outcome": "open", "holes": n, "skeleton": decl, "replaced": sk.replaced,
                "claims": hf.claims_at_holes(decl)}  # fmt: skip
-        if run["timed_out"]:
-            return {**out, "why": "the closers timed out"}
-        fates = rh.triage_outcomes(run["messages"], probe, start)
         closed = [f["closed_by"] for f in fates]
         out.update(closed=[c for c in closed if c], fills=closed, text=text, opens=cand.opens, helpers=cand.helpers,
                    refuted={k + 1: f["refuted"] for k, f in enumerate(fates) if f["refuted"]})  # fmt: skip
@@ -856,7 +853,8 @@ class Worker:
                                                                   "reasons": [res.get("why") or ""]})  # fmt: skip
             if res.get("partial") and not res.get("refuted"):
                 ask = [{"role": "user", "content": ROUND0.format(statement=self.prefix + res["partial"])}]
-                completions += [(rnd + 1, ask, sid)] * int(self.job.get("fix_samples") or 2)
+                # one try a skeleton where the job has no revision rounds to share the budget with
+                completions += [(rnd + 1, ask, sid)] * max(1, int(self.job.get("fix_samples") or 0))
             false = [f"`{res['claims'].get(k, f'step {k}')}` is false: {' '.join(str(c).split())[:300]}"
                      for k, c in (res.get("refuted") or {}).items()]  # fmt: skip
             if false:  # a refuted step is a false claim of the model's: say so in its revision

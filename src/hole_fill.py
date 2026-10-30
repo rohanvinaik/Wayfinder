@@ -732,6 +732,16 @@ def fill_holes(text: str, fills: list[str | None], left: str = "") -> str:
     return "\n".join(lines)
 
 
+def only_hole(text: str, k: int) -> str:
+    """The skeleton with every marked hole but `k` closed by `exact sorry` — a probe then sees
+    (`^\\s*(· )?sorry$`) and works on hole `k` alone, so the holes can be probed side by side."""
+    lines = text.split("\n")
+    for j, site in hole_sites(text).items():
+        if j != k:
+            lines[site.sorry] = site.indent + ("· " if site.bullet else "") + "exact sorry"
+    return "\n".join(lines)
+
+
 def claims_at_holes(text: str) -> dict[int, str]:
     """The `have` claim each hole proves, where the hole is a `have`'s proof."""
     lines, out = text.split("\n"), {}

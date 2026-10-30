@@ -40,7 +40,7 @@ Each hole is lifted to a standalone lemma (`extract_goal`), typed where the plai
 
 ## The last mile: Wayfinder, Lean and a prover in conversation
 
-The holes go to an open-weights Lean prover served on the same machine — Goedel-Prover-V2, 8B (Q8_0) or 32B (Q4_K_M), through llama.cpp — with its own published prompts, sampling and revision protocol, and with the theorem the goal came from as context. Then the three parts work on what each other cannot:
+The holes go to an open-weights Lean prover served on the same machine — Goedel-Prover-V2, 8B (Q8_0) or 32B (Q4_K_M), through llama.cpp — with its own published prompts, sampling and revision protocol. Then the three parts work on what each other cannot:
 
 - **Lean says which steps fail.** A rejected proof usually fails at a few steps of a sound plan.
 - **Wayfinder takes the plan forward.** The proof's `have` claims, case splits and witnesses are kept; each step Lean rejected becomes a hole. Wayfinder's closers attack the holes — seeded with the model's own failed step and the premises it chose — then its search, on each remaining step lifted to a lemma, in one Pantograph session. If every hole closes, the proof is done without another model call. Goedel's unfinished attempts are taken forward the same way: a draft that leaves `sorry`s, or an answer cut off by its token budget, is the model's plan.

@@ -229,3 +229,5 @@ Full design: §13 of `docs/Research_Paper/WAYFINDER_DESIGN.md`. In the MCP:
 - **Two 8B servers do not fit beside each other with the REPLs on a 64 GB machine.** A worker sizes its server to free memory less `reserve_gb`, and gets zero slots if another run holds the GPU.
 - **Pantograph sessions stay short.** A long-lived one drifts and crashes silently (Rohan). The search runs one session per batch and exits.
 - **Wayfinder's own search closes count only once the v4.28 gate accepts their replay.** Of MiniF2F-test's 108, 102 did. `decomposition_test.py reconcile` puts the rest back into the pipeline.
+- **The lifted goal goes to the model without the theorem it came from.** Shown as a commented header, the model answered that theorem instead (no-theorem answers rose from 5 to 26), so it was taken back out. Wayfinder's withdrawn steps still go with the goal.
+- **An arm that produced no answer is infrastructure.** A remote-only stream checks before each claim that its server answers, waits up to 30 minutes, and then stops. A dead remote once burned 103 theorems, unanswered and scored as failures, before this.

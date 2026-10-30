@@ -363,3 +363,13 @@ class DraftTest(unittest.TestCase):
         self.assertIn("linarith [sq_nonneg (a - b), sq_nonneg (a + b), h₀]", seeds)
         self.assertIn("simp [Finset.sum_range_succ]", hf.seeded_closers("simp [Finset.sum_range_succ] at h ⊢"))
         self.assertLessEqual(len(hf.seeded_closers("nlinarith [a] <;> simp [b] <;> norm_num [c]")), 6)
+
+
+class OnlyHoleTest(unittest.TestCase):
+    def test_a_probe_of_one_hole_sees_that_hole_alone(self):
+        text = ("theorem t : P := by\n  constructor\n  -- WAYFINDER RESIDUAL 1: close this goal\n  · sorry\n"
+                "  -- WAYFINDER RESIDUAL 2: close this goal\n  · sorry")  # fmt: skip
+        one = hf.only_hole(text, 2)
+        self.assertIn("  · exact sorry\n", one)
+        self.assertTrue(one.endswith("  · sorry"))
+        self.assertEqual([ln.strip() for ln in one.splitlines() if ln.strip().endswith("sorry")], ["· exact sorry", "· sorry"])
