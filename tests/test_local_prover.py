@@ -123,6 +123,22 @@ class StreamTest(unittest.TestCase):
         self.assertTrue(out["cancelled"])
         self.assertEqual(out["content"], "a")
 
+    def test_a_stream_cut_off_before_its_final_event_is_not_an_answer(self):
+        # a server stopped mid-answer ends the stream early: a fragment, scored as infrastructure
+        with self.assertRaises(ConnectionError):
+            lp.read_events([_event(content="Plan"), _event(content=" half")], lambda: False)
+
+
+class OrphanTest(unittest.TestCase):
+    def test_only_servers_whose_worker_is_gone_are_strays(self):
+        ps = "\n".join([
+            " 1681     1 /opt/homebrew/bin/llama-server --models-preset /c/llm-models.ini --port 8080",
+            "30736 30672 /opt/homebrew/bin/llama-server -m /w/models/gguf/Goedel-Prover-V2-8B.Q8_0.gguf --port 50123",
+            "41000     1 /opt/homebrew/bin/llama-server -m /w/models/gguf/Goedel-Prover-V2-32B.Q4_K_M.gguf --port 50124",
+            "41001     1 bash -c sleep 1; llama-server -m /w/models/gguf/Goedel-Prover-V2-8B.Q8_0.gguf",
+        ])  # fmt: skip
+        self.assertEqual(lp.orphaned_servers(ps), ["41000"])
+
 
 def _watcher() -> lp.Worker:
     w = lp.Worker.__new__(lp.Worker)  # no job: the watchdog only needs its stop state

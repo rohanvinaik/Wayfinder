@@ -207,12 +207,6 @@ def _job(
     }  # fmt: skip
 
 
-def _stray_servers() -> list[str]:
-    """Our llama-servers left running (never the squishos router on port 8080: it serves no Goedel GGUF)."""
-    out = subprocess.run(["pgrep", "-f", "llama-server.*models/gguf/Goedel"], capture_output=True, text=True)
-    return out.stdout.split()
-
-
 def _closed(job: dict, fills: list[dict]) -> tuple[bool, list[str]]:
     """Apply every fill to the arm's file, then the acceptance gate on the completed file."""
     accepted, reasons, _, _ = _complete(job, fills)
@@ -244,7 +238,8 @@ def _run_arm(arm_dir: Path, job: dict) -> dict:
     for f in ("status.json", "fills.json", "samples.jsonl"):
         (arm_dir / f).unlink(missing_ok=True)
     (arm_dir / "job.json").write_text(json.dumps(job, indent=2))
-    stray = _stray_servers()
+    # only servers a dead worker left behind: a live one may be another stream's
+    stray = lp.orphaned_servers()
     if stray:
         subprocess.run(["kill", *stray], check=False)
         time.sleep(5)

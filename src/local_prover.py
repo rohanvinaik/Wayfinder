@@ -159,6 +159,22 @@ def available_bytes() -> int:
         return page * sum(int(m.group(1)) for k in kinds if (m := re.search(rf"{k}:\s+(\d+)", out)))
 
 
+def orphaned_servers(ps_lines: str | None = None) -> list[str]:
+    """Pids of Goedel llama-servers whose worker is gone (reparented to launchd). A server whose
+    worker is alive is never one: another stream may be sampling on it. The squishos router on
+    port 8080 serves no Goedel GGUF, so it never matches."""
+    if ps_lines is None:
+        ps_lines = subprocess.run(["ps", "-axo", "pid=,ppid=,command="], capture_output=True, text=True).stdout
+    found = []
+    for line in ps_lines.splitlines():
+        parts = line.split(None, 2)
+        if len(parts) < 3 or parts[1] != "1" or "models/gguf/Goedel" not in parts[2]:
+            continue
+        if parts[2].split(maxsplit=1)[0].rsplit("/", 1)[-1] == "llama-server":
+            found.append(parts[0])
+    return found
+
+
 def pressure_level() -> int:
     """The kernel's memory-pressure level: 1 normal, 2 warn, 4 critical (0 when unknown)."""
     try:
@@ -207,6 +223,10 @@ def read_events(lines: Iterable[bytes], should_stop: Callable[[], bool]) -> dict
         if event.get("stop"):
             final = event
             break
+    else:
+        # no final event: the server stopped mid-answer or the connection dropped, so what came
+        # through is a fragment, not an answer to score
+        raise ConnectionError("the stream ended before the server's final event")
     timings = final.get("timings") or {}
     return {
         "content": "".join(parts),
