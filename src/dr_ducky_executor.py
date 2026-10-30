@@ -1374,6 +1374,10 @@ def _local_hypotheses(goal_text: str) -> list[tuple[str, str]]:
 def _cached_goal_variables(lean: Any | None, goal_text: str) -> list[tuple[str, str]]:
     if lean is None:
         return []
+    live = getattr(lean, "goal_variables", None)
+    found = live(goal_text) if callable(live) else None
+    if found is not None:  # a live goal: its own hypotheses, never a same-target neighbour's
+        return [(n, sanitize_goal_text(t.strip())) for n, t in found if n.strip() and t.strip()]
     cache = getattr(lean, "_goal_states", None)
     env_key = getattr(lean, "_current_env_key", "")
     if not isinstance(cache, dict) or not env_key:
@@ -1399,19 +1403,6 @@ def _cached_goal_variables(lean: Any | None, goal_text: str) -> list[tuple[str, 
             continue
         out.append((name, typ))
     return out
-
-
-def _cached_goal_targets(lean: Any | None, goal_text: str) -> list[str]:
-    if lean is None:
-        return []
-    cache = getattr(lean, "_goal_states", None)
-    env_key = getattr(lean, "_current_env_key", "")
-    if not isinstance(cache, dict) or not env_key:
-        return []
-    state = cache.get((env_key, goal_text))
-    if state is None:
-        return []
-    return [str(getattr(goal, "target", "") or "") for goal in (getattr(state, "goals", None) or []) if str(getattr(goal, "target", "") or "").strip()]
 
 
 def _candidate_witness_terms(goal_text: str) -> list[str]:
@@ -3001,134 +2992,116 @@ def _build_closer_programs(
     return programs
 
 
-def execute_ducky_program(lean: Any, start_goal: str, program: DuckyProgram) -> DuckyProgramRun:
-    current_goal = start_goal
-    goals_after = [start_goal]
-    tactics_applied: list[str] = []
-    first_failure_tactic = ""
-    first_failure_error = ""
+# Finishers tried on the goals a program leaves, in order (`execute_ducky_program`).
+_FRONTIER_FINISHERS = (
+    "ring", "omega", "simp_all", "norm_num", "linarith", "nlinarith", "positivity",
+    "aesop", "tauto", "decide", "field_simp; ring", "norm_cast; omega",
+    "ext; simp", "funext; simp", "push_neg; simp", "assumption",
+)  # fmt: skip
 
-    for tactic in program.tactics:
-        current_targets = _cached_goal_targets(lean, current_goal)
-        result: TacticResult = lean.try_tactic(current_goal, tactic)
-        if not result.success:
-            first_failure_tactic = tactic
-            first_failure_error = str(result.error_message or "")
-            break
-        goals_after = [str(goal) for goal in (result.new_goals or []) if str(goal).strip()]
-        if current_targets and goals_after == current_targets:
-            first_failure_tactic = tactic
-            first_failure_error = "accepted_without_goal_change"
-            break
-        tactics_applied.append(tactic)
-        if not goals_after:
-            return DuckyProgramRun(
-                program_id=program.program_id,
-                bank=program.bank,
-                specialist=program.specialist,
-                tactics=program.tactics,
-                script=program.script,
-                score=program.score,
-                progressed=True,
-                closed=True,
-                tactics_applied=tactics_applied,
-                final_goal="",
-                final_goal_bucket="proved",
-                goals_after=[],
-                certificate_id=program.certificate_id,
-                engine_name=program.engine_name,
-                backend_family=program.backend_family,
-                certificate_shape=program.certificate_shape,
-                projector_status=program.projector_status,
-                projector_backend=program.projector_backend,
-            )
-        current_goal = goals_after[0]
 
-    # Iterative post-progress close: if any tactics applied and we have
-    # a single remaining goal, try finishers ON THE LIVE GOALSTATE (not
-    # from string recreation).  This catches cases like ring→omega where
-    # the first tactic normalizes and the second closes.
-    if tactics_applied and len(goals_after) <= 2:
-        for finisher in ["ring", "omega", "simp_all", "norm_num",
-                         "linarith", "nlinarith", "positivity",
-                         "aesop", "tauto", "decide",
-                         "field_simp; ring", "norm_cast; omega",
-                         "ext; simp", "funext; simp",
-                         "push_neg; simp", "assumption"]:
-            try:
-                fin_result: TacticResult = lean.try_tactic(current_goal, finisher)
-                if fin_result.success and not fin_result.new_goals:
-                    tactics_applied.append(finisher)
-                    return DuckyProgramRun(
-                        program_id=program.program_id,
-                        bank=program.bank,
-                        specialist=program.specialist,
-                        tactics=program.tactics,
-                        script=program.script,
-                        score=program.score,
-                        progressed=True,
-                        closed=True,
-                        tactics_applied=tactics_applied,
-                        final_goal="",
-                        final_goal_bucket="proved",
-                        goals_after=[],
-                        first_failure_tactic="",
-                        first_failure_error="",
-                        certificate_id=program.certificate_id,
-                        engine_name=program.engine_name,
-                        backend_family=program.backend_family,
-                        certificate_shape="post_progress_close",
-                        projector_status=program.projector_status,
-                        projector_backend=program.projector_backend,
-                    )
-            except Exception:
-                pass
+def _closes(lean: Any, goal: str, tactic: str) -> bool:
+    try:
+        result: TacticResult = lean.try_tactic(goal, tactic)
+    except Exception:  # noqa: BLE001 — a finisher that faults is one that did not close
+        return False
+    return bool(result.success and not result.new_goals)
 
-    final_goal = current_goal if tactics_applied else start_goal
+
+def _program_run(
+    program: DuckyProgram,
+    applied: list[str],
+    frontier: list[str],
+    *,
+    failure: tuple[str, str] = ("", ""),
+    shape: str = "",
+) -> DuckyProgramRun:
+    final_goal = frontier[0] if frontier else ""
     return DuckyProgramRun(
         program_id=program.program_id,
         bank=program.bank,
         specialist=program.specialist,
         tactics=program.tactics,
-        script=program.script,
+        script="; ".join(applied),
         score=program.score,
-        progressed=bool(tactics_applied),
-        closed=False,
-        tactics_applied=tactics_applied,
+        progressed=bool(applied),
+        closed=not frontier,
+        tactics_applied=list(applied),
         final_goal=final_goal,
-        final_goal_bucket=classify_goal_bucket(final_goal),
-        goals_after=goals_after if tactics_applied else [start_goal],
-        first_failure_tactic=first_failure_tactic,
-        first_failure_error=first_failure_error,
+        final_goal_bucket=classify_goal_bucket(final_goal) if frontier else "proved",
+        goals_after=list(frontier),
+        first_failure_tactic=failure[0],
+        first_failure_error=failure[1],
         certificate_id=program.certificate_id,
         engine_name=program.engine_name,
         backend_family=program.backend_family,
-        certificate_shape=program.certificate_shape,
+        certificate_shape=shape or program.certificate_shape,
         projector_status=program.projector_status,
         projector_backend=program.projector_backend,
     )
 
 
-def _combined_program(chain: list[DuckyProgramRun]) -> dict[str, Any]:
-    tactics: list[str] = []
-    scripts: list[str] = []
-    for run in chain:
-        tactics.extend(run.tactics_applied)
-        if run.script:
-            scripts.append(run.script)
+def execute_ducky_program(lean: Any, start_goal: str, program: DuckyProgram) -> DuckyProgramRun:
+    """Run a program as Lean runs a tactic block: each tactic on the first open goal, the goals it
+    leaves in front of the rest, every goal kept. The program closes only when no goal is left, and
+    its `script` is what was applied — the replay of exactly that."""
+    frontier: list[str] = [start_goal]
+    applied: list[str] = []
+    failure = ("", "")
+    for tactic in program.tactics:
+        result: TacticResult = lean.try_tactic(frontier[0], tactic)
+        if not result.success:  # the kernel counts a step that changed nothing as a failure
+            failure = (tactic, str(result.error_message or ""))
+            break
+        applied.append(tactic)
+        frontier = [g for g in (result.new_goals or []) if str(g).strip()] + frontier[1:]
+        if not frontier:
+            return _program_run(program, applied, [])
+    if not applied:
+        return _program_run(program, [], [start_goal], failure=failure)
+
+    # Iterative post-progress close, on the live goals: finishers on the first open goal while one
+    # closes it (ring → omega: the first normalizes, the second closes). A goal a finisher closes
+    # is kept closed even when its sibling stays open; the program closes only with none left.
+    if len(frontier) <= 2:
+        while frontier:
+            finisher = next((f for f in _FRONTIER_FINISHERS if _closes(lean, frontier[0], f)), None)
+            if finisher is None:
+                break
+            applied.append(finisher)
+            frontier = frontier[1:]
+        if not frontier:
+            return _program_run(program, applied, [], shape="post_progress_close")
+    return _program_run(program, applied, frontier, failure=failure)
+
+
+def _chain_frontier(chain: list[DuckyProgramRun]) -> list[str]:
+    """Every goal a chain leaves: each run worked its predecessor's first goal, so the goals its
+    predecessors left beside that one follow its own."""
+    out = list(chain[-1].goals_after)
+    for run in reversed(chain[:-1]):
+        out += list(run.goals_after[1:])
+    return out
+
+
+def _combined_program(chain: list[DuckyProgramRun], frontier: list[str] | None = None) -> dict[str, Any]:
+    """The chain as one program: the tactics it applied, in order — the replay — and the goals it
+    leaves (`frontier`: every goal still open after it, when the caller tracked them)."""
+    tactics = [t for run in chain for t in run.tactics_applied]
     final = chain[-1]
+    goals = list(final.goals_after) if frontier is None else list(frontier)
     return {
         "program_id": "chain:" + "→".join(run.program_id for run in chain),
         "bank": final.bank,
         "specialist": final.specialist,
-        "script": "; ".join(scripts),
+        "script": "; ".join(tactics),
         "score": round(sum(run.score for run in chain), 3),
         "progressed": True,
-        "closed": final.closed,
+        "closed": not goals,
         "tactics_applied": tactics,
-        "goals_after": list(final.goals_after),
-        "final_goal": final.final_goal,
-        "final_goal_bucket": final.final_goal_bucket,
+        "goals_after": goals,
+        "final_goal": goals[0] if goals else "",
+        "final_goal_bucket": classify_goal_bucket(goals[0]) if goals else "proved",
         "rounds": len(chain),
         "subprograms": [run.to_dict() for run in chain],
     }
@@ -3170,6 +3143,9 @@ def run_ducky_on_goal(
     tried: list[dict[str, Any]] = []
     engine_outcomes: list[dict[str, Any]] = []
     projector_outcomes: list[dict[str, Any]] = []
+    # Every goal still open: each round works the first, and the goals beside it are carried until
+    # a later round reaches them. Closed means none is left.
+    open_goals: list[str] = [goal_state]
     current_goal = goal_state
     current_row = dict(row)
     current_capsule = capsule or build_goal_capsule(current_row)
@@ -3179,6 +3155,7 @@ def run_ducky_on_goal(
     ledger_snapshot: dict[str, Any] | None = None
 
     for round_idx in range(max_rounds):
+        carried = open_goals[1:]
         all_programs = build_ducky_programs(
             current_capsule,
             theorem_id=theorem_id,
@@ -3227,7 +3204,7 @@ def run_ducky_on_goal(
             payload = run.to_dict()
             payload["round"] = round_idx
             tried.append(payload)
-            if run.closed:
+            if run.closed and not carried:
                 chain = best_chain + [run]
                 return DuckyExecutionResult(
                     theorem_id=theorem_id,
@@ -3245,7 +3222,7 @@ def run_ducky_on_goal(
                     programs_considered=total_programs,
                     closed=True,
                     progressed=True,
-                    winning_program=_combined_program(chain),
+                    winning_program=_combined_program(chain, frontier=[]),
                     final_goal="",
                     final_goal_bucket="proved",
                     goals_after=[],
@@ -3283,7 +3260,7 @@ def run_ducky_on_goal(
             # IMMEDIATE POST-PROGRESS CLOSER: try finishers on the contracted
             # state RIGHT NOW, before moving on.  This is the iterative
             # compression — each progress step triggers a re-attempt to close.
-            if run.final_goal and len(run.goals_after) <= 2:
+            if run.final_goal and len(run.goals_after) == 1 and not carried:
                 for finisher in ["ring", "omega", "simp_all", "norm_num",
                                  "linarith", "nlinarith", "positivity",
                                  "aesop", "tauto", "decide",
@@ -3338,7 +3315,7 @@ def run_ducky_on_goal(
                                 programs_considered=total_programs,
                                 closed=True,
                                 progressed=True,
-                                winning_program=_combined_program(chain_with_fin),
+                                winning_program=_combined_program(chain_with_fin, frontier=[]),
                                 final_goal="",
                                 final_goal_bucket="proved",
                                 goals_after=[],
@@ -3356,6 +3333,8 @@ def run_ducky_on_goal(
         ranked_progress = sorted(progress_candidates, key=lambda chain: _progress_score(chain[-1]), reverse=True)
         for chain in ranked_progress[:close_sweep_candidates]:
             run = chain[-1]
+            if not run.goals_after:  # it closed its goal; the carried ones wait for the next round
+                continue
             closer_programs = _build_closer_programs(
                 run.final_goal,
                 run.final_goal_bucket,
@@ -3373,7 +3352,7 @@ def run_ducky_on_goal(
                 closer_payload["round"] = round_idx
                 closer_payload["followup_to"] = run.program_id
                 tried.append(closer_payload)
-                if closer_run.closed:
+                if closer_run.closed and len(run.goals_after) == 1 and not carried:
                     chain = best_chain + chain + [closer_run]
                     return DuckyExecutionResult(
                         theorem_id=theorem_id,
@@ -3391,7 +3370,7 @@ def run_ducky_on_goal(
                         programs_considered=total_programs,
                         closed=True,
                         progressed=True,
-                        winning_program=_combined_program(chain),
+                        winning_program=_combined_program(chain, frontier=[]),
                         final_goal="",
                         final_goal_bucket="proved",
                         goals_after=[],
@@ -3405,12 +3384,14 @@ def run_ducky_on_goal(
         ranked_progress = sorted(progress_candidates, key=lambda chain: _progress_score(chain[-1]), reverse=True)
         best_progress_chain = ranked_progress[0]
         best_chain.extend(best_progress_chain)
-        current_goal = best_progress_chain[-1].final_goal
+        # never empty: a chain that left no goal and carried none returned as closed above
+        open_goals = _chain_frontier(best_progress_chain) + carried
+        current_goal = open_goals[0]
         current_row = dict(current_row)
         current_row["last_goal"] = current_goal
         current_row["goal_state"] = current_goal
         current_row["last_goal_bucket"] = classify_goal_bucket(current_goal)
-        current_row["remaining_goals_snapshot"] = list(best_progress_chain[-1].goals_after or [current_goal])
+        current_row["remaining_goals_snapshot"] = list(open_goals)
         current_capsule = build_goal_capsule(current_row)
 
     return DuckyExecutionResult(
@@ -3429,10 +3410,10 @@ def run_ducky_on_goal(
         programs_considered=total_programs,
         closed=False,
         progressed=bool(best_chain),
-        winning_program=_combined_program(best_chain) if best_chain else None,
-        final_goal=best_chain[-1].final_goal if best_chain else goal_state,
-        final_goal_bucket=best_chain[-1].final_goal_bucket if best_chain else classify_goal_bucket(goal_state),
-        goals_after=list(best_chain[-1].goals_after) if best_chain else [goal_state],
+        winning_program=_combined_program(best_chain, frontier=open_goals) if best_chain else None,
+        final_goal=open_goals[0],
+        final_goal_bucket=classify_goal_bucket(open_goals[0]),
+        goals_after=list(open_goals),
         ledger_snapshot=ledger_snapshot,
         engine_outcomes=engine_outcomes,
         projector_outcomes=projector_outcomes,

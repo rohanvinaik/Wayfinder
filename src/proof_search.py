@@ -292,8 +292,23 @@ def _goal_target_text(goal: str) -> str:
     return text
 
 
+def _goal_content(goal: str) -> str:
+    """A goal as mathematics — hypotheses and target, whitespace-normalized — for the reads that
+    compare goals: loops, duplicates, one-shot guards. A live goal (GoalRef) carries Lean's own
+    rendering of both; a goal named by text alone reads as its target. Never the goal's handle:
+    two handles on the same content are the same goal to these reads, so loops stay visible."""
+    rendering = getattr(goal, "rendering", None)
+    return " ".join(str(rendering or _goal_target_text(goal)).split())
+
+
+def _tried_key(lane: str, goal: str) -> str:
+    """A one-shot guard's key: the lane and the goal's content. A deterministic lane gives the same
+    answer on the same goal, and a different answer once a step has added a hypothesis."""
+    return f"{lane}:{_goal_content(goal)}"
+
+
 def _goal_signature(goals: list[str]) -> str:
-    normalized = [" ".join(_goal_target_text(goal).split()) for goal in goals if str(goal).strip()]
+    normalized = [_goal_content(goal) for goal in goals if str(goal).strip()]
     return " || ".join(sorted(normalized))
 
 
@@ -349,7 +364,7 @@ def _progress_pathology_tags(
     tags: list[str] = []
     signature_before = _goal_signature(goals_before)
     signature_after = _goal_signature(goals_after)
-    normalized_after = [" ".join(_goal_target_text(goal).split()) for goal in goals_after if str(goal).strip()]
+    normalized_after = [_goal_content(goal) for goal in goals_after if str(goal).strip()]
     if any(_goal_has_metavariable(goal) for goal in goals_after):
         tags.append("metavariable_corruption")
     if any(_goal_is_bare_type(goal) for goal in goals_after):
@@ -400,6 +415,11 @@ def _close_goal(
             "goal": goal,
             "goal_idx": goal_idx,
             "open_before": list(state.open_goals),
+            # the live goals' ids beside their text: the tree pairs closures with goals by these
+            # when targets coincide (an `rcases` leaves two goals with one target)
+            "goal_id": getattr(goal, "gid", None),
+            "open_before_ids": [getattr(g, "gid", None) for g in state.open_goals],
+            "new_goal_ids": [getattr(g, "gid", None) for g in new_goals],
             "tactic": tactic,
             "lean_tactic": lean_text,
             "new_goals": list(new_goals),
@@ -556,7 +576,7 @@ def _try_dr_ducky(
 ) -> bool:
     if len(state.open_goals) > cfg.dr_ducky_goal_limit:
         return False
-    cache_key = f"dr_ducky:{goal}"
+    cache_key = _tried_key("dr_ducky", goal)
     if cache_key in state._expensive_tried:
         return False
     state._expensive_tried.add(cache_key)
@@ -998,7 +1018,7 @@ def _try_symbolic_family(
     verified by Lean. One-shot per (family, goal) pair. No neural
     component anywhere on this path.
     """
-    cache_key = f"symbolic_{family}:{goal}"
+    cache_key = _tried_key(f"symbolic_{family}", goal)
     if cache_key in state._expensive_tried:
         return False
     state._expensive_tried.add(cache_key)
@@ -1078,7 +1098,7 @@ def _try_cosine_family(
 
     One-shot per (family, goal) pair. Returns True if any tactic succeeds.
     """
-    cache_key = f"cosine_{family}:{goal}"
+    cache_key = _tried_key(f"cosine_{family}", goal)
     if cache_key in state._expensive_tried:
         return False
     state._expensive_tried.add(cache_key)
@@ -1143,7 +1163,7 @@ def _try_cosine_rw_seq(
 
     Returns True if at least one atom fired (progress made).
     """
-    cache_key = f"cosine_rw_seq:{goal}"
+    cache_key = _tried_key("cosine_rw_seq", goal)
     if cache_key in state._expensive_tried:
         return False
     state._expensive_tried.add(cache_key)
@@ -1825,7 +1845,7 @@ def _try_lane(
         )
         if not ranked:
             return False
-        cache_key = f"cosine_exact:{goal}"
+        cache_key = _tried_key("cosine_exact", goal)
         if cache_key in state._expensive_tried:
             return False
         state._expensive_tried.add(cache_key)
@@ -1839,7 +1859,7 @@ def _try_lane(
         return False
     elif lane == "cosine_apply":
         # Check one-shot cache BEFORE running the trigger MLP
-        cache_key = f"cosine_apply:{goal}"
+        cache_key = _tried_key("cosine_apply", goal)
         if cache_key in state._expensive_tried:
             return False
         if cfg.cosine_apply_gated and not _trigger_gate(goal, state, env, cfg):
@@ -2221,7 +2241,7 @@ def _search_step(
     # remaining goal. EXP-056 showed 17/17 exact? solutions are
     # self-applications. Lean's unifier handles implicit args.
     if cfg.allow_self_application and len(state.open_goals) == 1 and state.theorem_id:
-        self_app_key = f"self_app:{goal}"
+        self_app_key = _tried_key("self_app", goal)
         if self_app_key not in state._expensive_tried:
             state._expensive_tried.add(self_app_key)
             for tac in [
@@ -2240,7 +2260,7 @@ def _search_step(
     # making it recognizable to the symbolic closers.
     _NORM_SETUPS = ["norm_cast", "ring_nf", "push_neg"]
     if cfg.norm_then_close_enabled and len(state.open_goals) == 1:
-        norm_key = f"norm_setup:{goal}"
+        norm_key = _tried_key("norm_setup", goal)
         if norm_key not in state._expensive_tried:
             state._expensive_tried.add(norm_key)
             for norm_tac in _NORM_SETUPS:
@@ -2260,7 +2280,7 @@ def _search_step(
 
     # Last-resort closer: Lean's symbolic search teachers/oracles.
     if len(state.open_goals) == 1 and _EXPENSIVE_CLOSERS:
-        cache_key = f"last_resort:{goal}"
+        cache_key = _tried_key("last_resort", goal)
         if cache_key not in state._expensive_tried:
             state._expensive_tried.add(cache_key)
             for tac in _EXPENSIVE_CLOSERS:
@@ -2270,11 +2290,12 @@ def _search_step(
                     # Try to capture the suggestion from Pantograph messages
                     suggestion = tac
                     try:
-                        gs = env.lean._goal_states.get(
-                            (env.lean._current_env_key, goal)
-                        )
-                        if gs is not None:
-                            new_gs = env.lean._server.goal_tactic(gs, tac, site=env.lean._site_for(goal))
+                        at = env.lean.live_site(goal) if hasattr(env.lean, "live_site") else None
+                        if at is None:
+                            gs = env.lean._goal_states.get((env.lean._current_env_key, goal))
+                            at = (gs, env.lean._site_for(goal)) if gs is not None else None
+                        if at is not None:
+                            new_gs = env.lean._server.goal_tactic(at[0], tac, site=at[1])
                             for msg in getattr(new_gs, "messages", []):
                                 if "Try this" in getattr(msg, "data", ""):
                                     # Extract: "Try this:\n  exact foo bar"

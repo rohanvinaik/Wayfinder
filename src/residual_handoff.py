@@ -55,6 +55,7 @@ class Node:
     provenance: str = ""
     closure: int = -1  # index of the closure in the log; -1 = never closed
     children: list[int] = field(default_factory=list)
+    gid: int | None = None  # the live goal's id in the search's log, when it recorded one
 
 
 @dataclass
@@ -64,8 +65,21 @@ class Tree:
     open_ids: list[int]  # what the search left open, in its final order
 
 
-def _resync(open_ids: list[int], nodes: list[Node], before: list[str]) -> list[int]:
-    """Reorder our open list to the search's (it rotates goals); fail on divergence."""
+def _resync(open_ids: list[int], nodes: list[Node], before: list[str], before_ids: list | None = None) -> list[int]:
+    """Reorder our open list to the search's (it rotates goals); fail on divergence. By goal id
+    when the log has them — two goals can share a target — else by text."""
+    if before_ids is not None and None not in before_ids and all(nodes[i].gid is not None for i in open_ids):
+        if [nodes[i].gid for i in open_ids] == list(before_ids):
+            return open_ids
+        pool, out = list(open_ids), []
+        for gid in before_ids:
+            k = next((j for j, i in enumerate(pool) if nodes[i].gid == gid), None)
+            if k is None:
+                raise ReplayError(f"open goals diverged: goal #{gid} is not in the reconstructed open list")
+            out.append(pool.pop(k))
+        if pool:
+            raise ReplayError(f"open goals diverged: {len(pool)} reconstructed goal(s) the search no longer had")
+        return out
     if [nodes[i].goal for i in open_ids] == list(before):
         return open_ids
     pool, out = list(open_ids), []
@@ -79,28 +93,33 @@ def _resync(open_ids: list[int], nodes: list[Node], before: list[str]) -> list[i
     return out
 
 
-def build_tree(initial_goals: list[str], close_log: list[dict]) -> Tree:
-    """Rebuild the committed proof tree from the closure log."""
-    nodes = [Node(goal=str(g)) for g in initial_goals]
+def build_tree(initial_goals: list[str], close_log: list[dict], initial_ids: list | None = None) -> Tree:
+    """Rebuild the committed proof tree from the closure log (goals paired by id where it has them)."""
+    ids = list(initial_ids or [])
+    nodes = [Node(goal=str(g), gid=ids[i] if i < len(ids) else None) for i, g in enumerate(initial_goals)]
     roots = list(range(len(nodes)))
     open_ids = list(roots)
     for k, rec in enumerate(close_log):
         if rec.get("open_before") is not None:
-            open_ids = _resync(open_ids, nodes, list(rec["open_before"]))
+            open_ids = _resync(open_ids, nodes, list(rec["open_before"]), rec.get("open_before_ids"))
         idx = int(rec.get("goal_idx", 0))
         if not 0 <= idx < len(open_ids):
             raise ReplayError(f"closure {k}: goal index {idx} outside {len(open_ids)} open goals")
         nid = open_ids.pop(idx)
         node = nodes[nid]
-        if node.goal != str(rec.get("goal", node.goal)):
+        if rec.get("goal_id") is not None and node.gid is not None:
+            if node.gid != rec["goal_id"]:
+                raise ReplayError(f"closure {k}: closed goal #{rec['goal_id']}, open goal is #{node.gid}")
+        elif node.goal != str(rec.get("goal", node.goal)):
             raise ReplayError(f"closure {k}: closed {str(rec.get('goal'))[:60]!r}, open goal is {node.goal[:60]!r}")
         node.tactic = rec.get("lean_tactic")
         node.descriptor = str(rec.get("tactic", ""))
         node.provenance = str(rec.get("provenance", ""))
         node.closure = k
         kids = []
-        for g in rec.get("new_goals") or []:
-            nodes.append(Node(goal=str(g), parent=nid))
+        new_ids = list(rec.get("new_goal_ids") or [])
+        for j, g in enumerate(rec.get("new_goals") or []):
+            nodes.append(Node(goal=str(g), parent=nid, gid=new_ids[j] if j < len(new_ids) else None))
             kids.append(len(nodes) - 1)
         node.children = kids
         open_ids = kids + open_ids if rec.get("prepend") else open_ids + kids

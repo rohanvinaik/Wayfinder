@@ -96,7 +96,7 @@ VERIFY_PROJECT = WF / "data/lean_project_v428"
 # The environment pin every emitted artifact carries (THE_REFOUNDING §5).
 VERIFY_ENV = read_environment_pin(VERIFY_PROJECT)
 DB = WF / "data/proof_network_v3.db"  # absolute — kills the cwd DB error
-DEFAULT_MANIFEST = WF / "data/rerun_v427_manifest.jsonl"  # the 9 SSL/Ansatz/Socratic theorems
+DEFAULT_MANIFEST = WF / "data/rerun_v427_manifest.jsonl"  # the 21 SSL/Ansatz/Socratic theorems Aristotle closed
 LAKE_BIN = Path("/Users/rohanvinaik/.elan/bin/lake")  # elan shim (picks toolchain from lean-toolchain)
 
 # Aristotle (separate hosted fallback prover; aristotlelib 2.1.0 = v3 API on the MCP host)
@@ -535,7 +535,7 @@ def _build_handoff(row: dict, d: dict) -> dict:
         out["notes"].append("no closure log in the search result (run predates the instrumentation)")
     else:
         try:
-            tree = rh.build_tree(list(d["initial_goals"]), list(d["close_log"]))
+            tree = rh.build_tree(list(d["initial_goals"]), list(d["close_log"]), d.get("initial_goal_ids"))
         except rh.ReplayError as e:
             out["notes"].append(f"closure log did not rebuild: {e}")
     deadline = time.monotonic() + HANDOFF_BUDGET_S

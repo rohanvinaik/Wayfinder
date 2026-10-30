@@ -164,8 +164,8 @@ def run_one_gap(
             result["status"] = "load_sorry_no_goals"
             return result
         gs = targets[0].goal_state
-        goal_text = str(gs.goals[0])
-        lean._goal_states[(lean._current_env_key, goal_text)] = gs
+        goal = lean.adopt(gs)  # the live goal the batteries act on
+        goal_text = goal.rendering  # what the builders read: its hypotheses and target
         lean._server_contaminated = True
     except Exception as e:
         if hasattr(lean, "_is_crash_error") and lean._is_crash_error(e):
@@ -178,7 +178,7 @@ def run_one_gap(
 
     # Step 2: Try Tier 0 closers directly on the goal
     tier0 = _build_tier0(goal_text)
-    closer = _try_tactic_battery(lean, goal_text, tier0)
+    closer = _try_tactic_battery(lean, goal, tier0)
     if closer:
         result["status"] = "closed"
         result["closed_by"] = f"tier0:{closer}"
@@ -186,7 +186,7 @@ def run_one_gap(
 
     # Step 3: Try CAS tactics on the goal
     cas_tactics = _build_cas_tactics(goal_text)
-    closer = _try_tactic_battery(lean, goal_text, cas_tactics, timeout_s=15)
+    closer = _try_tactic_battery(lean, goal, cas_tactics, timeout_s=15)
     if closer:
         result["status"] = "closed"
         result["closed_by"] = f"cas:{closer}"
@@ -195,7 +195,7 @@ def run_one_gap(
     # Step 4: Try intros then Tier 0 + CAS
     if "∀" in goal_text:
         try:
-            r = lean.try_tactic(goal_text, "intros")
+            r = lean.try_tactic(goal, "intros")
             if r.success and r.new_goals:
                 intro_goal = r.new_goals[0]
                 closer = _try_tactic_battery(lean, intro_goal, tier0)
@@ -225,7 +225,7 @@ def run_one_gap(
         }
         capsule = build_goal_capsule(row_for_ducky)
         ducky_result = run_ducky_on_goal(
-            goal_text,
+            goal,  # the live goal; the capsule row above reads its text
             theorem_id=tid,
             lean=lean,
             conn=None,

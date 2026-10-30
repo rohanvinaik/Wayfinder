@@ -15,6 +15,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import io
+import itertools
 import logging
 import os
 import re
@@ -25,6 +26,65 @@ from src.lean_context_ir import extract_context_ir
 from src.nav_contracts import LeanFeedback, TacticResult
 
 logger = logging.getLogger(__name__)
+
+
+def goal_rendering(goal: Any) -> str:
+    """A Pantograph goal as mathematics: its hypotheses and its target, as Lean prints them, without
+    the case label. Two goals with the same rendering are the same goal to prove."""
+    hyps = "\n".join(str(v) for v in (getattr(goal, "variables", None) or []))
+    return f"{hyps}\n⊢ {goal.target}" if hyps else f"⊢ {goal.target}"
+
+
+class GoalRef(str):
+    """A goal as Wayfinder's search holds it. The text is the goal's target — what every lane
+    reads, as before; `gid` names the live Lean goal it is, and `rendering` is that goal's content
+    (hypotheses ⊢ target).
+
+    Identity is the gid, never the text. After `have h : P`, `obtain` or `rcases` the goals left
+    show the target they had, with different hypotheses, and each is its own goal. Compared with a
+    plain string, `==` stays a text comparison, so code that reads text works unchanged.
+    """
+
+    gid: int
+    rendering: str
+
+    def __new__(cls, text: str, gid: int, rendering: str) -> GoalRef:
+        obj = super().__new__(cls, text)
+        obj.gid = gid
+        obj.rendering = rendering
+        return obj
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, GoalRef):
+            return self.gid == other.gid
+        return str.__eq__(self, other)
+
+    def __ne__(self, other: object) -> bool:
+        eq = self.__eq__(other)
+        return eq if eq is NotImplemented else not eq
+
+    def __hash__(self) -> int:
+        return hash(("GoalRef", self.gid))
+
+    def __str__(self) -> str:
+        return self  # `str(goal)` keeps the handle: lanes that copy goals with str() keep their goal
+
+    def __repr__(self) -> str:
+        return f"GoalRef({str.__repr__(self)}, gid={self.gid})"
+
+    def __reduce__(self) -> tuple:
+        return (GoalRef, (str.__str__(self), self.gid, self.rendering))
+
+
+@dataclass(frozen=True)
+class _LiveGoal:
+    """Where a GoalRef's goal lives: its server session, its GoalState, its place in it."""
+
+    epoch: int
+    state: Any
+    index: int
+    rendering: str
+
 
 _DECL_MODIFIERS = r"(?:(?:noncomputable|private|protected)\s+)*"
 
@@ -1020,7 +1080,12 @@ class LeanKernel:
         # Pure function — same env + goal + tactic = same result.
         # Eliminates redundant Lean IPC calls across search iterations.
         # key: (env_key, goal_str, tactic, goal_id)
-        self._tactic_cache: dict[tuple[str, str, str, int], TacticResult] = {}
+        self._tactic_cache: dict[tuple[str, Any, str, int], TacticResult] = {}
+        # The live goals behind the GoalRefs handed out, by gid. A server restart, close or gc
+        # ends the session they live in (`_epoch`), and a handle from before it is refused.
+        self._live: dict[int, _LiveGoal] = {}
+        self._epoch = 0
+        self._gids = itertools.count(1)
         self._current_env_key: str = ""  # default empty for backward compat
         self._server_contaminated: bool = False  # set after load_sorry-backed goal creation
         self._load_sorry_reset_count: int = 0
@@ -1040,6 +1105,52 @@ class LeanKernel:
             self._goal_states.clear()
             self._goal_index.clear()
             self._tactic_cache.clear()
+            self._forget_live()
+
+    def _register(self, state: Any, index: int) -> GoalRef:
+        """A handle on the `index`-th goal of `state`."""
+        goal = state.goals[index]
+        gid, rendering = next(self._gids), goal_rendering(goal)
+        self._live[gid] = _LiveGoal(epoch=self._epoch, state=state, index=index, rendering=rendering)
+        return GoalRef(str(goal.target), gid, rendering)
+
+    def adopt(self, state: Any, index: int = 0) -> GoalRef:
+        """A handle on a goal of a GoalState obtained outside the kernel (a caller's own
+        `load_sorry`), so tactics on it act on that goal, with its hypotheses."""
+        return self._register(state, index)
+
+    def _live_goal(self, goal: Any) -> _LiveGoal | None:
+        """The live goal a GoalRef names, or None for plain text or a handle from an ended session."""
+        gid = getattr(goal, "gid", None)
+        live = self._live.get(gid) if gid is not None else None
+        return live if live is not None and live.epoch == self._epoch else None
+
+    def _state_of(self, goal: Any) -> Any | None:
+        """The GoalState a goal from `goal_start` lives in: its live state, else the text map's."""
+        live = self._live_goal(goal)
+        if live is not None:
+            return live.state
+        return self._goal_states.get((self._current_env_key, str.__str__(goal) if isinstance(goal, str) else goal))
+
+    def _forget_live(self) -> None:
+        self._live.clear()
+        self._epoch += 1
+
+    def goal_variables(self, goal: Any) -> list[tuple[str, str]] | None:
+        """The hypotheses of a live goal as (name, type), or None when `goal` names no live goal."""
+        live = self._live_goal(goal)
+        if live is None:
+            return None
+        return [(str(v.name or "_"), str(v.t)) for v in live.state.goals[live.index].variables]
+
+    def live_site(self, goal: Any) -> tuple[Any, Any] | None:
+        """(GoalState, Site) where a tactic for this live goal acts, or None for plain text."""
+        live = self._live_goal(goal)
+        if live is None:
+            return None
+        from pantograph.expr import Site  # type: ignore[import-untyped]
+
+        return live.state, Site(goal_id=live.index, auto_resume=False)
 
     def _prepare_for_new_example(self) -> None:
         """Reset per-example state after load_sorry without restarting every time.
@@ -1398,7 +1509,7 @@ class LeanKernel:
         goal_str = str(state.goals[0].target) if state.goals else theorem_type
         self._goal_states[(self._current_env_key, goal_str)] = state
         self._goal_index[(self._current_env_key, goal_str)] = 0
-        return goal_str
+        return self._register(state, 0) if state.goals else goal_str
 
     def goal_start_from_pp(
         self,
@@ -1429,6 +1540,9 @@ class LeanKernel:
         """
         from pantograph.expr import Site  # type: ignore[import-untyped]
 
+        live = self._live_goal(goal_state)
+        if live is not None:
+            return Site(goal_id=goal_id if goal_id > 0 else live.index, auto_resume=False)
         idx = goal_id if goal_id > 0 else self._goal_index.get((self._current_env_key, goal_state), 0)
         return Site(goal_id=idx, auto_resume=False)
 
@@ -1446,12 +1560,23 @@ class LeanKernel:
             goal_id: Index into GoalState.goals for Site addressing.
                      Needed for multi-goal states after branching replay.
 
-        Results are cached by (env_key, goal_state, tactic, goal_id).
-        goal_id is part of the key because the same tactic on the same
-        target text can produce different results when applied to
-        different subgoals in a multi-goal state.
+        A GoalRef acts on the live goal it names; its new goals come back as GoalRefs, and a move
+        counts as progress when the goal's content changed, so a step that only adds or splits
+        hypotheses (`have`, `obtain`, `rcases`) is progress. Plain text is looked up by target, as
+        before. Results are cached by (env_key, goal, tactic, goal_id).
         """
-        cache_key = (self._current_env_key, goal_state, tactic, goal_id)
+        live = self._live_goal(goal_state)
+        if live is None and getattr(goal_state, "gid", None) is not None:
+            return TacticResult(
+                success=False,
+                tactic=tactic,
+                premises=[],
+                new_goals=[],
+                error_message="stale goal: the Lean session it lived in has ended",
+                feedback=LeanFeedback(stage="tactic_exec", category="other", messages=[], raw_error="stale goal"),
+            )
+        ident: Any = ("goal", goal_state.gid) if live is not None else goal_state
+        cache_key = (self._current_env_key, ident, tactic, goal_id)
         cached = self._tactic_cache.get(cache_key)
         if cached is not None:
             return cached
@@ -1461,7 +1586,7 @@ class LeanKernel:
         # outside the try: a fault building the site is not a tactic failure to cache
         site = self._site_for(goal_state, goal_id)
         try:
-            state = self._get_or_create_goal(goal_state)
+            state = live.state if live is not None else self._get_or_create_goal(goal_state)
             server = self._ensure_server()
             new_state = server.goal_tactic(state, tactic=tactic, site=site)
         except TacticFailure as e:
@@ -1495,10 +1620,10 @@ class LeanKernel:
             self._tactic_cache[cache_key] = fail_result
             return fail_result
 
-        new_goals = [str(g.target) for g in new_state.goals]
+        new_goals = [self._register(new_state, i) for i in range(len(new_state.goals))]
 
-        # Cache each new goal state for subsequent tactic applications, with the goal's
-        # position in it (with auto_resume off, these are only this tactic's goals).
+        # The text map, for callers that still name goals by their target (first write stays).
+        # With auto_resume off, these are only this tactic's goals.
         for idx, goal in enumerate(new_state.goals):
             goal_str = str(goal.target)
             gs_key = (self._current_env_key, goal_str)
@@ -1511,8 +1636,12 @@ class LeanKernel:
         # progress (intro, cases, etc.). Feedback encodes accepted_with_goals
         # vs none so downstream logic need not re-derive from new_goals.
         goals_closed = new_state.is_solved or not new_state.goals
+        if live is not None:  # unchanged = one goal left, with the same hypotheses and target
+            unchanged = len(new_goals) == 1 and new_goals[0].rendering == live.rendering
+        else:
+            unchanged = new_goals == [goal_state]
         ok_result = TacticResult(
-            success=goals_closed or new_goals != [goal_state],
+            success=goals_closed or not unchanged,
             tactic=tactic,
             premises=[],
             new_goals=new_goals,
@@ -1584,6 +1713,7 @@ class LeanKernel:
         self._goal_states.clear()
         self._goal_index.clear()
         self._tactic_cache.clear()
+        self._forget_live()
         self._server_contaminated = False
         self._ensure_server()
 
@@ -2138,7 +2268,7 @@ class LeanKernel:
                 )
                 if thm_type:
                     goal_str = self.goal_start(thm_type, theorem_full_name, file_path)
-                    base_state = self._goal_states.get((self._current_env_key, goal_str))
+                    base_state = self._state_of(goal_str)
                     if base_state is not None:
                         tier_used = "A"
             except Exception as e:
@@ -2159,7 +2289,7 @@ class LeanKernel:
                     theorem_name=theorem_full_name,
                     file_path=file_path,
                 )
-                base_state = self._goal_states.get((self._current_env_key, goal_str))
+                base_state = self._state_of(goal_str)
                 if base_state is not None:
                     tier_used = "A2"
             except Exception as e:
@@ -2177,7 +2307,7 @@ class LeanKernel:
                 self._goal_index[cache_key] = 0
                 return ReplayResult(
                     success=True,
-                    goal_state=goal_str,
+                    goal_state=self._register(base_state, 0),
                     goal_state_obj=base_state,
                     tier_used=tier_used,
                     failure_category="",
@@ -2387,7 +2517,7 @@ class LeanKernel:
 
         return ReplayResult(
             success=True,
-            goal_state=matched_goal_str,
+            goal_state=self._register(current_state, matched_idx),
             goal_state_obj=current_state,
             tier_used="C",
             failure_category="",
@@ -2408,6 +2538,7 @@ class LeanKernel:
         self._goal_states.clear()
         self._goal_index.clear()
         self._tactic_cache.clear()
+        self._forget_live()
 
 
 def _build_hammer_tactics(premises: list[str]) -> list[str]:

@@ -419,6 +419,7 @@ def _run_search_loop(
                     # The stopping state as a replayable tree: where the search
                     # started, the committed closures, and what is left open.
                     "initial_goals": [initial_goal],
+                    "initial_goal_ids": [getattr(initial_goal, "gid", None)],
                     "initial_goal_tier": initial_goal_tier,
                     "close_log": getattr(result, "close_log", []),
                     "final_goals": list(getattr(result, "final_goals", []) or []),
