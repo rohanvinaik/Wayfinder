@@ -32,23 +32,23 @@ A proof either type-checks or it does not, so a prover's headline is easy to inf
 
 ## What the search cannot close is handed on as Lean
 
-Most Mathlib goals fall to a cheap structural majority — moves a deterministic pass can make without judgment. What is left is the residual, where structure runs out. Wayfinder does not hand that to a bigger model and hope. **Dr. Ducky**, a deterministic residual executor, emits typed capsules and proof skeletons and replays them Lean-side before anything is claimed.
+Most goals fall to a cheap structural majority — moves a deterministic pass can make without judgment. What is left is the residual, where structure runs out. When a search stops short, `prove` turns its stopping state into Lean: the declaration, Wayfinder's verified tactics in place, and one `sorry` per goal still open, each marked with the goal Lean prints there — compiled until it elaborates. A local finishing pass tries each hole with deterministic closers (`simp_all`, `omega`, `linarith`, `aesop`, … with the file's own definitions unfolded) and tries the rest for a counterexample: a false hole gives back the step that produced it, and a refutation that reaches the root reports the statement itself as false.
 
-When a search stops short, `prove` turns its stopping state into Lean: the declaration, Wayfinder's verified tactics in place, and one `sorry` per goal still open, each marked with the goal Lean prints there — compiled until it elaborates. A local finishing pass then tries each hole with deterministic closers (`simp_all`, `omega`, `linarith`, `aesop`, … with the file's own definitions unfolded) and tries the rest for a counterexample: a false hole gives back the step that produced it, and a refutation that reaches the root reports the statement itself as false. What remains is a smaller, cleaner problem, with a cheat sheet of what the search computed, eliminated and left open.
+**The residual holds validated progress only.** A step that commits to something — a disjunct (`left`), a witness (`use 1`), `congr`, `apply` — stands only if everything under it closed; otherwise it is withdrawn, its goal becomes the hole, and what was tried there travels with the hole as a note. Before this rule, 11 of MiniF2F-test's residuals were false goals no prover could close (`imo_1997_p5` had kept `left` and handed off `x = 1 ∧ y = 1`, false at (16, 2)).
 
-## The last mile runs on this machine
+Each hole is lifted to a standalone lemma (`extract_goal`), typed where the plain print would re-read as something else — an `∃ x` over ℤ comes back over ℕ, a cast with nothing to say where it lands does not elaborate — and checked to fit back into its hole before any model sees it.
 
-The holes go to an open-weights Lean prover served on the same machine — Goedel-Prover-V2, 8B (Q8_0, 8.7 GB) or 32B (Q4_K_M, 19.8 GB), through llama.cpp. Each hole is lifted to a standalone lemma (`extract_goal`), and Wayfinder's own reads of it decide which model gets it: a light hole goes to the 8B and on to the 32B if the 8B leaves it; a heavy hole goes straight to the 32B. The prompts and self-correction rounds are the model's own published pipeline, Lean's errors shown back to it in the format that pipeline uses. The servers are sized to the memory free when they start and stand down when the machine needs its RAM back. Nothing leaves the machine.
+## The last mile: Wayfinder, Lean and a prover in conversation
 
-The first theorem it closed, `kappa_additive_bound` from a specification-complexity paper, had been left open by the search; the hosted prover it would once have gone to no longer takes Lean. On an M1 Max:
+The holes go to an open-weights Lean prover served on the same machine — Goedel-Prover-V2, 8B (Q8_0) or 32B (Q4_K_M), through llama.cpp — with its own published prompts, sampling and revision protocol, and with the theorem the goal came from as context. Then the three parts work on what each other cannot:
 
-| | 32B, Q4_K_M | 8B, Q8_0 (4 in parallel) |
-|---|---|---|
-| decode speed per sequence | 10.7 tok/s | 24.8 tok/s |
-| attempts | 1, verified | 3: two named lemmas that do not exist, the third verified |
-| time to a verified proof | ~165 s | 94 s |
+- **Lean says which steps fail.** A rejected proof usually fails at a few steps of a sound plan.
+- **Wayfinder takes the plan forward.** The proof's `have` claims, case splits and witnesses are kept; each step Lean rejected becomes a hole. Wayfinder's closers attack the holes — seeded with the model's own failed step and the premises it chose — then its search, on each remaining step lifted to a lemma, in one Pantograph session. If every hole closes, the proof is done without another model call. Goedel's unfinished attempts are taken forward the same way: a draft that leaves `sorry`s, or an answer cut off by its token budget, is the model's plan.
+- **The model finishes what is left.** It gets the skeleton back — its plan, every step Wayfinder closed in place — to complete. A step Wayfinder refutes is named in its revision as a false claim. Its own revision rounds show it Lean's errors.
 
-That residual was the whole statement — the search had kept no step — so it shows the local closer works, not what decomposition buys it. The measurement that does is next: the same model on the whole statement and on Wayfinder's holes, across theorems where the search makes partial progress.
+A theorem climbs a ladder, cheapest first, stopping at the first closure: the 8B at 8K tokens; the 8B at 30K where answers ran out of tokens; the whole statement, so the loop is never worse than the model alone; the 32B, revising the 8B's best attempts (first, instead, when Wayfinder reads a hole as hard). Checks inside the loop run through a persistent Lean REPL — Mathlib imported once, recycled and canaried because long-lived Lean processes drift — and every acceptance through a fresh compile. Two version adaptations meet the model's training-era Lean: at v4.28, `norm_num at h ⊢` fails with "No goals" when `h` closes the goal, and a fifth of the proofs Lean had rejected were correct but for that.
+
+On MiniF2F-test (2026-10-30): Wayfinder alone closes **102 / 244**, each proof re-checked by the v4.28 gate with zero tokens spent. The loop's deterministic half closed `aime_1983_p3` from a proof the 8B had failed — the model's plan, its two broken steps closed by Wayfinder — with no further model call. The full run on this architecture is under way in `runs/minif2f_v2`; `decomposition_test.py ledger` reports closures per stage, and answers and tokens per theorem against Goedel-Prover-V2's published 32 per theorem. The full design is §13 of [`WAYFINDER_DESIGN.md`](docs/Research_Paper/WAYFINDER_DESIGN.md).
 
 Aristotle 3.0 (2026-10-27) stopped accepting Lean-only projects. Nothing here depends on it.
 
@@ -79,7 +79,7 @@ Wayfinder is an MCP server. Point it at a Lean goal and it navigates:
 | `prove` | search for a proof of one Lean 4 goal; if it stops short, build the residual and finish what can be finished locally |
 | `prove_corpus` | run the search over a whole eval set; `prove_corpus_status` reports progress |
 | `fill_hole` | take any prover's fill for one open hole of the residual — kept only if the file still compiles with the statement unchanged and no non-standard axiom; the last fill saves the proof |
-| `send_to_local_prover` · `local_prover_result` | lift each open hole to a standalone lemma and route it, by how hard it reads, to Goedel-Prover-V2 8B or 32B running on this machine; verified fills go in through `fill_hole` |
+| `send_to_local_prover` · `local_prover_result` | run the local ladder on the residual — Goedel-Prover-V2 8B and 32B on this machine, with revisions and the repair loop (the model's failed and unfinished proofs as skeletons, Wayfinder's closers and search on their broken steps), then the whole statement — stopping at the first closure; verified fills go in through `fill_hole`, a whole-statement proof through its own gate |
 | `send_to_aristotle` · `aristotle_result` | hand Aristotle the residual and judge what comes back through the same gate — Aristotle 3.0 refuses Lean-only projects, so this now declines locally unless forced |
 
 The deterministic search is arithmetic on a structured network: no dense retrieval index, no embedding store, no GPU. The local prover lane is the one part that uses the GPU (Metal, through llama.cpp), and it only ever sees the residual.
@@ -92,7 +92,7 @@ The name is an homage to the Pacific wayfinders, who crossed open ocean by readi
 
 ## Status
 
-A deterministic search at 1,028 / 2,000 on the frozen Mathlib split (1,042 as the cross-pass union), with the encoder stack's `EXP-058` (1,277) kept as the frozen baseline it is measured against; the residual hand-off, the local finishing pass, and the acceptance gate; and the local prover lane for the last mile. Next: the decomposition measurement above, and the second-order program — learning over the residual the first order leaves. Eval sets are frozen (`data/nav_eval.jsonl`, MiniF2F-test, the Mathlib test split); the full results ledger is in [`docs/Research_Paper/`](docs/Research_Paper/).
+A deterministic search at 1,028 / 2,000 on the frozen Mathlib split (1,042 as the cross-pass union), with the encoder stack's `EXP-058` (1,277) kept as the frozen baseline it is measured against; the residual hand-off, the local finishing pass, and the acceptance gate; and the local proving loop for the last mile — the conversation among Wayfinder, Lean and Goedel-Prover-V2 above, with MiniF2F-test under way on it. Next: that run's numbers, the decomposition measurement (the same model on Wayfinder's holes and on whole statements, at equal budget), and the second-order program — learning over the residual the first order leaves. Eval sets are frozen (`data/nav_eval.jsonl`, MiniF2F-test, the Mathlib test split); the full results ledger is in [`docs/Research_Paper/`](docs/Research_Paper/).
 
 ---
 

@@ -198,3 +198,34 @@ premises in the prompt.
 **Registration.** Wayfinder was withheld from Claude Code in `~/.config/mcp/servers.json`
 (2026-10-20); restored and synced 2026-10-29 (still withheld from Claude Desktop). A running
 server keeps the code it started with — restart it after changing `wayfinder_mcp.py` or `src/`.
+
+## 2026-10-30 — the local proving loop behind `send_to_local_prover`
+
+Full design: §13 of `docs/Research_Paper/WAYFINDER_DESIGN.md`. In the MCP:
+
+- **`prove`** is unchanged in role. The residual it builds now holds validated progress only: a step that committed to something (`left`, `use 1`, `congr`, `apply`, a `have`, …) stands only if everything under it closed; otherwise its goal is the hole and the steps are noted (`TRIED_MARK`). The lift is fit-checked: the plain `extract_goal` print is used only if, on `sorry`, it closes its own hole; otherwise it is printed typed (numerals, binders, coercions).
+- **`send_to_local_prover(theorem_id, manifest, …)`** runs, by default, the per-theorem ladder (`src/local_pipeline.py`), stopping at the first closure:
+  1. the 8B at 8K tokens on the residual, with 2 revision rounds and the repair loop;
+  2. the 8B at 30K, revising stage 1's rejected proofs, only if its answers hit the token cap;
+  3. the whole statement;
+  4. the 32B, revising the 8B's best proofs.
+
+  A hole Wayfinder reads as hard puts the 32B first. `model=` runs only that model's stages. `start_at=` begins further down. The reply's `ladder` is the order that will run. `pipeline=False` runs one worker as before, with `samples`, `correction_rounds` and `max_new_tokens`; in the pipeline the ladder sets its own.
+- **The repair loop**, inside every stage after each round, runs on the best rejected proofs and on drafts (answers whose only fault is `sorry`, or cut off by the cap):
+  - Each becomes a skeleton: the plan is kept and the failing steps become holes.
+  - Wayfinder's closers attack the holes, seeded with the model's own step and its premises, with `plausible` alongside them.
+  - Wayfinder's search attacks the steps left over (`scripts/search_goals.py`, one Pantograph session).
+  - Then all filled → acceptance; still open → the model completes the skeleton; refuted → a false claim, named in the revision.
+- **`local_prover_result(run_id)`** reads a pipeline run as it read a single run (the run's directory mirrors the stage under way, then the winning stage). Hole fills go in through `fill_hole`'s path. A whole-statement closure (`fills[].whole`) is gated by a fresh v4.28 compile and saved there. Either is saved only if the row has a `proof_home`: MiniF2F rows have none, so a proof is accepted and reported but not written.
+- **Validated with real models** on `mathd_algebra_484`:
+  - stage 1: 66 s, applied, closed;
+  - whole statement: 61 s, accepted;
+  - 32B: 173 s, verified, its fill refused as the hole was already closed.
+
+**Gotchas**
+
+- **The MCP server keeps the code it started with.** After a change to `wayfinder_mcp.py`, reconnect it. The pipeline and the worker are subprocesses and pick up changes on their next run.
+- **Checks in the loop run through a persistent REPL** (`data/repl_v428`). It is recycled every 30 commands (it keeps every environment it makes) and canaried every 15. `data/repl_v428/DISABLED` turns it off for new workers. Acceptance never uses it.
+- **Two 8B servers do not fit beside each other with the REPLs on a 64 GB machine.** A worker sizes its server to free memory less `reserve_gb`, and gets zero slots if another run holds the GPU.
+- **Pantograph sessions stay short.** A long-lived one drifts and crashes silently (Rohan). The search runs one session per batch and exits.
+- **Wayfinder's own search closes count only once the v4.28 gate accepts their replay.** Of MiniF2F-test's 108, 102 did. `decomposition_test.py reconcile` puts the rest back into the pipeline.
