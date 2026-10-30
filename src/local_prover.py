@@ -781,7 +781,8 @@ class Worker:
     def remotes(self, model: str, spec: ModelSpec, ctx: int) -> list[LlamaServer]:
         """The pool file's servers for this model that answer now."""
         out: list[LlamaServer] = []
-        for r in pool_config().get(model) or []:
+        # a job may name its own pool-file key, so a slow machine can serve a stream of its own
+        for r in pool_config().get(self.job.get("pool_key") or model) or []:
             remote = RemoteServer(spec, str(r["name"]), int(r["port"]), int(r.get("slots", 1)),
                                   int(r.get("ctx", ctx)), str(r.get("quant", "?")))  # fmt: skip
             try:

@@ -337,7 +337,8 @@ def recheck(exp: Path, model: str) -> None:
 DEMO_SEED = 20261030
 
 
-def demo(exp: Path, model: str, limit: int | None, remote_only: bool = False, reverse: bool = False) -> None:
+def demo(exp: Path, model: str, limit: int | None, remote_only: bool = False, reverse: bool = False,
+         pool_key: str = "", start: int = 0) -> None:  # fmt: skip
     """The capacity run: the production lane on every residual — Wayfinder's holes to the local model,
     the completed file through the gate, each accepted proof saved with its provenance — in a seeded
     random order, so the tally at any point is an unbiased sample of the residual population. Same
@@ -348,6 +349,8 @@ def demo(exp: Path, model: str, limit: int | None, remote_only: bool = False, re
     order = order[:limit] if limit else order
     if reverse:  # a second stream works the same order from the end; records keep the streams apart
         order = order[::-1]
+    if start:  # a third stream starts part-way in
+        order = order[start:] + order[:start]
     out = exp / "demo" / model
     (out / "records").mkdir(parents=True, exist_ok=True)
     (out / "proofs").mkdir(parents=True, exist_ok=True)
@@ -359,6 +362,8 @@ def demo(exp: Path, model: str, limit: int | None, remote_only: bool = False, re
                 continue
         handoff = json.loads((exp / "handoffs" / f"{tid}.json").read_text())["handoff"]
         job = _job(f"{tid}-demo", rows[tid], handoff, model, whole=False, samples=K)
+        if pool_key:
+            job["pool_key"] = pool_key
         if remote_only:
             job["remote_only"] = True
             # claim the theorem: the other stream skips any theorem that has a record
@@ -439,6 +444,8 @@ def main() -> int:
     ap.add_argument("--limit", type=int, default=None, help="only the first N of the frozen sample (the pilot)")
     ap.add_argument("--remote-only", action="store_true", help="demo: sample only on the pool file's remote servers")
     ap.add_argument("--reverse", action="store_true", help="demo: work the order from the end (a second stream)")
+    ap.add_argument("--pool-key", default="", help="demo: the pool-file key whose servers this stream uses")
+    ap.add_argument("--start", type=int, default=0, help="demo: start this far into the order (a third stream)")
     args = ap.parse_args()
     exp = Path(args.dir)
     exp.mkdir(parents=True, exist_ok=True)
@@ -452,7 +459,8 @@ def main() -> int:
     elif args.phase == "recheck":
         recheck(exp, args.model)
     elif args.phase == "demo":
-        demo(exp, args.model, args.limit, remote_only=args.remote_only, reverse=args.reverse)
+        demo(exp, args.model, args.limit, remote_only=args.remote_only, reverse=args.reverse,
+             pool_key=args.pool_key, start=args.start)
     else:
         report(exp)
     return 0
