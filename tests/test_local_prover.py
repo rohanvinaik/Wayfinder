@@ -318,6 +318,37 @@ class ReviseTest(unittest.TestCase):
         w.generate.assert_not_called()
 
 
+class RepairRoundTest(ReviseTest):
+    """Between revision rounds, a rejected proof's skeleton goes to Wayfinder's closers: completed,
+    it is accepted like any answer; a refuted step is named in that proof's revision prompt."""
+
+    def _failure(self):
+        return {"id": "h1-8b-r0-s1", "raw": "```lean4\ntheorem nt_wf_hole_1 : (2 : ℤ) = 2 := by\n  omega\n```",
+                "report": "REPORT", "n_errors": 1, "messages": []}  # fmt: skip
+
+    def test_a_skeleton_the_closers_complete_closes_the_hole(self):
+        w, hole = self._worker(self.STATEMENT, "BAD", repair=True)
+        check = {"outcome": "verified", "form": "inline", "fill": "omega", "helpers": ""}
+        w.skeleton_repair = mock.Mock(return_value={"outcome": "verified", "holes": 1, "closed": ["omega"],
+                                                    "check": check, "skeleton": "s"})  # fmt: skip
+        self.assertTrue(w.repair_round(hole, lp.MODELS["goedel-v2-8b"], [self._failure()], 0))
+        self.assertEqual(w.fills[0]["sample"], "h1-repair-h1-8b-r0-s1")
+
+    def test_a_refuted_step_goes_into_that_proofs_revision(self):
+        w, hole = self._worker(self.STATEMENT, "BAD", repair=True)
+        w.skeleton_repair = mock.Mock(return_value={"outcome": "open", "holes": 1, "skeleton": "s",
+                                                    "claims": {1: "have h : x = 1"}, "refuted": {1: "x := 16"}})  # fmt: skip
+        failure = self._failure()
+        self.assertFalse(w.repair_round(hole, lp.MODELS["goedel-v2-8b"], [failure], 0))
+        self.assertIn("`have h : x = 1` is false: x := 16", failure["report"])
+
+    def test_the_goal_carries_what_wayfinder_tried_and_withdrew(self):
+        w, hole = self._worker(self.STATEMENT, "BAD")
+        hole.tried = "left ; norm_num"
+        self.assertIn("/- Wayfinder tried these steps on this goal and withdrew them", w.formal(hole))
+        self.assertTrue(w.formal(hole).endswith(f"{self.STATEMENT} := by sorry"))
+
+
 class RenameTest(unittest.TestCase):
     def test_the_whole_statements_helper_takes_its_own_name(self):
         lemma = "set_option maxHeartbeats 400000 in\ntheorem kappa {n : ℕ} : n = n := by\n  rfl"

@@ -25,7 +25,7 @@ import textwrap
 from dataclasses import dataclass, field
 
 import src.proof_gate as gate
-from src.residual_handoff import HOLE_MARK
+from src.residual_handoff import HOLE_MARK, TRIED_MARK
 
 _MARKER = re.compile(r"^(?P<indent>\s*)-- " + re.escape(HOLE_MARK) + r" (?P<k>\d+): close this goal\s*$")
 _GOAL_COMMENT = re.compile(r"^\s*--   ")
@@ -489,6 +489,160 @@ def extract_code(raw: str) -> str | None:
         if found:
             return found[-1]
     return None
+
+
+# ── a rejected proof's skeleton ───────────────────────────────────────────────
+# Goedel-Prover-V2 §5: the model's own unsolved steps, lifted and re-solved. A rejected proof
+# usually fails at a few steps of a sound plan: its `have` claims, case splits and witnesses are
+# kept, each step Lean rejected becomes a hole, and the holes go to Wayfinder's closers first.
+
+
+@dataclass
+class Skeleton:
+    text: str  # the lemma, each failing step's proof replaced by a marked `sorry`
+    holes: int
+    replaced: list[str]  # per hole, the first line of what the model had there
+
+
+def _indent(line: str) -> int:
+    return len(line) - len(line.lstrip())
+
+
+def _opens_block(line: str) -> bool:
+    t = line.rstrip()
+    return bool(re.search(r"(^|\s)by$", t)) or t.endswith("=>") or line.lstrip().startswith("· ")
+
+
+def _block_end(lines: list[str], k: int, stop: int) -> int:
+    """The first line after the block opened at `k` (lines indented past it), or `stop`."""
+    j = k + 1
+    while j < stop and (not lines[j].strip() or _indent(lines[j]) > _indent(lines[k])):
+        j += 1
+    return j
+
+
+def _hole(indent: int, k: int, bullet: bool = False) -> list[str]:
+    pad = " " * indent
+    return [f"{pad}-- {HOLE_MARK} {k}: close this goal", f"{pad}{'· ' if bullet else ''}sorry"]
+
+
+def skeleton(lemma: str, errors: list[tuple[int, int, str]], max_holes: int = 4) -> Skeleton | None:
+    """The model's proof with each step Lean rejected replaced by a marked `sorry` (`hole_sites`
+    reads them). `lemma` is the lemma as compiled — statement, `:= by`, tactics, one per line or
+    indented under their block — and `errors` Lean's errors in it, as (0-based line, column,
+    message). A `have` whose proof failed keeps its statement and its proof becomes the hole; a
+    failed bullet becomes `· sorry`; a failure in the main block makes the rest of it the hole;
+    unsolved goals at a block's end add a hole per goal; a step that ran with no goals is dropped.
+    None when the proof is not a tactic block, an error lies outside it, or holes exceed `max_holes`.
+    """
+    lines = lemma.split("\n")
+    main = next((i for i, ln in enumerate(lines) if re.search(r":=\s*by\s*$", ln)), None)
+    if main is None:
+        return None
+    stop = len(lines)
+    while stop > main + 1 and not lines[stop - 1].strip():
+        stop -= 1
+    body = _indent(lines[main + 1]) if main + 1 < stop else 2
+    spans: list[tuple[int, int, int, bool]] = []  # replace lines[a:b] with a hole at an indent (bullet?)
+    inline: dict[int, int] = {}  # a line whose proof follows `:= by` on it -> its continuation end
+    appends: dict[int, list[int]] = {}  # before line e: holes for goals a block left, at these indents
+    drops: set[int] = set()
+    for li, col, msg in errors:
+        # the statement's own line reports only the main block's unsolved goals; anything else there
+        # (or above it) is an error in the statement, not in the proof
+        if not (main < li < stop or (li == main and msg.startswith("unsolved goals"))):
+            return None
+        line = lines[li]
+        if "No goals" in msg:
+            drops.add(li)
+        elif msg.startswith("unsolved goals"):  # reported at the block's opener
+            end, at = (stop, body) if li == main else (_block_end(lines, li, stop), _indent(line) + 2)
+            appends.setdefault(end, []).extend([at] * max(1, msg.count("⊢")))
+        elif line.lstrip().startswith("· "):
+            spans.append((li, _block_end(lines, li, stop), _indent(line), True))
+        elif (m := re.search(r":=\s*by\s+\S", line)) and col >= m.end() - 1:
+            inline[li] = _block_end(lines, li, stop)
+        else:
+            k = li - 1
+            while k > main and not (_indent(lines[k]) < _indent(line) and _opens_block(lines[k])):
+                k -= 1
+            if k > main:
+                spans.append((k + 1, _block_end(lines, k, stop), _indent(lines[k]) + 2, False))
+            else:
+                spans.append((li, stop, _indent(line), False))
+    spans.sort()
+    kept: list[tuple[int, int, int, bool]] = []
+    for sp in spans:  # an outer span covers the ones inside it
+        if kept and sp[0] < kept[-1][1]:
+            continue
+        kept.append(sp)
+    out: list[str] = []
+    replaced: list[str] = []
+    i = 0
+    while i < len(lines):
+        for at in appends.get(i, []):
+            out += _hole(at, len(replaced) + 1)
+            replaced.append("(goals left at the end of the block)")
+        sp = next((x for x in kept if x[0] == i), None)
+        if sp:
+            out += _hole(sp[2], len(replaced) + 1, sp[3])
+            replaced.append(lines[i].strip())
+            i = sp[1]
+            continue
+        if i in inline:
+            m = re.search(r":=\s*by\s+", lines[i])
+            out.append(lines[i][: m.start()] + ":= by")  # type: ignore[union-attr]
+            out += _hole(_indent(lines[i]) + 2, len(replaced) + 1)
+            replaced.append(lines[i][m.end() :].strip())  # type: ignore[union-attr]
+            i = inline[i]
+            continue
+        if i not in drops:
+            out.append(lines[i])
+        i += 1
+    for at in appends.get(len(lines), []):
+        out += _hole(at, len(replaced) + 1)
+        replaced.append("(goals left at the end of the block)")
+    if not replaced or len(replaced) > max_holes:
+        return None
+    return Skeleton(text="\n".join(out), holes=len(replaced), replaced=replaced)
+
+
+def tried_at(declaration: str) -> dict[int, str]:
+    """Per hole, the steps Wayfinder tried there and withdrew (the hand-off's comment above it)."""
+    lines, out = declaration.splitlines(), {}
+    for k, site in hole_sites(declaration).items():
+        above = lines[site.marker - 1].strip() if site.marker else ""
+        if above.startswith(f"-- {TRIED_MARK}:"):
+            out[k] = above.split(":", 1)[1].strip()
+    return out
+
+
+def renumber_holes(text: str) -> tuple[str, int]:
+    """The hole markers numbered 1.. in order (a skeleton of a skeleton repeats numbers)."""
+    lines, k = text.split("\n"), 0
+    for i, ln in enumerate(lines):
+        if m := _MARKER.match(ln):
+            k += 1
+            lines[i] = f"{m.group('indent')}-- {HOLE_MARK} {k}: close this goal"
+    return "\n".join(lines), k
+
+
+def fill_holes(text: str, fills: list[str]) -> str:
+    """Each marked hole (in order) replaced by its tactic, at the hole's indentation."""
+    lines = text.split("\n")
+    for k, site in sorted(hole_sites(text).items(), reverse=True):
+        lines[site.marker : site.sorry + 1] = [site.indent + ("· " if site.bullet else "") + fills[k - 1]]
+    return "\n".join(lines)
+
+
+def claims_at_holes(text: str) -> dict[int, str]:
+    """The `have` claim each hole proves, where the hole is a `have`'s proof."""
+    lines, out = text.split("\n"), {}
+    for k, site in hole_sites(text).items():
+        above = lines[site.marker - 1].strip() if site.marker else ""
+        if re.search(r":=\s*by$", above):
+            out[k] = re.sub(r"\s*:=\s*by$", "", above)
+    return out
 
 
 @dataclass

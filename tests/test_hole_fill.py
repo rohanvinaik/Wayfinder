@@ -6,7 +6,7 @@ from __future__ import annotations
 import unittest
 
 import src.hole_fill as hf
-from src.residual_handoff import HOLE_MARK
+from src.residual_handoff import HOLE_MARK, TRIED_MARK
 
 DECLARATION = f"""theorem t (p q : Prop) (hp : p) (hq : q) : p ∧ q := by
   constructor
@@ -276,3 +276,63 @@ class AnswerTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SkeletonTest(unittest.TestCase):
+    """A rejected proof keeps its plan: each step Lean rejected becomes a marked hole."""
+
+    HEAD = "set_option maxHeartbeats 400000 in\ntheorem t (x : ℕ) (h : x = 2) : x + x = 4 := by"
+
+    def _sk(self, body: str, errors):
+        return hf.skeleton(self.HEAD + "\n" + body, errors)
+
+    def test_a_failed_have_keeps_its_claim_and_its_proof_becomes_the_hole(self):
+        sk = self._sk("  have h2 : x * 2 = 4 := by\n    nlinarith [h]\n  omega", [(3, 4, "linarith failed")])
+        self.assertEqual(sk.text.splitlines()[2:], ["  have h2 : x * 2 = 4 := by",
+                                                    f"    -- {HOLE_MARK} 1: close this goal", "    sorry", "  omega"])
+        self.assertEqual(list(hf.hole_sites(sk.text.split("\n", 1)[1])), [1])
+
+    def test_an_inline_have_proof_is_split_onto_its_own_hole(self):
+        sk = self._sk("  have h2 : x * 2 = 4 := by nlinarith [h]\n  omega", [(2, 30, "linarith failed")])
+        self.assertIn("  have h2 : x * 2 = 4 := by\n    -- ", sk.text)
+        self.assertEqual(sk.replaced, ["nlinarith [h]"])
+
+    def test_a_failure_in_the_main_block_makes_the_rest_of_it_the_hole(self):
+        sk = self._sk("  subst h\n  linarith\n  rfl", [(3, 2, "linarith failed")])
+        self.assertEqual(sk.text.splitlines()[2:], ["  subst h", f"  -- {HOLE_MARK} 1: close this goal", "  sorry"])
+
+    def test_goals_a_block_left_get_a_hole_each_and_no_goals_steps_are_dropped(self):
+        sk = self._sk("  constructor\n  norm_num at h ⊢\n  simp", [(1, 44, "unsolved goals\ncase a\n⊢ P\ncase b\n⊢ Q"),
+                                                                   (4, 2, "No goals to be solved")])  # fmt: skip
+        self.assertEqual(sk.holes, 2)
+        self.assertNotIn("  simp", sk.text.splitlines())
+
+    def test_a_failed_bullet_becomes_a_bullet_hole(self):
+        sk = self._sk("  constructor\n  · omega\n  · linarith", [(4, 4, "linarith failed")])
+        self.assertTrue(sk.text.endswith("  · sorry"))
+
+    def test_an_error_in_the_statement_or_too_many_holes_gives_no_skeleton(self):
+        self.assertIsNone(self._sk("  omega", [(1, 10, "type mismatch")]))
+        body = "\n".join(f"  have h{i} : x = 2 := by\n    nlinarith" for i in range(5)) + "\n  omega"
+        self.assertIsNone(self._sk(body, [(3 + 2 * i, 4, "linarith failed") for i in range(5)]))
+
+
+class SkeletonHelpersTest(unittest.TestCase):
+    TEXT = ("theorem t : P := by\n  have h : Q := by\n    -- WAYFINDER RESIDUAL 3: close this goal\n    sorry\n"
+            "  constructor\n  · -- x\n  -- WAYFINDER RESIDUAL 3: close this goal\n  · sorry")  # fmt: skip
+
+    def test_holes_renumber_in_order_and_fill_at_their_indentation(self):
+        text, n = hf.renumber_holes(self.TEXT)
+        self.assertEqual(n, 2)
+        filled = hf.fill_holes(text, ["nlinarith", "simp"])
+        self.assertIn("  have h : Q := by\n    nlinarith\n", filled)
+        self.assertTrue(filled.endswith("  · simp"))
+
+    def test_a_hole_under_a_have_knows_the_claim_it_proves(self):
+        text, _ = hf.renumber_holes(self.TEXT)
+        self.assertEqual(hf.claims_at_holes(text), {1: "have h : Q"})
+
+    def test_withdrawn_steps_are_read_back_from_the_hand_off(self):
+        decl = (f"theorem t : A ∨ B := by\n  intros\n  -- {TRIED_MARK}: left ; norm_num\n"
+                f"  -- {HOLE_MARK} 1: close this goal\n  --   ⊢ A ∨ B\n  sorry\n")  # fmt: skip
+        self.assertEqual(hf.tried_at(decl), {1: "left ; norm_num"})

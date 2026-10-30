@@ -44,6 +44,7 @@ from pathlib import Path
 
 import src.hole_fill as hf
 import src.proof_gate as gate
+import src.residual_handoff as rh
 from src.structural_reads import goal_target, read_goal
 
 GiB = 1024**3
@@ -79,6 +80,7 @@ HEAVY = "goedel-v2-32b"
 # Lean's budget for a candidate: Goedel-Prover-V2's own files set 400000; `0` (unlimited) would
 # let one runaway candidate hold the checker forever.
 HEARTBEATS = 400000
+SKELETON_HOLES = 4  # a rejected proof with more failing steps than this is revised, not repaired
 # Errors this Mathlib raises where the model's 2024 Mathlib passed silently: a tactic run after its
 # goal was already closed, or one that changed nothing. Deleting exactly that line cannot change what
 # is proved — the tactic acted on nothing — and the result is compiled again. Only when every error
@@ -443,6 +445,7 @@ class Hole:
     note: str = ""
     outcomes: Counter = field(default_factory=Counter)
     retyped: bool = False  # lifted from the typed print, the plain one not fitting the hole
+    tried: str = ""  # steps Wayfinder tried at this goal and withdrew (they closed nothing under them)
 
 
 class Worker:
@@ -516,6 +519,10 @@ class Worker:
                 hole.binders, hole.rename = hf.binders(statement), ""
             return
         self.publish(state="lifting")
+        for k, steps in hf.tried_at(self.job["declaration"]).items():
+            for hole in self.holes:
+                if hole.index == k:
+                    hole.tried = steps
         probe = self.prefix + hf.lifting_probe(self.job["declaration"], self.target)
         variants = hf.lifted_variants(self.compile(probe)["messages"], self.target)
         printed = {(k, i): st for k, pair in variants.items() for i, st in enumerate(pair) if st}
@@ -561,7 +568,10 @@ class Worker:
         return not run["timed_out"] and not gate.errors_in(run["messages"])
 
     def formal(self, hole: Hole) -> str:
-        return f"{self.prefix}{hole.statement} := by sorry"
+        # what Wayfinder tried and withdrew here goes with the goal, as information, not as a step
+        note = (f"/- Wayfinder tried these steps on this goal and withdrew them, as nothing under them "
+                f"closed: {hole.tried} -/\n") if hole.tried else ""  # fmt: skip
+        return f"{self.prefix}{note}{hole.statement} := by sorry"
 
     # ── checking one answer ──
 
@@ -622,6 +632,99 @@ class Worker:
         if removed and not errors:
             res["repaired"] = f"removed {removed} tactic line(s) that ran with no goals or made no progress"
         return res
+
+    # ── a rejected proof's skeleton: Goedel-Prover-V2 §5, with Wayfinder in the loop ──
+
+    def skeleton_repair(self, hole: Hole, code: str) -> dict:
+        """The rejected proof's plan kept — its `have` claims, case splits, witnesses — each step
+        Lean rejected made a hole, and Wayfinder's closers on the holes, with `plausible` beside
+        them (a refuted hole is a false claim of the model's). When every hole closes, the
+        assembled proof goes through the one acceptance path, `_check`. Returns the outcome
+        ("verified" | "open" | "no_skeleton") with what happened at each hole."""
+        code, _ = hf.modernize(code)
+        cand = hf.candidate(code, hole.name, self.known)
+        if cand is None:
+            return {"outcome": "no_skeleton", "why": "no theorem in the answer"}
+        helpers = [cand.scoped(h) for h in cand.helpers]
+        head = f"set_option maxHeartbeats {HEARTBEATS} in\n" + cand.scoped(f"{hole.statement} :=")
+        above = self.prefix + "\n\n".join(helpers + [""])
+        start = above.count("\n") + 1  # the file line where the lemma begins
+        text, sk = head + cand.proof, None
+        for _ in range(3):  # the rejected proof, then up to two rounds on its skeleton
+            run = self.compile(above + text + "\n")
+            if run["timed_out"]:
+                return {"outcome": "no_skeleton", "why": "compile timed out"}
+            errors = [(int((m.get("pos") or {}).get("line", 0)) - start, int((m.get("pos") or {}).get("column", 0)),
+                       str(m.get("data", ""))) for m in run["messages"] if m.get("severity") == "error"]  # fmt: skip
+            if not errors:
+                break
+            sk = hf.skeleton(text, errors, SKELETON_HOLES)
+            if sk is None:
+                return {"outcome": "no_skeleton", "why": "nothing to keep", "errors": [e[2][:120] for e in errors[:3]]}
+            text, n = hf.renumber_holes(sk.text)
+            if n > SKELETON_HOLES:
+                return {"outcome": "no_skeleton", "why": f"{n} failing steps"}
+        else:
+            return {"outcome": "no_skeleton", "why": "the skeleton does not elaborate"}
+        if sk is None:
+            return {"outcome": "no_skeleton", "why": "Lean reports no errors"}
+        text, n = hf.renumber_holes(text)
+        decl = text.split("\n", 1)[1]  # triage_block puts its own heartbeat line on each copy
+        battery = [rh.closers(rh.defs_mentioned(hole.goal, self.job.get("defs") or []), "")] * n
+        probe = rh.triage_block(decl, hole.name, battery, heartbeats=1000000)
+        run = self.compile(above + probe.text, timeout=600)
+        out = {"outcome": "open", "holes": n, "skeleton": decl, "replaced": sk.replaced,
+               "claims": hf.claims_at_holes(decl)}  # fmt: skip
+        if run["timed_out"]:
+            return {**out, "why": "the closers timed out"}
+        fates = rh.triage_outcomes(run["messages"], probe, start)
+        closed = [f["closed_by"] for f in fates]
+        out.update(closed=[c for c in closed if c],
+                   refuted={k + 1: f["refuted"] for k, f in enumerate(fates) if f["refuted"]})  # fmt: skip
+        if all(closed):
+            proof = hf.fill_holes(text, closed).split(f"{hole.statement} :=", 1)[1]
+            answer = (f"open {' '.join(cand.opens)}\n\n" if cand.opens else "") + "\n\n".join(
+                cand.helpers + [f"{hole.statement} :={proof}"]
+            )
+            check = self._check(hole, answer)
+            out.update(outcome="verified" if check["outcome"] == "verified" else "open", check=check)
+        return out
+
+    def repair_round(self, hole: Hole, spec: ModelSpec, failures: list[dict], rnd: int) -> bool:
+        """Between revision rounds (a job with `repair`): the best rejected proofs' skeletons, their
+        holes to Wayfinder's closers. A proof completed this way is accepted like any answer; a
+        false claim found in one goes into that proof's revision prompt."""
+        seen: set[str] = set()
+        for f in sorted(failures, key=lambda f: f["n_errors"])[: int(self.job.get("fix_attempts") or 4)]:
+            code = hf.extract_code(f["raw"])
+            if not code or self.stop.is_set():
+                continue
+            res = self.skeleton_repair(hole, code)
+            if res.get("skeleton") in seen:
+                continue
+            seen.add(res.get("skeleton") or "")
+            sid = f"h{hole.index}-repair-{f['id']}"
+            gen = {"server": "wayfinder", "quant": "-", "model": "wayfinder closers on a skeleton of " + f["id"]}
+            if res["outcome"] == "verified":
+                check = res["check"]
+                self.log_sample(hole, spec, sid, rnd, f["id"], gen, check)
+                hole.solved_by = sid
+                source = (f"{f['id']}'s plan with {res['holes']} step(s) closed by Wayfinder's closers "
+                          f"({'; '.join(res['closed'])}), run {self.job['run_id']}")  # fmt: skip
+                with self.lock:
+                    self.fills.append({"hole": hole.index, "model": "wayfinder", "quant": "-", "sample": sid,
+                                       "round": rnd, "form": check["form"], "fill": check["fill"],
+                                       "helpers": check["helpers"], "source": source})  # fmt: skip
+                    self._write("fills.json", self.fills)
+                return True
+            self.log_sample(hole, spec, sid, rnd, f["id"], gen, {"outcome": f"repair_{res['outcome']}",
+                                                                  "reasons": [res.get("why") or ""]})  # fmt: skip
+            false = [f"`{res['claims'].get(k, f'step {k}')}` is false: {' '.join(str(c).split())[:300]}"
+                     for k, c in (res.get("refuted") or {}).items()]  # fmt: skip
+            if false:  # a refuted step is a false claim of the model's: say so in its revision
+                note = "Checking this proof's steps one by one found these claims false:"
+                f["report"] += "\n\n" + note + "\n" + "\n".join(false)
+        return False
 
     def in_place(self, hole: Hole, cand: hf.Candidate, helpers: list[str], lemma: str) -> dict:
         """The proof that passed standalone, put into the hand-off: inline behind `rename_i`, else
@@ -805,6 +908,8 @@ class Worker:
                 return False
             failures = []
             if self.run_round(hole, pool, attempts, failures, seeds):
+                return True
+            if self.job.get("repair") and failures and self.repair_round(hole, pool.local.spec, failures, rnd):
                 return True
             if self.stop.is_set():
                 return False

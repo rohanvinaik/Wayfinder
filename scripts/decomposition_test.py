@@ -527,7 +527,8 @@ def _escalate(exp: Path, model: str, order: list[str], below: str, corrections: 
             print(f"[{out.name}] {tid}: the finishing pass on the whole statement: {handoff['status']}", flush=True)
             continue
         job = _job(f"{tid}-{out.name}", rows[tid], handoff, model, whole=whole, samples=fresh, cap=cap, ctx=ctx)
-        job.update(correction_rounds=corrections, fix_attempts=fix[0], fix_samples=fix[1])
+        # repair: between revision rounds, rejected proofs' skeletons to Wayfinder's closers (§5)
+        job.update(correction_rounds=corrections, fix_attempts=fix[0], fix_samples=fix[1], repair=True)
         if revise and not whole:  # the lower tier's rejected proofs, revised with Lean's errors (Goedel's self-correction)
             below_arm = exp / "demo" / below / "arms" / tid
             seeds = [{k: s.get(k) for k in ("id", "quant", "server", "model", "stop_type")}
