@@ -570,10 +570,21 @@ class Worker:
         return not run["timed_out"] and not gate.errors_in(run["messages"])
 
     def formal(self, hole: Hole) -> str:
-        # what Wayfinder tried and withdrew here goes with the goal, as information, not as a step
+        # a residual's goal is a step of a theorem the model never sees otherwise: the theorem goes with
+        # it as context; what Wayfinder tried and withdrew there goes too, as information, not as a step
+        context = ""
+        declaration = str((self.job.get("row") or {}).get("full_declaration", ""))
+        if self.job.get("status") == "residual" and ":=" in declaration:
+            try:
+                header = rh.split_declaration(declaration)[0]
+            except (ValueError, IndexError):
+                header = ""
+            header = re.sub(r"\s*:=\s*by\s*$", "", header).strip()
+            if header and "-/" not in header:
+                context = f"/- This goal is a step of the theorem below; Wayfinder proved the rest:\n{header} -/\n"
         note = (f"/- Wayfinder tried these steps on this goal and withdrew them, as nothing under them "
                 f"closed: {hole.tried} -/\n") if hole.tried else ""  # fmt: skip
-        return f"{self.prefix}{note}{hole.statement} := by sorry"
+        return f"{self.prefix}{context}{note}{hole.statement} := by sorry"
 
     # ── checking one answer ──
 
