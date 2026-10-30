@@ -531,10 +531,32 @@ class Worker:
                 hole.note, hole.plan = f"the lifted statement does not re-elaborate: {why}", []
             else:
                 i, statement = usable[0]
+                if i == 0 and len(usable) > 1 and not self.fits(hole, statement):
+                    # the plain print elaborates, but not as the goal it came from (a numeral or
+                    # binder re-read at another type: ℕ where the goal has ℤ), so an answer to it
+                    # cannot close the hole; the typed print says what the goal says
+                    self.note(f"hole {hole.index}: the plain print does not fit its hole; lifted with types")
+                    i, statement = usable[1]
                 hole.statement = statement if i == 0 else hf.untyped_name(statement, self.target, hole.index)
                 hole.name = hole.helper_name = hf.lifted_name(self.target, hole.index)
                 hole.binders = hf.binders(statement)
                 hole.rename = hf.rename_line(hf.context_names(hole.goal), hole.binders)
+
+    def fits(self, hole: Hole, statement: str) -> bool:
+        """Whether a lifted statement, taken on `sorry`, closes its hole in the hand-off — by the same
+        helper forms an answer is applied with, so a print that means something else fails here
+        rather than after the model has proved it."""
+        name = hf.lifted_name(self.target, hole.index)
+        lifted = hf.binders(statement)
+        rename = hf.rename_line(hf.context_names(hole.goal), lifted)
+        if rename is None:
+            fill = f"apply {name} <;> assumption"
+        else:
+            fill = "\n".join(([rename] if rename else []) + [hf.helper_call(name, lifted)])
+        new_file, _ = hf.apply_fill(self.job["file"], self.job["declaration"], hole.index, fill,
+                                    f"{statement} := by\n  sorry")  # fmt: skip
+        run = self.compile(new_file)
+        return not run["timed_out"] and not gate.errors_in(run["messages"])
 
     def formal(self, hole: Hole) -> str:
         return f"{self.prefix}{hole.statement} := by sorry"

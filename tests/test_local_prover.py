@@ -222,6 +222,46 @@ class PoolTest(unittest.TestCase):
             self.assertEqual(lp.pool_config(), {})
 
 
+class LiftFitTest(unittest.TestCase):
+    """A plain print can elaborate as a different statement (`∃ x, x = 2` re-reads over ℕ when the
+    goal is over ℤ): an answer to it could never close the hole, so the typed print is lifted."""
+
+    PLAIN, TYPED = "theorem nt_wf_hole_1 : ∃ x, x = 2", "theorem nt_wf_hole_1_r : ∃ (x : ℤ), x = (2 : ℤ)"
+
+    def _prepared(self, fits: bool) -> lp.Worker:
+        import tempfile
+
+        decl = "theorem nt : ∃ x : ℤ, x = 2 := by\n  -- WAYFINDER RESIDUAL 1: close this goal\n  sorry\n"
+        job = {"run_id": "t", "theorem_id": "nt", "target": "nt", "status": "residual", "model": "goedel-v2-8b",
+               "file": "import Mathlib\n\n" + decl, "declaration": decl, "defs": [],
+               "holes": [{"index": 1, "lean_goal": "⊢ ∃ x, x = 2"}]}  # fmt: skip
+        tmp = Path(tempfile.mkdtemp())
+        (tmp / "job.json").write_text(json.dumps(job))
+        w = lp.Worker(tmp / "job.json")
+        printed = [{"severity": "information", "data": f"{st} := sorry"} for st in (self.PLAIN, self.TYPED)]
+        w.compile = mock.Mock(side_effect=[{"messages": printed}, {"messages": []}])  # probe, then validation
+        w.fits = mock.Mock(return_value=fits)
+        w.prepare()
+        return w
+
+    def test_a_plain_print_that_does_not_fit_gives_way_to_the_typed_one(self):
+        w = self._prepared(fits=False)
+        self.assertEqual(w.holes[0].statement, "theorem nt_wf_hole_1 : ∃ (x : ℤ), x = (2 : ℤ)")
+        self.assertTrue(any("does not fit" in n for n in w.status["notes"]))
+
+    def test_a_plain_print_that_fits_is_kept(self):
+        self.assertEqual(self._prepared(fits=True).holes[0].statement, self.PLAIN)
+
+    def test_the_fit_check_applies_the_lifted_lemma_where_the_hole_was(self):
+        w = self._prepared(fits=True)
+        w.compile = mock.Mock(return_value={"timed_out": False, "messages": [
+            {"severity": "error", "pos": {"line": 5, "column": 2}, "data": "type mismatch"}]})  # fmt: skip
+        self.assertFalse(lp.Worker.fits(w, w.holes[0], self.PLAIN))
+        checked = w.compile.call_args.args[0]
+        self.assertIn(f"{self.PLAIN} := by\n  sorry", checked)  # the lemma, on sorry, above the theorem
+        self.assertIn("exact nt_wf_hole_1", checked)  # applied in the hole
+
+
 class RenameTest(unittest.TestCase):
     def test_the_whole_statements_helper_takes_its_own_name(self):
         lemma = "set_option maxHeartbeats 400000 in\ntheorem kappa {n : ℕ} : n = n := by\n  rfl"
