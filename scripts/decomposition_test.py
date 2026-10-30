@@ -358,10 +358,12 @@ def demo(exp: Path, model: str, limit: int | None, remote_only: bool = False, re
          theorems: str = "open") -> None:  # fmt: skip
     """The capacity run: the production lane on every residual — Wayfinder's holes to the local model,
     the completed file through the gate, each accepted proof saved with its provenance — in a seeded
-    random order, so the tally at any point is an unbiased sample of the residual population. Same
-    settings as EXP-DEC-001's arm B (Amendment 1), so its records can stand in for that arm later."""
+    random order, so the tally at any point is an unbiased sample of the residual population. It
+    takes every theorem not yet proven: the residuals into the loop, and the theorems with no
+    usable residual (the search never started, or left nothing replayable) on the whole statement.
+    Scored leniently (a proof the gate accepts stands), with the repair loop and the REPL on."""
     rows = _rows()
-    order = sorted(_population(exp))
+    order = sorted(_population(exp)) + (sorted(_unstarted(exp)) if not escalate_from else [])
     random.Random(DEMO_SEED).shuffle(order)
     order = order[:limit] if limit else order
     if reverse:  # a second stream works the same order from the end; records keep the streams apart
@@ -371,6 +373,7 @@ def demo(exp: Path, model: str, limit: int | None, remote_only: bool = False, re
     out = exp / "demo" / model
     (out / "records").mkdir(parents=True, exist_ok=True)
     (out / "proofs").mkdir(parents=True, exist_ok=True)
+    residuals = set(_population(exp))
     if escalate_from:
         return _escalate(exp, model, order, escalate_from, corrections, rows, cap, capped, tier, revise, samples,
                          fresh_uncapped, ctx, fix, whole, theorems)
@@ -383,8 +386,13 @@ def demo(exp: Path, model: str, limit: int | None, remote_only: bool = False, re
             prior = None  # a claim left by a stream that stopped: the theorem is free
         if prior and (not prior["arm"]["infra"] or prior.get("reruns", 0) >= 1):
             continue
-        handoff = json.loads((exp / "handoffs" / f"{tid}.json").read_text())["handoff"]
-        job = _job(f"{tid}-demo", rows[tid], handoff, model, whole=False, samples=K)
+        whole = tid not in residuals
+        handoff = _whole_handoff(exp, tid, rows[tid]) if whole else json.loads(
+            (exp / "handoffs" / f"{tid}.json").read_text())["handoff"]  # fmt: skip
+        if whole and handoff.get("status") in ("closed", "refuted", "failed"):
+            continue  # settled on the whole statement already (or not a statement to prove)
+        job = _job(f"{tid}-demo", rows[tid], handoff, model, whole=whole, samples=K)
+        job["repl"] = True
         if pool_key:
             job["pool_key"] = pool_key
         if remote_only:
@@ -392,8 +400,9 @@ def demo(exp: Path, model: str, limit: int | None, remote_only: bool = False, re
         # every stream claims its theorem, so none starts one another live stream is working
         claim = {"theorem_id": tid, "in_progress": True, "pid": os.getpid(), "arm": {"infra": False, "closed": False}}
         rec_path.write_text(json.dumps(claim))
-        arm = _run_arm(out / "arms" / tid, job)
-        rec = {"theorem_id": tid, "holes": len(handoff["holes"]), "kept": handoff.get("closures_kept"), "arm": arm}
+        arm = _run_arm(out / "arms" / tid, job, lenient=True)
+        rec = {"theorem_id": tid, "holes": len(handoff["holes"]), "kept": handoff.get("closures_kept"), "arm": arm,
+               "whole": whole}  # fmt: skip
         if prior:
             rec["reruns"] = prior.get("reruns", 0) + 1
         if arm["closed"]:
@@ -443,7 +452,10 @@ def _unstarted(exp: Path) -> list[str]:
     out = []
     for f in sorted((exp / "handoffs").glob("*.json")):
         rec = json.loads(f.read_text())
-        if rec.get("status") in ("skipped_start", "handoff_error"):
+        h = rec.get("handoff") or {}
+        if rec.get("status") in ("skipped_start", "handoff_error", "bare", "failed") or (
+            rec.get("status") == "residual" and not (h.get("closures_kept") or 0)
+        ):
             out.append(rec["theorem_id"])
     return out
 
@@ -530,7 +542,7 @@ def _escalate(exp: Path, model: str, order: list[str], below: str, corrections: 
             continue
         job = _job(f"{tid}-{out.name}", rows[tid], handoff, model, whole=whole, samples=fresh, cap=cap, ctx=ctx)
         # repair: between revision rounds, rejected proofs' skeletons to Wayfinder's closers (§5)
-        job.update(correction_rounds=corrections, fix_attempts=fix[0], fix_samples=fix[1], repair=True)
+        job.update(correction_rounds=corrections, fix_attempts=fix[0], fix_samples=fix[1], repair=True, repl=True)
         if revise and not whole:  # the lower tier's rejected proofs, revised with Lean's errors (Goedel's self-correction)
             below_arm = exp / "demo" / below / "arms" / tid
             seeds = [{k: s.get(k) for k in ("id", "quant", "server", "model", "stop_type")}
@@ -555,6 +567,33 @@ def _escalate(exp: Path, model: str, order: list[str], below: str, corrections: 
               f"{sum(1 for r in tally if r['arm']['closed'])} closed of {len(tally)} the {below} left open", flush=True)
 
 
+# ── reconcile: Wayfinder's own closes, as the v4.28 gate sees them ─────────────
+
+
+def reconcile(exp: Path) -> None:
+    """A theorem counts as Wayfinder's only once its proof passes the gate the models' proofs pass
+    (v4.28, from scratch; proofs in `wayfinder_proofs/`, checked beforehand). The search runs on
+    v4.27 through Pantograph, and a close whose replay does not pass at v4.28 goes back into the
+    pipeline: its hand-off rebuilt from the search's tree (the old record archived)."""
+    rows = _rows()
+    details = {d["theorem_id"]: d for d in _jsonl(exp / "search.jsonl")}
+    proofs, archive = exp / "wayfinder_proofs", exp / "handoffs_archive_pre_reconcile"
+    for f in sorted((exp / "handoffs").glob("*.json")):
+        rec = json.loads(f.read_text())
+        tid = rec["theorem_id"]
+        if rec.get("status") not in ("search_closed", "closed") or (proofs / f"{tid}.lean").exists():
+            continue
+        archive.mkdir(exist_ok=True)
+        (archive / f.name).write_text(f.read_text())
+        h = m._build_handoff(rows[tid], details[tid])
+        if h.get("status") == "closed":  # a closed replay the gate refused is not closed: the whole statement
+            h = m._build_handoff(rows[tid], {"initial_goal_tier": ""})
+        f.write_text(json.dumps({"theorem_id": tid, "status": h.get("status"), "handoff": h,
+                                 "reconciled_from": f"{rec.get('status')} (its proof did not pass the v4.28 gate)"},
+                                indent=2))  # fmt: skip
+        print(f"{tid}: {rec.get('status')} -> {h.get('status')}", flush=True)
+
+
 # ── the capacity run's ledger: what each theorem cost ─────────────────────────
 
 
@@ -571,8 +610,9 @@ def ledger(exp: Path) -> dict:
     rows: dict[str, dict] = {}
     for tid, st in statuses.items():
         row = {"answers": 0, "tokens": 0, "estimated_tokens": 0, "closed_by": None, "tiers": []}
-        if st in ("closed", "search_closed"):
-            row["closed_by"] = "wayfinder"
+        verified = exp / "wayfinder_proofs"
+        if st in ("closed", "search_closed") and (not verified.is_dir() or (verified / f"{tid}.lean").exists()):
+            row["closed_by"] = "wayfinder"  # once the v4.28 gate has checked its proof, when that check ran
         for tier in tiers:
             arm = demo / tier / "arms" / tid
             rec_path = demo / tier / "records" / f"{tid}.json"
@@ -659,7 +699,7 @@ def report(exp: Path) -> dict:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
-    ap.add_argument("phase", choices=["search", "handoffs", "pairs", "recheck", "demo", "ledger", "report"])
+    ap.add_argument("phase", choices=["search", "handoffs", "pairs", "recheck", "demo", "ledger", "reconcile", "report"])
     ap.add_argument("--dir", default=str(WF / "runs" / "exp_dec_001"))
     ap.add_argument("--workers", type=int, default=3, help="hand-off builders in parallel")
     ap.add_argument("--model", default=lp.LIGHT, choices=sorted(lp.MODELS))
@@ -700,6 +740,8 @@ def main() -> int:
         recheck(exp, args.model)
     elif args.phase == "ledger":
         ledger(exp)
+    elif args.phase == "reconcile":
+        reconcile(exp)
     elif args.phase == "demo":
         demo(exp, args.model, args.limit, remote_only=args.remote_only, reverse=args.reverse,
              pool_key=args.pool_key, start=args.start, escalate_from=args.escalate_from,
