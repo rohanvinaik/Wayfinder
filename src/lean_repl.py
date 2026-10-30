@@ -152,6 +152,12 @@ class LeanRepl:
         messages = []
         for m in r.get("messages") or []:
             m = dict(m)
+            if m.get("severity") == "info":  # `lean --json` says "information"; readers match on it
+                m["severity"] = "information"
+            if "maximum number of heartbeats" in str(m.get("data", "")):
+                # where a heartbeat limit lands differs from a fresh compile's (elaboration near the limit
+                # is not reproduced exactly here): such a check is settled by a fresh compile
+                raise ReplError("a heartbeat timeout: confirm with a fresh compile")
             for key in ("pos", "endPos"):
                 if isinstance(m.get(key), dict) and "line" in m[key]:
                     m[key] = {**m[key], "line": int(m[key]["line"]) + offset}
