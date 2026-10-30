@@ -450,14 +450,31 @@ _SCOPE_PREFIX = re.compile(r"^(set_option\s+\S+\s+\S+|open\s+[^\n]+?)\s+in$")
 _OLD_BIG_OP = re.compile(r"([∑∏]\s*[\w'₀-₉]+)\s+in\s+")
 
 
-def modernize(code: str) -> tuple[str, list[str]]:
-    """A model's code with older-Mathlib syntax rewritten to what this Mathlib parses.
+# `norm_num at h ⊢` whose `h` becomes False closes the goal, then fails on `⊢` with "No goals to be
+# solved" in this Mathlib (older ones stopped quietly, and Goedel writes it constantly, often after
+# `interval_cases x <;>`). Hypotheses first, finishing if that closes the goal, else the call as
+# written: wherever the original succeeds this does too. `| ` before it marks one already rewritten.
+_NORM_NUM_AT_GOAL = re.compile(r"(?<!\| )\bnorm_num(\s*\[[^\]]*\])?\s+at\s+((?:[^\s⊢;<>|()\[\]]+\s+)+)⊢")
 
-    Syntax only: the proof says the same thing, and every candidate is still compiled.
+
+def _hypotheses_first(m: re.Match) -> str:
+    call = f"norm_num{m.group(1) or ''} at {m.group(2).strip()}"
+    return f"(first | ({call}; done) | {call} ⊢)"
+
+
+def modernize(code: str) -> tuple[str, list[str]]:
+    """A model's code with older-Mathlib syntax and tactic behaviour rewritten to what this Mathlib
+    accepts.
+
+    The proof says the same thing, and every candidate is still compiled.
     Returns (code, what was rewritten).
     """
     new, n = _OLD_BIG_OP.subn(r"\1 ∈ ", code)
-    return new, ([f"{n} big-operator binder(s): `∑ x in s` → `∑ x ∈ s`"] if n else [])
+    notes = [f"{n} big-operator binder(s): `∑ x in s` → `∑ x ∈ s`"] if n else []
+    new, n = _NORM_NUM_AT_GOAL.subn(_hypotheses_first, new)
+    if n:
+        notes.append(f"{n} `norm_num at h ⊢` call(s): hypotheses first, so closing the goal does not fail on `⊢`")
+    return new, notes
 
 
 def extract_code(raw: str) -> str | None:

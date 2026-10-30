@@ -225,6 +225,21 @@ class ModernizeTest(unittest.TestCase):
         code = "have : ∑ i ∈ s, f i ≤ ∑ i, g i := by\n  intro x hx\n  exact le_of_lt (lt_of_mem_in x)"
         self.assertEqual(hf.modernize(code), (code, []))
 
+    def test_norm_num_at_a_hypothesis_and_the_goal_tries_the_hypotheses_first(self):
+        # in this Mathlib, `norm_num at h ⊢` whose `h` closes the goal then fails on `⊢` (No goals)
+        new, notes = hf.modernize("  interval_cases m <;> norm_num at h₅ ⊢")
+        self.assertEqual(new, "  interval_cases m <;> (first | (norm_num at h₅; done) | norm_num at h₅ ⊢)")
+        self.assertEqual(len(notes), 1)
+        new, _ = hf.modernize("norm_num [Nat.dvd_iff_mod_eq_zero] at h₁ h₂ ⊢ <;> omega")
+        self.assertEqual(new, "(first | (norm_num [Nat.dvd_iff_mod_eq_zero] at h₁ h₂; done) | "
+                              "norm_num [Nat.dvd_iff_mod_eq_zero] at h₁ h₂ ⊢) <;> omega")
+
+    def test_other_norm_num_locations_and_a_rewritten_call_are_left_alone(self):
+        for code in ("norm_num at ⊢", "norm_num at h₅", "norm_num at *", "simp at h ⊢", "norm_num1 at h ⊢"):
+            self.assertEqual(hf.modernize(code), (code, []), code)
+        once, _ = hf.modernize("norm_num at h ⊢")
+        self.assertEqual(hf.modernize(once), (once, []))
+
 
 class AnswerTest(unittest.TestCase):
     def test_the_last_code_block_is_the_answer(self):
