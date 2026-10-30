@@ -344,7 +344,8 @@ DEMO_SEED = 20261030
 
 
 def demo(exp: Path, model: str, limit: int | None, remote_only: bool = False, reverse: bool = False,
-         pool_key: str = "", start: int = 0, escalate_from: str = "", corrections: int = 0) -> None:  # fmt: skip
+         pool_key: str = "", start: int = 0, escalate_from: str = "", corrections: int = 0,
+         cap: int = CAP, capped: str = "any") -> None:  # fmt: skip
     """The capacity run: the production lane on every residual — Wayfinder's holes to the local model,
     the completed file through the gate, each accepted proof saved with its provenance — in a seeded
     random order, so the tally at any point is an unbiased sample of the residual population. Same
@@ -361,7 +362,7 @@ def demo(exp: Path, model: str, limit: int | None, remote_only: bool = False, re
     (out / "records").mkdir(parents=True, exist_ok=True)
     (out / "proofs").mkdir(parents=True, exist_ok=True)
     if escalate_from:
-        return _escalate(exp, model, order, escalate_from, corrections, rows)
+        return _escalate(exp, model, order, escalate_from, corrections, rows, cap, capped)
     for i, tid in enumerate(order, 1):
         rec_path = out / "records" / f"{tid}.json"
         prior = json.loads(rec_path.read_text()) if rec_path.exists() else None
@@ -403,17 +404,32 @@ def demo(exp: Path, model: str, limit: int | None, remote_only: bool = False, re
               f"running tally {closed} closed of {len(done) - infra} scored, {infra} infra", flush=True)  # fmt: skip
 
 
-def _escalate(exp: Path, model: str, order: list[str], below: str, corrections: int, rows: dict) -> None:
+def _hit_cap(arm_dir: Path) -> bool:
+    """Whether any of an arm's answers stopped at the token cap. Read from the stop type, not the
+    label: a cut-off answer's last code block is often a draft with `sorry`, labelled `denied`."""
+    f = arm_dir / "samples.jsonl"
+    return f.exists() and any(json.loads(x).get("stop_type") == "limit" for x in f.read_text().splitlines() if x)
+
+
+def _escalate(exp: Path, model: str, order: list[str], below: str, corrections: int, rows: dict,
+              cap: int = CAP, capped: str = "any") -> None:  # fmt: skip
     """The next tier: `model` on every residual the `below` model tried and left open, with
     `corrections` self-correction rounds, rescanning while `below`'s streams still have theorems in
-    progress — the ladder Wayfinder → small model → large model, all on this machine."""
-    src, out = exp / "demo" / below / "records", exp / "demo" / model
+    progress — the ladder Wayfinder → small model → large model, all on this machine. `capped`
+    splits the open residuals by whether any of `below`'s answers ran out of tokens ("only": a
+    longer-cap retry; "none": everything else); a tier with its own `cap` gets its own directory."""
+    src, out = exp / "demo" / below / "records", exp / "demo" / (model if cap == CAP else f"{model}-cap{cap}")
+    (out / "records").mkdir(parents=True, exist_ok=True)
+    (out / "proofs").mkdir(parents=True, exist_ok=True)
+    ctx = max(CTX, min(40960, cap + 8192))  # room for the prompt beside the full cap
     done: set[str] = set()
     quiet = 0
     while True:
         below_recs = {t: json.loads((src / f"{t}.json").read_text()) for t in order if (src / f"{t}.json").exists()}
         open_ = [t for t in order if t in below_recs and not below_recs[t].get("in_progress")
                  and not below_recs[t]["arm"]["closed"] and not below_recs[t]["arm"]["infra"]]  # fmt: skip
+        if capped != "any":
+            open_ = [t for t in open_ if _hit_cap(exp / "demo" / below / "arms" / t) == (capped == "only")]
         todo = [t for t in open_ if t not in done and not (out / "records" / f"{t}.json").exists()]
         if not todo:
             # wait while a lower-tier claim is live; leave after two quiet looks (a stream may be
@@ -427,7 +443,7 @@ def _escalate(exp: Path, model: str, order: list[str], below: str, corrections: 
         quiet = 0
         tid = todo[0]
         handoff = json.loads((exp / "handoffs" / f"{tid}.json").read_text())["handoff"]
-        job = _job(f"{tid}-{model}", rows[tid], handoff, model, whole=False, samples=K)
+        job = _job(f"{tid}-{out.name}", rows[tid], handoff, model, whole=False, samples=K, cap=cap, ctx=ctx)
         job.update(correction_rounds=corrections, fix_attempts=4, fix_samples=2)
         arm = _run_arm(out / "arms" / tid, job)
         rec = {"theorem_id": tid, "holes": len(handoff["holes"]), "kept": handoff.get("closures_kept"), "arm": arm,
@@ -442,7 +458,7 @@ def _escalate(exp: Path, model: str, order: list[str], below: str, corrections: 
         (out / "records" / f"{tid}.json").write_text(json.dumps(rec, indent=2))
         done.add(tid)
         tally = [json.loads(f.read_text()) for f in (out / "records").glob("*.json")]
-        print(f"[{model}] {tid}: {'CLOSED' if arm['closed'] else 'open'} ({arm['outcomes']}, {arm['wall_s']}s) — "
+        print(f"[{out.name}] {tid}: {'CLOSED' if arm['closed'] else 'open'} ({arm['outcomes']}, {arm['wall_s']}s) — "
               f"{sum(1 for r in tally if r['arm']['closed'])} closed of {len(tally)} the {below} left open", flush=True)
 
 
@@ -505,6 +521,9 @@ def main() -> int:
     ap.add_argument("--start", type=int, default=0, help="demo: start this far into the order (a third stream)")
     ap.add_argument("--escalate-from", default="", help="demo: only the residuals this lower-tier model left open")
     ap.add_argument("--corrections", type=int, default=0, help="demo --escalate-from: self-correction rounds")
+    ap.add_argument("--cap", type=int, default=CAP, help="demo --escalate-from: tokens per answer")
+    ap.add_argument("--capped", default="any", choices=["any", "only", "none"],
+                    help="demo --escalate-from: the residuals where the lower tier ran out of tokens, or the rest")
     args = ap.parse_args()
     exp = Path(args.dir)
     exp.mkdir(parents=True, exist_ok=True)
@@ -520,7 +539,7 @@ def main() -> int:
     elif args.phase == "demo":
         demo(exp, args.model, args.limit, remote_only=args.remote_only, reverse=args.reverse,
              pool_key=args.pool_key, start=args.start, escalate_from=args.escalate_from,
-             corrections=args.corrections)
+             corrections=args.corrections, cap=args.cap, capped=args.capped)
     else:
         report(exp)
     return 0
