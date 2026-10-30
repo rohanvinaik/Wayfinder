@@ -81,6 +81,7 @@ HEAVY = "goedel-v2-32b"
 # let one runaway candidate hold the checker forever.
 HEARTBEATS = 400000
 SKELETON_HOLES = 4  # a rejected proof with more failing steps than this is revised, not repaired
+DRAFT_HOLES = 8  # a draft's own `sorry`s count too: Goedel's sketches leave one on every `have`
 SEARCH_BUDGET = 200  # tactic attempts for Wayfinder's search on each lifted step
 SEARCH_GOALS = Path(__file__).resolve().parents[1] / "scripts" / "search_goals.py"
 # Errors this Mathlib raises where the model's 2024 Mathlib passed silently: a tactic run after its
@@ -591,7 +592,9 @@ class Worker:
     def verify(self, hole: Hole, raw: str, stop_type: str | None) -> dict:
         code = hf.extract_code(raw)
         if code is None:
-            return {"outcome": "truncated" if stop_type == "limit" else "no_code"}
+            # cut off mid-proof: its unfinished block is still the model's plan, a draft to take forward
+            cut = hf.cut_code(raw) if stop_type == "limit" else None
+            return {"outcome": "truncated" if stop_type == "limit" else "no_code", **({"cut": cut} if cut else {})}
         bad = hf.code_findings(code)
         if bad:
             return {"outcome": "denied", "reasons": bad}
@@ -607,8 +610,8 @@ class Worker:
             return {"outcome": "no_theorem"}
         helpers = [cand.scoped(h) for h in cand.helpers]
         bad = hf.fill_findings(cand.proof) + hf.helper_findings("\n\n".join(helpers))
-        if bad:
-            return {"outcome": "denied", "reasons": bad}
+        if bad:  # one whose only fault is `sorry` is a draft of the plan: the repair loop can take it forward
+            return {"outcome": "denied", "reasons": bad, "draft": all("`sorry`" in r for r in bad)}
         head = f"set_option maxHeartbeats {HEARTBEATS} in\n" + cand.scoped(f"{hole.statement} :=")
         lemma = head + cand.proof
         above = self.prefix + "\n\n".join(helpers + [""])  # everything before the lemma
@@ -648,7 +651,7 @@ class Worker:
 
     # ── a rejected proof's skeleton: Goedel-Prover-V2 §5, with Wayfinder in the loop ──
 
-    def skeleton_repair(self, hole: Hole, code: str) -> dict:
+    def skeleton_repair(self, hole: Hole, code: str, draft: bool = False) -> dict:
         """The rejected proof's plan kept — its `have` claims, case splits, witnesses — each step
         Lean rejected made a hole, and Wayfinder's closers on the holes, with `plausible` beside
         them (a refuted hole is a false claim of the model's). When every hole closes, the
@@ -662,7 +665,14 @@ class Worker:
         head = f"set_option maxHeartbeats {HEARTBEATS} in\n" + cand.scoped(f"{hole.statement} :=")
         above = self.prefix + "\n\n".join(helpers + [""])
         start = above.count("\n") + 1  # the file line where the lemma begins
-        text, sk = head + cand.proof, None
+        text, sk, marked = head + cand.proof, None, 0
+        cap = DRAFT_HOLES if draft else SKELETON_HOLES
+        steps: list[str] = []  # the model's failed steps, for seeding the closers
+        if draft:  # the draft's own `sorry`s are holes from the start
+            got = hf.mark_sorries(text)
+            if got is None:
+                return {"outcome": "no_skeleton", "why": "a sorry the skeleton cannot place"}
+            text, marked = got
         for _ in range(3):  # the rejected proof, then up to two rounds on its skeleton
             run = self.compile(above + text + "\n")
             if run["timed_out"]:
@@ -671,19 +681,27 @@ class Worker:
                        str(m.get("data", ""))) for m in run["messages"] if m.get("severity") == "error"]  # fmt: skip
             if not errors:
                 break
-            sk = hf.skeleton(text, errors, SKELETON_HOLES)
+            sk = hf.skeleton(text, errors, cap)
             if sk is None:
                 return {"outcome": "no_skeleton", "why": "nothing to keep", "errors": [e[2][:120] for e in errors[:3]]}
+            steps += sk.replaced
             text, n = hf.renumber_holes(sk.text)
-            if n > SKELETON_HOLES:
+            if n > cap:
                 return {"outcome": "no_skeleton", "why": f"{n} failing steps"}
         else:
             return {"outcome": "no_skeleton", "why": "the skeleton does not elaborate"}
+        if sk is None and marked:  # a clean draft: Lean's only complaint is its own `sorry`s
+            text, n = hf.renumber_holes(text)
+            sk = hf.Skeleton(text=text, holes=n, replaced=["sorry"] * n)
         if sk is None:
             return {"outcome": "no_skeleton", "why": "Lean reports no errors"}
         text, n = hf.renumber_holes(text)
         decl = text.split("\n", 1)[1]  # triage_block puts its own heartbeat line on each copy
-        battery = [rh.closers(rh.defs_mentioned(hole.goal, self.job.get("defs") or []), "")] * n
+        # Wayfinder's battery, with the model's own failed steps fed in before the heavy closers
+        base = rh.closers(rh.defs_mentioned(hole.goal, self.job.get("defs") or []), "")
+        heavy = [c for c in base if c in rh._HEAVY_CLOSERS]
+        seeds = list(dict.fromkeys(c for st in steps for c in hf.seeded_closers(st)))[:6]
+        battery = [[c for c in base if c not in heavy] + seeds + heavy] * n
         probe = rh.triage_block(decl, hole.name, battery, heartbeats=1000000)
         run = self.compile(above + probe.text, timeout=600)
         out = {"outcome": "open", "holes": n, "skeleton": decl, "replaced": sk.replaced,
@@ -765,10 +783,13 @@ class Worker:
         the completion attempts for the next round)."""
         seen: set[str] = set()
         completions: list[tuple[int, list[dict], str | None]] = []
-        picked = sorted(failures, key=lambda f: f["n_errors"])[: int(self.job.get("fix_attempts") or 4)]
+        proofs = sorted([f for f in failures if not f.get("draft")], key=lambda f: f["n_errors"])
+        drafts = sorted([f for f in failures if f.get("draft")], key=lambda f: f["n_errors"])  # fewest sorries
+        picked = proofs[: int(self.job.get("fix_attempts") or 4)] + drafts[:2]
         # the skeletons are compiled side by side: the model waits on them
         with ThreadPoolExecutor(max_workers=max(1, len(picked))) as ex:
-            repaired = list(ex.map(lambda f: self.skeleton_repair(hole, hf.extract_code(f["raw"]) or ""), picked))
+            repaired = list(ex.map(lambda f: self.skeleton_repair(hole, hf.extract_code(f["raw"]) or "",
+                                                                  draft=bool(f.get("draft"))), picked))  # fmt: skip
         # the steps neither the closers nor a refutation settled: Wayfinder's search, one batch for all
         lifts = {f"{hole.name}_wf_s{i}_{k}": re.sub(r"^(theorem|lemma)\s+\S+", f"theorem {hole.name}_wf_s{i}_{k}", st,
                                                     count=1)  # fmt: skip
@@ -973,6 +994,11 @@ class Worker:
                                            "round": rnd, "form": res["form"], "fill": res["fill"],
                                            "helpers": res["helpers"], "source": source})  # fmt: skip
                         self._write("fills.json", self.fills)
+                elif res.get("draft") or res.get("cut"):  # an unfinished plan: repaired, never revised
+                    raw = gen["content"] if res.get("draft") else f"```lean4\n{res['cut']}\n```"
+                    failures.append({"id": sid, "messages": messages, "raw": raw, "report": "",
+                                     "n_errors": raw.count("sorry") if res.get("draft") else 50,
+                                     "draft": "sorry" if res.get("draft") else "cut"})  # fmt: skip
                 elif res["outcome"] == "wrong_proof":
                     failures.append({"id": sid, "messages": messages, "raw": gen["content"], "report": res["report"],
                                      "n_errors": res.get("n_errors", 0)})  # fmt: skip
@@ -990,7 +1016,8 @@ class Worker:
         completions: list[tuple[int, list[dict], str | None]] = []
         for rnd in range(int(self.job["correction_rounds"]) + 1):
             if rnd > 0:
-                fixable = sorted(failures, key=lambda f: f["n_errors"])[: int(self.job["fix_attempts"])]
+                proofs = [f for f in failures if not f.get("draft")]  # a draft has no Lean report to revise from
+                fixable = sorted(proofs, key=lambda f: f["n_errors"])[: int(self.job["fix_attempts"])]
                 attempts = [
                     (rnd, _corrected(f, rnd), f["id"]) for f in fixable for _ in range(int(self.job["fix_samples"]))
                 ] + completions

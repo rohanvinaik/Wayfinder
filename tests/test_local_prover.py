@@ -373,6 +373,14 @@ class RepairRoundTest(ReviseTest):
         self.assertIn("  revert\n  norm_num", answer)  # the search's proof, inline at the hole
         self.assertIn("1 by its search", w.fills[0]["source"])
 
+    def test_a_draft_is_repaired_but_never_revised(self):
+        w, hole = self._worker(self.STATEMENT, "BAD", repair=True)
+        draft = {"id": "h1-8b-r0-s2", "raw": "```lean4\ntheorem nt_wf_hole_1 : (2 : ℤ) = 2 := by\n  sorry\n```",
+                 "report": "", "n_errors": 1, "messages": [], "draft": "sorry"}  # fmt: skip
+        w.skeleton_repair = mock.Mock(return_value={"outcome": "no_skeleton", "why": "x"})
+        w.repair_round(hole, lp.MODELS["goedel-v2-8b"], [draft], 0)
+        self.assertTrue(w.skeleton_repair.call_args.kwargs["draft"])
+
     def test_the_goal_carries_what_wayfinder_tried_and_withdrew(self):
         w, hole = self._worker(self.STATEMENT, "BAD")
         hole.tried = "left ; norm_num"

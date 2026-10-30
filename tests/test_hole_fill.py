@@ -336,3 +336,30 @@ class SkeletonHelpersTest(unittest.TestCase):
         decl = (f"theorem t : A ∨ B := by\n  intros\n  -- {TRIED_MARK}: left ; norm_num\n"
                 f"  -- {HOLE_MARK} 1: close this goal\n  --   ⊢ A ∨ B\n  sorry\n")  # fmt: skip
         self.assertEqual(hf.tried_at(decl), {1: "left ; norm_num"})
+
+
+class DraftTest(unittest.TestCase):
+    """Goedel's unfinished attempts are plans: their `sorry`s become holes for Wayfinder."""
+
+    def test_every_form_of_sorry_becomes_a_marked_hole_on_its_own_line(self):
+        lemma = ("theorem t : P := by\n  have h1 : A := by sorry\n  have h2 : B := sorry\n"
+                 "  constructor\n  · exact sorry\n  · sorry")  # fmt: skip
+        text, n = hf.mark_sorries(lemma)
+        self.assertEqual(n, 4)
+        self.assertEqual(len(hf.hole_sites(text)), 4)
+        self.assertIn("  have h1 : A := by\n    -- ", text)
+
+    def test_a_sorry_the_skeleton_cannot_place_refuses_the_draft(self):
+        self.assertIsNone(hf.mark_sorries("theorem t : P := by\n  constructor <;> sorry"))
+
+    def test_a_cut_off_answer_keeps_its_unfinished_block_without_the_cut_line(self):
+        raw = "plan...\n```lean4\ntheorem t : P := by\n  have h : A := by\n    nlinarith [sq_nonneg (a - b), sq_no"
+        self.assertEqual(hf.cut_code(raw), "theorem t : P := by\n  have h : A := by")
+        self.assertIsNone(hf.cut_code("no code at all"))
+
+    def test_the_models_step_seeds_the_closers_with_its_premises(self):
+        seeds = hf.seeded_closers("nlinarith [sq_nonneg (a - b), sq_nonneg (a + b), h₀]")
+        self.assertEqual(seeds[0], "nlinarith [sq_nonneg (a - b), sq_nonneg (a + b), h₀]")
+        self.assertIn("linarith [sq_nonneg (a - b), sq_nonneg (a + b), h₀]", seeds)
+        self.assertIn("simp [Finset.sum_range_succ]", hf.seeded_closers("simp [Finset.sum_range_succ] at h ⊢"))
+        self.assertLessEqual(len(hf.seeded_closers("nlinarith [a] <;> simp [b] <;> norm_num [c]")), 6)

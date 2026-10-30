@@ -482,6 +482,17 @@ def modernize(code: str) -> tuple[str, list[str]]:
     return new, notes
 
 
+def cut_code(raw: str) -> str | None:
+    """An answer cut off by the token cap mid-proof: its last, unfinished code block without the
+    line the cap cut through — a draft of the plan, which the repair loop can take forward."""
+    at = max(raw.rfind("```lean4\n"), raw.rfind("```lean\n"))
+    if at < 0:
+        return None
+    body = raw[raw.index("\n", at) + 1 :].split("\n")[:-1]
+    text = "\n".join(body).rstrip()
+    return text if re.search(r"^(theorem|lemma)\s", text, re.M) and ":= by" in text else None
+
+
 def extract_code(raw: str) -> str | None:
     """The last Lean code block of a model's answer (Goedel-Prover-V2's own extraction)."""
     for pat in _CODE_BLOCKS:
@@ -501,7 +512,7 @@ def extract_code(raw: str) -> str | None:
 class Skeleton:
     text: str  # the lemma, each failing step's proof replaced by a marked `sorry`
     holes: int
-    replaced: list[str]  # per hole, the first line of what the model had there
+    replaced: list[str]  # per hole, what the model had there (the whole step: its hints span lines)
 
 
 def _indent(line: str) -> int:
@@ -586,14 +597,15 @@ def skeleton(lemma: str, errors: list[tuple[int, int, str]], max_holes: int = 4)
         sp = next((x for x in kept if x[0] == i), None)
         if sp:
             out += _hole(sp[2], len(replaced) + 1, sp[3])
-            replaced.append(lines[i].strip())
+            replaced.append(textwrap.dedent("\n".join(lines[sp[0] : sp[1]])).strip())
             i = sp[1]
             continue
         if i in inline:
             m = re.search(r":=\s*by\s+", lines[i])
             out.append(lines[i][: m.start()] + ":= by")  # type: ignore[union-attr]
             out += _hole(_indent(lines[i]) + 2, len(replaced) + 1)
-            replaced.append(lines[i][m.end() :].strip())  # type: ignore[union-attr]
+            rest = [lines[i][m.end() :]] + lines[i + 1 : inline[i]]  # type: ignore[union-attr]
+            replaced.append(" ".join(" ".join(rest).split()))
             i = inline[i]
             continue
         if i not in drops:
@@ -637,13 +649,71 @@ def tried_at(declaration: str) -> dict[int, str]:
 
 
 def renumber_holes(text: str) -> tuple[str, int]:
-    """The hole markers numbered 1.. in order (a skeleton of a skeleton repeats numbers)."""
-    lines, k = text.split("\n"), 0
+    """The hole markers numbered 1.. in order (a skeleton of a skeleton repeats numbers); a marker
+    whose `sorry` is gone (a step that ran with no goals, dropped) goes with it."""
+    lines = text.split("\n")
+
+    def has_sorry(i: int) -> bool:  # the marker's own `sorry`, past its goal-comment lines
+        j = i + 1
+        while j < len(lines) and _GOAL_COMMENT.match(lines[j]):
+            j += 1
+        return j < len(lines) and bool(_SORRY.match(lines[j]))
+
+    live = {i for i, ln in enumerate(lines) if _MARKER.match(ln) and has_sorry(i)}
+    keep, k = [], 0
     for i, ln in enumerate(lines):
         if m := _MARKER.match(ln):
+            if i not in live:
+                continue
             k += 1
-            lines[i] = f"{m.group('indent')}-- {HOLE_MARK} {k}: close this goal"
-    return "\n".join(lines), k
+            ln = f"{m.group('indent')}-- {HOLE_MARK} {k}: close this goal"
+        keep.append(ln)
+    return "\n".join(keep), k
+
+
+def mark_sorries(lemma: str) -> tuple[str, int] | None:
+    """A draft's own `sorry`s as marked holes, each on its own line (`hole_sites` and the closer
+    probe read only those): `:= by sorry` and `:= sorry` split onto a line, `exact sorry` and a
+    bare `sorry` marked where they stand. None if a `sorry` is somewhere else (inside `<;>`, a term)."""
+    out, n = [], 0
+    for line in lemma.split("\n"):
+        if "sorry" not in line or line.lstrip().startswith("--"):
+            out.append(line)
+            continue
+        pad, bullet = re.match(r"^(\s*)(· )?", line).groups()  # type: ignore[union-attr]
+        if re.match(r"^\s*(· )?(exact )?sorry\s*$", line):
+            n += 1
+            out += _hole(len(pad), n, bool(bullet))
+        elif m := re.match(r"^(.*?):=\s*(?:by\s+)?sorry\s*$", line):
+            n += 1
+            out.append(m.group(1).rstrip() + " := by")
+            out += _hole(len(pad) + (4 if bullet else 2), n)
+        else:
+            return None
+    return "\n".join(out), n
+
+
+_HINTS = re.compile(r"\b(n?linarith|positivity|nlinarith!?|polyrith)\s*\[([^\]]*)\]")
+_LEMMAS = re.compile(r"\b(simp|simp_all|norm_num|field_simp|rw|simp only|nlinarith)\s*\[([^\]]*)\]")
+
+
+def seeded_closers(step: str, limit: int = 6) -> list[str]:
+    """Closers built from the step the model wrote at a hole — its own tactic (the probe gives it
+    more heartbeats than the model's run did), and its hint terms and lemmas fed to Wayfinder's
+    arithmetic and simp closers. The model chose those premises; the closers try them in new hands."""
+    flat = " ".join(step.split())
+    out: list[str] = []
+    if flat and "\n" not in step.strip() and not flat.startswith(("have ", "obtain ", "·", "calc")):
+        out.append(flat)
+    hints = [h.strip() for _, h in _HINTS.findall(flat) if h.strip()]
+    lemmas = [h.strip() for _, h in _LEMMAS.findall(flat) if h.strip()]
+    for h in hints:
+        out += [f"nlinarith [{h}]", f"linarith [{h}]"]
+    for lm in lemmas:
+        out += [f"simp [{lm}]", f"norm_num [{lm}]", f"field_simp [{lm}]; ring_nf"]
+    if hints and lemmas:
+        out.append(f"field_simp [{lemmas[0]}]; nlinarith [{hints[0]}]")
+    return list(dict.fromkeys(out))[:limit]
 
 
 def fill_holes(text: str, fills: list[str | None], left: str = "") -> str:
