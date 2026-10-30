@@ -533,9 +533,11 @@ class Worker:
         defs = self.job.get("defs") or []
         forced = None if self.job.get("model") in (None, "", "auto") else self.job["model"]
         whole = self.job["status"] == "bare"
+        # a hand-off's job is the whole statement; the residual it starts from may hold Wayfinder's steps
+        no_foothold = whole and self.job.get("residual_status", "bare") == "bare"
         for h in self.job["holes"]:
             hole = Hole(index=int(h["index"]), goal=str(h.get("lean_goal") or h.get("search_goal") or ""))
-            hole.assessment = assess(hole.goal, defs, whole)
+            hole.assessment = assess(hole.goal, defs, no_foothold)
             hole.plan = model_plan(hole.assessment, forced)
             self.holes.append(hole)
         if whole:
@@ -1031,6 +1033,15 @@ class Worker:
         ver_pool.shutdown(wait=True)
         return solved
 
+    def work(self, hole: Hole, pool: Pool) -> bool:
+        """The job's work on a hole: the hand-off (src/handoff_loop.py) — Wayfinder's whole residual
+        to Goedel and back — or, for a job of the older kind, sampling and revising on the hole."""
+        if self.job.get("mode") == "handoff":
+            from src.handoff_loop import Handoff
+
+            return Handoff(self).run(pool)
+        return self.solve(hole, pool)
+
     def solve(self, hole: Hole, pool: Pool) -> bool:
         """Round 0 (`samples` attempts), then self-correction rounds on the best failures."""
         self.publish(state="sampling", hole=hole.index, model=pool.local.spec.name)
@@ -1148,7 +1159,7 @@ class Worker:
             if self.stop.is_set():
                 break
             h_start = time.monotonic()
-            if self.solve(h, pool):
+            if self.work(h, pool):
                 h.note = f"verified after {time.monotonic() - h_start:.0f}s on {model} (remote)"
 
     def serve(self, model: str, holes: list[Hole]) -> None:
@@ -1189,7 +1200,7 @@ class Worker:
                 if self.stop.is_set():
                     break
                 h_start = time.monotonic()
-                if self.solve(h, pool):
+                if self.work(h, pool):
                     h.note = f"verified after {time.monotonic() - h_start:.0f}s on {model}"
         finally:
             srv.stop()

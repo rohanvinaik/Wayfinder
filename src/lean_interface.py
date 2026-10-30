@@ -1144,6 +1144,25 @@ class LeanKernel:
             self._restart_pending = False
             self._restart_server()
 
+    def goal_from_source(self, source: str) -> GoalRef | None:
+        """The one `sorry` goal of `source` — a declaration loaded with exactly one `sorry` (the
+        others closed some other way) — as a live goal, or None when it does not load to one goal."""
+        self._restart_if_pending()
+        server = self._ensure_server()
+        try:
+            targets = server.load_sorry(source)
+        except Exception as e:
+            self._server_contaminated = True
+            if self._is_crash_error(e):
+                self._restart_server()
+            logger.debug("goal_from_source: load_sorry failed: %s", e)
+            return None
+        self._server_contaminated = True
+        found = [(t.goal_state, i) for t in targets for i in range(len(t.goal_state.goals))]
+        if len(found) != 1:
+            return None
+        return self._register(*found[0])
+
     def _forget_live(self) -> None:
         self._live.clear()
         self._epoch += 1

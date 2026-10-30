@@ -1850,17 +1850,17 @@ energy_refinement:
 
 ## 13. The Local Proving Loop: Wayfinder, Lean and a Neural Prover in Conversation
 
-*Added 2026-10-30. Code: `src/residual_handoff.py`, `src/hole_fill.py`, `src/local_prover.py`, `src/lean_repl.py`, `src/local_pipeline.py`, `scripts/search_goals.py`, `scripts/decomposition_test.py`; MCP lane `send_to_local_prover` / `local_prover_result`.*
+*Added 2026-10-30, and rebuilt the same day around the owner's design. Code: `src/residual_handoff.py`, `src/hole_fill.py`, `src/hole_search.py`, `src/handoff_loop.py`, `src/local_prover.py`, `src/lean_repl.py`, `scripts/search_holes.py`; MCP lane `send_to_local_prover` / `local_prover_result`; the pass packet `docs/LOCAL_HANDOFF_PIPELINE.md`.*
 
-The deterministic search (§8, §12) closes the structural majority of a corpus with no neural component. What it cannot close is not handed to a larger model as a fresh problem. It becomes a conversation among three parties, each covering what blocks the others:
+The deterministic search (§8, §12) closes the structural majority of a corpus with no neural component. Where it stops, its residual — the validated partial proof — goes to a small open-weights prover, for the creative step Wayfinder does not take: the intermediate claim. Everything the prover says is checked by Lean, and Wayfinder does the proving around it. The prover is a source of proposals inside Wayfinder, asked at Wayfinder's dead end, never the loop itself.
 
 | Party | Supplies | Cannot do alone |
 |---|---|---|
-| **Wayfinder** | structural search; validated forward progress; a closer battery and a refuter; lifting a goal to a standalone lemma; taking a partial proof forward | the creative step — the witness, the auxiliary claim, the right inequality |
-| **Lean** (Pantograph for the search, v4.28 compiler and a persistent REPL for checks, the gate for acceptance) | the truth at every step: which steps hold, which fail, the goal at each failure | anything but checking |
-| **Goedel-Prover-V2** 8B (Q8_0) / 32B (Q4_K_M), via llama.cpp on the same machine | whole-proof plans with `have` structure; revision from Lean's error messages (its own trained protocol) | the routine closing of every step it plans; its proofs fail at a few steps far more often than they fail in plan |
+| **Wayfinder** | structural search; validated forward progress; a closer battery and a refuter; searching a hole where it sits; the loop | the creative step — the witness, the auxiliary claim, the right inequality |
+| **Lean** (Pantograph for the search, a persistent REPL for checks, a fresh compile for acceptance — one version, 4.28) | the truth at every step: which steps hold, which fail, the goal at each hole | anything but checking |
+| **Goedel-Prover-V2** 8B (Q8_0), via llama.cpp on the same machine (the 32B on request) | whole-proof plans with `have` structure, from Lean code with the goal under each hole | closing every step it plans; its proofs fail at a few steps far more often than in plan |
 
-Nothing leaves the machine. Every claim of a closed theorem passes the same gate (§13.7).
+Nothing leaves the machine but to the pool file's other machines serving the same model. Every claim of a closed theorem passes the same gate (§13.7).
 
 ### 13.1 The residual holds validated progress only
 
@@ -1868,13 +1868,13 @@ When the search stops, its committed tree is replayed as Lean: the declaration, 
 
 **The commitment rule.** A step that chooses or gives something up can turn a true goal into a false one while the hole count and goal states look like progress: `left`/`right` (a disjunct), `use`/`exists` (a witness), `congr`, `apply`, `calc`/`trans` (a middle term), `have`/`suffices` (a claim proved first), `clear`/`specialize`/`generalize`/`exfalso` (a weakening), `constructor` on `∃`. Such a step stands in the residual **only if everything under it closed** (by the search or the finishing pass); otherwise it is given back and its own goal is the hole. What was tried there goes with the hole as a comment (`TRIED_MARK`), and into the model's prompt as information, never as a step. Rewriting, case analysis, introduction, and splitting a conjunction or iff cannot lose truth and stand as validated progress. Before the rule, 11 of MiniF2F-test's 125 residuals carried a false hole — `imo_1997_p5` kept `left` and handed off `x = 1 ∧ y = 1`, false at (16, 2); `imo_1968_p5_1` kept `use 1; congr` and handed off `1 + x = x` — none of which any prover could close. `plausible` had caught none of them: it cannot search ℝ, nor find (16, 2).
 
-**The standard treatment.** A theorem with no usable residual — the search never started (11 of 244 crashed the kernel), kept nothing, or left nothing replayable — goes to the model on its whole statement. So the loop is never worse than the model alone.
+**The bare statement.** A theorem with no usable residual — the search kept nothing, or left nothing replayable — goes to the model on its whole statement; and two of the first round's eight answers are always on the bare statement, a path that does not start from Wayfinder's prefix.
 
-### 13.2 The lift: a goal the model can read, that fits back where it came from
+### 13.2 The model sees the residual
 
-Each hole is lifted to a standalone lemma with `extract_goal *`, printed twice: plain, and typed (`pp.numericTypes`, `pp.funBinderTypes`, `pp.coercions.types`). Elaborating is not meaning the same thing: a plain `∃ x, …` over ℤ re-reads at ℕ, and `↑n / ↑N ^ (3 : ℝ)⁻¹ < …` with nothing to say where the casts land fails to elaborate at all. So the plain print is used only if it **fits**: taken on `sorry`, applied in the hole by the same helper forms an answer will use, the file compiles. Otherwise the typed print is lifted.
+The model's prompt is Goedel-Prover-V2's own (`Complete the following Lean 4 code: …` with its planning request, its chat template byte-matched), and the code is the residual: the theorem, Wayfinder's validated partial proof, and under each hole the goal Lean has there (a `trace_state` at each `sorry`), as comments. The model completes the proof as it was trained to; what it is for is the plan — above all its `have` claims.
 
-The model's prompt is Goedel-Prover-V2's own (`Complete the following Lean 4 code: …` with its planning request, its chat template byte-matched), with the lifted lemma — and above it, as a Lean block comment, what Wayfinder tried there and withdrew. The theorem the goal is a step of is *not* shown: given its header as a comment, the model answered that theorem instead of the goal — copying it, often with `sorry`, under a name the file already declares — and answers with no usable theorem rose from 5 to 26.
+An earlier version lifted each hole to a standalone lemma (`extract_goal`) and kept the theorem out of the prompt; the model then solved isolated lemmas, and Wayfinder's progress around them was not carried between turns. The residual now goes whole: the model sees what Wayfinder proved and what is left.
 
 ### 13.3 The model's turn
 
@@ -1885,33 +1885,29 @@ Sampling is the model's published setting (T = 1, top-p 0.95). Each answer's las
 
 A proof whose only errors are steps that ran with no goals is repaired by deleting them. Answers come back verified, rejected (a Lean report), or as **drafts**: an answer whose only fault is `sorry` (Goedel's sketches leave one on every `have`), or one cut off by the token cap whose last code block is unfinished. Drafts were about a fifth of all answers, most of them on the hardest theorems, and used to be discarded.
 
-### 13.4 The repair loop — Goedel-Prover-V2 §5, with Wayfinder in it
+### 13.4 Lean takes the answers apart; Wayfinder works the holes where they sit
 
-After every round of answers, the best rejected proofs (fewest errors; up to 4) and drafts (fewest `sorry`s; up to 2) are taken forward in parallel:
+Every answer that is not a complete proof — a rejected proof, a draft, an answer cut off by its token budget — is taken forward:
 
 1. **Skeleton** (`hf.skeleton`, `hf.mark_sorries`). The model's plan is kept — its `have` claims, case splits, witnesses — and each step Lean rejected becomes a marked hole: a failed `have` keeps its claim and its proof becomes the hole; a failed bullet becomes `· sorry`; a failure in the main block makes the rest of that block the hole; unsolved goals at a block's end add a hole each; a step that ran with no goals is dropped. A draft's own `sorry`s are holes from the start. Up to two rounds until the skeleton elaborates; at most 4 holes (8 for a draft).
 2. **Wayfinder's closers**, seeded by the model (`rh.triage_block`, one probe a hole, the holes probed side by side through the REPL pool; 600K heartbeats a copy). Each hole gets Wayfinder's battery plus the step the model wrote there — its own tactic verbatim, now with more heartbeats than the model's run had, and its hint terms and lemmas fed to `nlinarith`, `linarith`, `simp`, `norm_num`, `field_simp` — with `plausible` beside it.
-3. **Wayfinder's search** on what the closers leave (`scripts/search_goals.py`). Each open step is lifted (§13.2) and the deterministic search runs on all of them in one Pantograph session (200 attempts each). A lifted goal is started from its closed type `∀ binders, conclusion`: no file declares it. A proved step goes back in as the search's tactic block (its `revert …; intros` re-derives the hole's context).
-4. **Outcome.** Every hole filled → the assembled proof goes through the one acceptance path (§13.7). Steps still open → the skeleton goes back to the model to *complete*, in its own "complete the code" form, with every step Wayfinder closed in place and `sorry` where steps are still open (one try a skeleton where the run has no revision rounds, two where it does). A refuted step is a false claim of the model's: it is not completed, and the next revision prompt names it (`` `have h₃ : …` is false: … ``).
+3. **Wayfinder's search, in place** (`src/hole_search.py`, `scripts/search_holes.py`). Each hole still open is searched from the goal Lean has at that `sorry`: the file is loaded with that hole its only `sorry` and every other hole closed by a placeholder axiom, so Lean returns exactly that hole's goal with its own hypotheses (a hand-off's holes are propositions, so how the others are closed cannot change it). The deterministic search runs on all of a skeleton's holes in one Pantograph session (200 attempts each). What it builds is spliced back into the hole — a complete proof, or its committed steps with a marked `sorry` at each goal still open — under the commitment rule (§13.1): a commitment with a goal open under it is withdrawn, what it tried noted above the hole. The merged file is recompiled, and a block that breaks it is left out.
+4. **Outcome.** No hole left → the proof goes through the one acceptance path (§13.7). Otherwise the best partial proof — fewest holes, everything in it Lean-accepted — is the next round's residual, with Lean's goals under its holes refreshed.
 
-The rounds make the loop recursive: a completion that fails is the next round's rejected proof, and is skeletonized in turn. A failure inside the repair round never costs the theorem its remaining rounds.
+A skeleton with a refuted claim is dropped: a false claim is not a stepping stone.
 
-### 13.5 The ladder
+### 13.5 Rounds and budgets
 
-Cheapest first, stopping at the first closure — except where Wayfinder's structural reads say a hole is hard, which puts the 32B first; a caller who names a model gets only that model's stages. For one theorem this is the MCP lane's pipeline (`src/local_pipeline.py`; `start_at` begins further down). For a corpus it is the batch run's tiers (`scripts/decomposition_test.py demo`, one tier at a time across every open theorem, so the cheap closures come first everywhere).
-
-| Stage | Model, tokens | Starts from | Why here |
+| Round | Answers | On | Only if |
 |---|---|---|---|
-| 1 | 8B, 8K, 8 answers + 2 revision rounds + repair | the residual | most closures, fast (8 sequences in parallel on an M1 Max) |
-| 2 | 8B, 30K (Goedel's own budget) | stage 1's rejected proofs, where its answers hit the cap | hard problems whose plans ran out of tokens |
-| 3 | 8B, 16K | the whole statement (the standard treatment) | the residual is not always the easier form for the model |
-| 4 | 32B, 8–16K, 4 fresh + revisions | the 8B's best rejected proofs | slowest by far on a laptop (1–2 sequences beside its 20 GB of weights) |
+| 0 | 6 + 2 | the residual + the bare statement | — |
+| 1 | 4 | the best partial proof | round 0 left validated progress (fewer holes) |
+
+Each answer up to 8K tokens; the whole hand-off within 900 s, model loading included. The model never revises its own answers: what goes back to it is what Lean and Wayfinder validated, never its earlier text. The 32B runs the same hand-off when asked for.
 
 ### 13.6 Machines
 
-The batch run's streams claim theorems (a claim records the stream's pid; a claim whose stream is gone is free again), so one laptop and any other machines on the tailnet can work one corpus: the other machines serve the model (`llama-server` reached through a localhost tunnel), while the checking stays on the machine that holds Mathlib. A cleanup of stray servers kills only orphans; a stream ending without the server's final event is infrastructure, never the model's failure. **An arm that produced no answer at all is infrastructure** — rerun, never scored: once, a remote machine's server died and its stream claimed 103 theorems in about 20 s apiece, each scored as the model's failure without a single answer. A remote-only stream now checks before each claim that a server answers, waits up to 30 minutes for one, and otherwise stops.
-
-**On one machine**, the model's server can be shared: a persistent `llama-server` (8 sequences) and two streams on it, one sampling on the GPU while the other is in its repair round on the CPU (Lean and Wayfinder), roughly doubling what one machine does (`runs/minif2f_v2/launch_local.sh`; the ladder stops the shared server before its own rungs start theirs).
+The hand-off sizes its server to the memory free when it starts (keeping a reserve) and shares the sampling with the pool file's other machines serving the same model. The batch harness (`scripts/decomposition_test.py`) runs the older per-hole worker over a corpus; its streams claim theorems (a claim records the stream's pid; a claim whose stream is gone is free again), and **an arm that produced no answer at all is infrastructure** — rerun, never scored: once, a remote machine's server died and its stream claimed 103 theorems in about 20 s apiece, each scored as the model's failure without a single answer.
 
 ### 13.7 Checking and acceptance
 
@@ -1933,24 +1929,25 @@ Validated against `lake env lean` on the loop's real traffic (51 texts: candidat
 - there is no `sorry`;
 - `#print axioms` names only `propext`, `Classical.choice` and `Quot.sound`.
 
-Wayfinder's own closes are held to the same gate. The search runs on v4.27 through Pantograph, and of its 108 MiniF2F-test closes, 102 replay as proofs the v4.28 gate accepts; the other 6 go back into the loop like any unproven theorem (`decomposition_test.py reconcile`).
+Wayfinder's own closes are held to the same gate. Since 2026-10-30 search and checking run on one Lean: the search runs in the gate's own project (4.28) through PyPantograph v0.3.14 — the release cut for 4.28, which did not build on it — with upstream's next fix backported and two of its panics made into errors (`patches/pantograph-v0.3.14-lean4.28.patch`, `scripts/setup_pantograph.sh`).
 
-### 13.8 Measured (2026-10-30, MiniF2F-test, M1 Max + two remote machines)
+### 13.8 Measured (2026-10-30)
 
 | | |
 |---|---|
-| Wayfinder alone, verified at v4.28 | **102 / 244** (zero tokens) |
-| The 8B on residuals, plain 8K pass, before the loop | 18 closed of 33 scored |
-| The loop's deterministic half, no model call, on 41 failed answers | 14 drafts and 26 rejected proofs became skeletons; seeded closers took 37 of 95 failing steps (22% unseeded), the search 2 of 52 lifted; the first closure with no model call: `aime_1983_p3` (the model's rejected plan, its two failing steps closed by `grind` and the search) |
-| Version-drift rewrite | 10 of 45 rejected proofs verified with no model call |
-| Tool lane, real models (`mathd_algebra_484`) | stage 1 (8B on the residual `Real.log 27 = Real.log 3 * 3`): closed in 66 s; the whole-statement stage: closed in 61 s, accepted through its own gate; the 32B stage: verified in 173 s (Q4_K_M, 2 slots, 5.8 tok/s), and its fill correctly refused because stage 1 had already closed the hole |
-
-The full run on the architecture above (`runs/minif2f_v2`, 129 residuals in the loop and 13 on the whole statement) is under way; `decomposition_test.py ledger` reports closures per tier and answers and tokens per theorem against Goedel-Prover-V2's published pass@32 (32 answers a theorem; up to 96 generations in its two-round revision mode).
+| Wayfinder alone on MiniF2F-test, verified at v4.28 | **102 / 244** (zero tokens) |
+| Goal identity | `have`, `obtain` and `rcases` steps now work through the kernel (each failed, or lost its new facts, before); six check theorems unchanged; a false Dr. Ducky closure (`mathd_numbertheory_427`) is now an honest residual |
+| One Lean, 4.28 | seven check theorems unchanged against 4.27 |
+| Wayfinder alone on the owner's theorems | `target_is_null` and `certified_arrival`, both closed by Aristotle before, now close with no model call |
+| First live hand-off, `mathd_numbertheory_541` | residual of one hole; eight answers; the first from the residual verified after 97 s; accepted by the gate; 2.5 minutes end to end |
+| The earlier per-hole architecture | the 8B on residuals, plain 8K pass: 18 closed of 33 scored; on 41 failed answers, seeded closers took 37 of 95 failing steps; the version-drift rewrite turned 10 of 45 rejected proofs into verified ones with no model call |
 
 ### 13.9 Invariants
 
 1. **A residual holds only validated progress.** No unvalidated commitment stands in it (§13.1).
 2. **Nothing is accepted except through the gate's fresh compile.** The REPL speeds the loop; it never admits a proof.
 3. **A theorem counts as Wayfinder's only once its proof passes the v4.28 gate.**
-4. **Infrastructure is never scored as the model's failure.** A cut-off stream, a killed server, an arm no server answered, or a lift that does not elaborate is infrastructure: rerun, not counted. Within the loop, a proof the gate accepts stands, whatever else failed in the same run.
+4. **Infrastructure is never scored as the model's failure.** A cut-off stream, a killed server, an arm no server answered is infrastructure: rerun, not counted. A proof the gate accepts stands, whatever else failed in the same run.
 5. **Long-lived Lean processes are distrusted.** Recycled, canaried, timed out, and backed by a fresh compile (§13.7). Search sessions stay short.
+6. **The model is a source of proposals inside Wayfinder.** It is asked a fixed small number of times, never on its own earlier answers, and only what Lean accepts carries forward.
+7. **A hole is searched where it sits.** Its goal comes from Lean at that `sorry`, never from a printed lemma.

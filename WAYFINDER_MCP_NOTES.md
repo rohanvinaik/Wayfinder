@@ -123,24 +123,21 @@ changes nothing; Lean's errors come back in the reply.
 Q8_0 (8.7 GB) and 32B at Q4_K_M (19.8 GB), GGUFs in `models/gguf/` (gitignored, sha256-checked
 against the Hugging Face LFS record), each served by its own llama-server on a free localhost port.
 Port 8080 belongs to the squishos model router; leave it alone.
-- **Routing** (`src/local_prover.assess`): votes from `src/structural_reads.py` plus an
-  existential target, the file's own definitions, and a whole-statement residual. Under 3 votes a
-  hole is light (8B, then 32B if the 8B leaves it); at 3 or more it is heavy (32B). `model=` forces one.
-- **Lifting**: `extract_goal * using <target>_wf_hole_k` at each hole, all lifted statements
-  re-elaborated in one compile before they are used; a whole-statement residual uses the
-  declaration as written. In place, `rename_i` restores the names `extract_goal` gave inaccessible
-  hypotheses; otherwise the proof goes in as a helper lemma applied to the explicit hypotheses.
+- **The hand-off** (`src/handoff_loop.py`, §13 of the design): the 8B unless `model=` names the
+  32B. Round 0: eight answers, six on the residual, two on the bare statement; round 1: four on
+  the best partial proof, only if round 0 left validated progress. 900 s (`budget_s=`).
 - **Prompts** are Goedel-Prover-V2's own (Goedel-LM/Goedel-Prover-V2 `src/utils.py`, `dpskcot`):
-  the round-0 request, then self-correction rounds that show Lean's errors between `<error>` tags.
-  The rendered text matches the models' chat template byte for byte (`tests/fixtures`). Sampling
-  is theirs too: T = 1, top-p 0.95, 32K new tokens, 8 attempts, 2 correction rounds × 2 samples
-  for each of the 4 best failures.
+  "complete the following Lean 4 code", the code being the residual — the theorem, Wayfinder's
+  validated partial proof, Lean's goal under each hole. No correction rounds: what goes back to
+  the model is what Lean and Wayfinder validated, never its own answer. The rendered text matches
+  the models' chat template byte for byte (`tests/fixtures`); sampling is theirs (T = 1, top-p
+  0.95), 8K new tokens an answer.
 - **Every answer**: deny-list → `modernize` (`∑ x in s` → `∑ x ∈ s`: the 2024 big-operator syntax
-  these models write, which this Mathlib no longer parses — the 32B's first answer on kappa
-  failed on exactly that) → the lifted lemma compiled with the model's proof (400000 heartbeats,
-  not the unlimited `0` their header uses) → the fill compiled in place. Verified fills go to
-  `fills.json`; `local_prover_result` applies them through `fill_hole`'s path, and only while the
-  ledger still holds the hand-off the run was given.
+  these models write, which this Mathlib no longer parses) → compiled under the authoritative
+  statement (400000 heartbeats) → in place. A verified answer is a whole-statement fill
+  (`fills.json`, `whole`), gated and saved by `local_prover_result`. Any other answer is taken
+  apart by Lean (`skeleton_repair`), its holes to Wayfinder's closers and `plausible`, then to
+  Wayfinder's search where they sit (`scripts/search_holes.py`).
 - **Memory**: slots = full 40,960-token sequences (q8_0 KV cache) that fit beside the weights,
   keeping `reserve_gb` free; the server is stopped when its holes are done, when memory pressure
   holds at warn for 30 s (`kern.memorystatus_vm_pressure_level`), or on SIGTERM to the worker.
@@ -204,30 +201,21 @@ server keeps the code it started with — restart it after changing `wayfinder_m
 Full design: §13 of `docs/Research_Paper/WAYFINDER_DESIGN.md`. In the MCP:
 
 - **`prove`** is unchanged in role. The residual it builds now holds validated progress only: a step that committed to something (`left`, `use 1`, `congr`, `apply`, a `have`, …) stands only if everything under it closed; otherwise its goal is the hole and the steps are noted (`TRIED_MARK`). The lift is fit-checked: the plain `extract_goal` print is used only if, on `sorry`, it closes its own hole; otherwise it is printed typed (numerals, binders, coercions).
-- **`send_to_local_prover(theorem_id, manifest, …)`** runs, by default, the per-theorem ladder (`src/local_pipeline.py`), stopping at the first closure:
-  1. the 8B at 8K tokens on the residual, with 2 revision rounds and the repair loop;
-  2. the 8B at 30K, revising stage 1's rejected proofs, only if its answers hit the token cap;
-  3. the whole statement;
-  4. the 32B, revising the 8B's best proofs.
-
-  A hole Wayfinder reads as hard puts the 32B first. `model=` runs only that model's stages. `start_at=` begins further down. The reply's `ladder` is the order that will run. `pipeline=False` runs one worker as before, with `samples`, `correction_rounds` and `max_new_tokens`; in the pipeline the ladder sets its own.
-- **The repair loop**, inside every stage after each round, runs on the best rejected proofs and on drafts (answers whose only fault is `sorry`, or cut off by the cap):
-  - Each becomes a skeleton: the plan is kept and the failing steps become holes.
-  - Wayfinder's closers attack the holes, seeded with the model's own step and its premises, with `plausible` alongside them.
-  - Wayfinder's search attacks the steps left over (`scripts/search_goals.py`, one Pantograph session).
-  - Then all filled → acceptance; still open → the model completes the skeleton; refuted → a false claim, named in the revision.
-- **`local_prover_result(run_id)`** reads a pipeline run as it read a single run (the run's directory mirrors the stage under way, then the winning stage). Hole fills go in through `fill_hole`'s path. A whole-statement closure (`fills[].whole`) is gated by a fresh v4.28 compile and saved there. Either is saved only if the row has a `proof_home`: MiniF2F rows have none, so a proof is accepted and reported but not written.
-- **Validated with real models** on `mathd_algebra_484`:
-  - stage 1: 66 s, applied, closed;
-  - whole statement: 61 s, accepted;
-  - 32B: 173 s, verified, its fill refused as the hole was already closed.
+- **`send_to_local_prover(theorem_id, manifest, model, budget_s, …)`** runs the hand-off (rebuilt the same day; the per-theorem ladder and `src/local_pipeline.py` are gone):
+  1. the residual to the 8B (six answers) and the bare statement (two);
+  2. every answer that is not a proof taken apart by Lean: accepted steps stay, failing steps become holes, a `have` whose proof fails keeps its claim with a hole under it; a refuted claim drops the skeleton;
+  3. Wayfinder's closers, then its search, on each hole where it sits — the hole's goal from Lean, the file loaded with that hole its only `sorry`;
+  4. the best partial proof back to the model once (four answers) if it holds validated progress.
+- **`local_prover_result(run_id)`** applies a closed proof (a whole-statement fill: gated by a fresh v4.28 compile, saved if the row has a home) and reports `best`, the best partial proof the run reached. `running` is right for a worker this process started: a finished child is reaped before it is probed (a zombie answered `kill(pid, 0)` and read as running forever).
+- **Validated with real models** on `mathd_numbertheory_541`: a residual of one hole, eight answers, the first from the residual verified after 97 s and accepted by the gate; 2.5 minutes end to end.
+- **Pantograph** is v0.3.14 with three fixes for Lean 4.28 (`patches/`), checked out and built by `scripts/setup_pantograph.sh`, then `uv sync --extra dev --extra lean --inexact`.
 
 **Gotchas**
 
-- **The MCP server keeps the code it started with.** After a change to `wayfinder_mcp.py`, reconnect it. The pipeline and the worker are subprocesses and pick up changes on their next run.
+- **The MCP server keeps the code it started with.** After a change to `wayfinder_mcp.py`, reconnect it. The hand-off worker and its searches are subprocesses and pick up changes on their next run.
 - **Checks in the loop run through a persistent REPL** (`data/repl_v428`). It is recycled every 30 commands (it keeps every environment it makes) and canaried every 15. `data/repl_v428/DISABLED` turns it off for new workers. Acceptance never uses it.
 - **Two 8B servers do not fit beside each other with the REPLs on a 64 GB machine.** A worker sizes its server to free memory less `reserve_gb`, and gets zero slots if another run holds the GPU.
 - **Pantograph sessions stay short.** A long-lived one drifts and crashes silently (Rohan). The search runs one session per batch and exits.
 - **Wayfinder's own search closes count only once the v4.28 gate accepts their replay.** Of MiniF2F-test's 108, 102 did. `decomposition_test.py reconcile` puts the rest back into the pipeline.
-- **The lifted goal goes to the model without the theorem it came from.** Shown as a commented header, the model answered that theorem instead (no-theorem answers rose from 5 to 26), so it was taken back out. Wayfinder's withdrawn steps still go with the goal.
+- **The model sees the residual whole.** The earlier lane lifted each hole to a lemma and kept the theorem out of the prompt (shown as a header, the model answered the theorem instead); the hand-off wants the theorem answered, so the residual goes as it is.
 - **An arm that produced no answer is infrastructure.** A remote-only stream checks before each claim that its server answers, waits up to 30 minutes, and then stops. A dead remote once burned 103 theorems, unanswered and scored as failures, before this.

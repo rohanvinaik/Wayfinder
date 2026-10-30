@@ -72,6 +72,8 @@ def _load_theorems_from_file(path: Path, source_key: str) -> list[dict]:
                     "module": d.get("module", ""),
                     "lean_path": d.get("lean_path", ""),
                     "theorem_line": int(d.get("theorem_line", 0) or 0),
+                    # a residual's hole, searched where it sits (src/hole_search.py)
+                    **{k: d[k] for k in ("hole_source", "accessible_as") if d.get(k)},
                 }
             )
     return theorems
@@ -196,6 +198,9 @@ def _resolve_initial_goal_with_tier(thm: dict, lean: LeanKernel) -> tuple[str | 
     if lean._backend != "pantograph" or lean._server is None:
         return thm["goal_state"], "backend"
 
+    if thm.get("hole_source"):  # a hole of a residual, searched where it sits (src/hole_search.py)
+        return lean.goal_from_source(thm["hole_source"]), "hole"
+
     tid = canonicalize_theorem_id(str(thm["theorem_id"]))
     file_path = thm.get("file_path", "")
     module_hint = thm.get("module", "")
@@ -303,7 +308,8 @@ def _run_search_loop(
             lean.register_ground_truth(thm["goal_state"], [gt_tactic])
 
         t0 = time.perf_counter()
-        accessible_id = name_to_id.get(thm["theorem_id"]) if name_to_id else None
+        # a hole's premises are its theorem's (`accessible_as`)
+        accessible_id = name_to_id.get(thm.get("accessible_as") or thm["theorem_id"]) if name_to_id else None
 
         # Resolve initial goal — uses env_inspect for Pantograph+Mathlib
         initial_goal, initial_goal_tier = _resolve_initial_goal_with_tier(thm, lean)
@@ -512,7 +518,8 @@ def _run_search_loop_v2(
             lean.register_ground_truth(thm["goal_state"], [gt_tactic])
 
         t0 = time.perf_counter()
-        accessible_id = name_to_id.get(thm["theorem_id"]) if name_to_id else None
+        # a hole's premises are its theorem's (`accessible_as`)
+        accessible_id = name_to_id.get(thm.get("accessible_as") or thm["theorem_id"]) if name_to_id else None
         result = som_search(
             theorem_id=thm["theorem_id"],
             initial_goal=thm["goal_state"],
@@ -626,7 +633,8 @@ def _run_search_loop_v3(
             lean.register_ground_truth(thm["goal_state"], [gt_tactic])
 
         t0 = time.perf_counter()
-        accessible_id = name_to_id.get(thm["theorem_id"]) if name_to_id else None
+        # a hole's premises are its theorem's (`accessible_as`)
+        accessible_id = name_to_id.get(thm.get("accessible_as") or thm["theorem_id"]) if name_to_id else None
         result = v3_search(
             theorem_id=thm["theorem_id"],
             initial_goal=thm["goal_state"],

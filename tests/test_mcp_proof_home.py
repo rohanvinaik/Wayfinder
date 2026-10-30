@@ -27,8 +27,8 @@ def test_legacy_rows_without_a_home_keep_their_routes():
 
 def test_save_writes_into_the_declared_home_with_a_lean_project(tmp_path):
     row = {"theorem_id": "thm_x", "proof_home": str(tmp_path / "proofs")}
-    path = wf._save_solved_proof(row, "theorem thm_x : True := trivial\n")
-    assert path == tmp_path / "proofs" / "thm_x.lean"
+    path, note = wf._save_solved_proof(row, "theorem thm_x : True := trivial\n")
+    assert path == tmp_path / "proofs" / "thm_x.lean" and note == ""
     assert path.read_text().startswith("theorem thm_x")
     assert (tmp_path / "proofs" / "lakefile.toml").exists()
     assert (tmp_path / "proofs" / "lean-toolchain").read_text().strip().endswith(wf.LEAN_VERSION)
@@ -135,6 +135,20 @@ def test_fills_are_kept_one_hole_at_a_time_then_the_proof_is_saved(tmp_path, mon
     assert _ledger(tmp_path)["status"] == "closed"
 
 
+def test_a_closing_fill_never_replaces_the_home_s_proof(tmp_path, monkeypatch):
+    row = _fill_setup(tmp_path, monkeypatch)
+    monkeypatch.setattr(wf, "PROOFS_ASIDE", tmp_path / "aside")
+    (tmp_path / "proofs").mkdir()
+    (tmp_path / "proofs" / "t.lean").write_text("-- the owner's proof\n")
+    wf._apply_fill("t", row, 1, "exact hp", "", "claude")
+    last = wf._apply_fill("t", row, 2, "exact hq", "", "claude")
+    assert last["accepted"] and last["closed"] and last["saved_to"] is None
+    assert "it was not replaced" in last["note"]
+    assert (tmp_path / "proofs" / "t.lean").read_text() == "-- the owner's proof\n"
+    [kept] = (tmp_path / "aside").glob("t-*.lean")
+    assert "provenance: Wayfinder (1 verified closures, residual)" in kept.read_text()
+
+
 def test_a_local_run_s_fills_go_through_the_same_path(tmp_path, monkeypatch):
     row = _fill_setup(tmp_path, monkeypatch)
     runs = tmp_path / "runs"
@@ -153,6 +167,32 @@ def test_a_local_run_s_fills_go_through_the_same_path(tmp_path, monkeypatch):
     again = json.loads(wf.local_prover_result("fresh"))  # applied once
     assert again["applied"] == fresh["applied"]
     assert [x["index"] for x in _ledger(tmp_path)["holes"]] == [2]
+
+
+def test_a_hand_off_proof_is_gated_and_says_whether_wayfinder_s_steps_stood(tmp_path, monkeypatch):
+    row = _fill_setup(tmp_path, monkeypatch)
+    runs = tmp_path / "runs"
+    monkeypatch.setattr(wf, "LOCAL_RUNS", runs)
+    whole = "theorem t (p q : Prop) (hp : p) (hq : q) : p ∧ q := by\n  -- WAYFINDER RESIDUAL 1: close this goal\n  sorry\n"
+    job = {"theorem_id": "t", "row": row, "target": "t", "file": "import Mathlib\n\n" + whole, "declaration": whole,
+           "pp_type": _TYPE, "allowed_axioms": [], "residual_file": "import Mathlib\n\n" + _DECL,
+           "residual_status": "residual", "residual_closures": 1}  # fmt: skip
+    for run_id, fill, home in (("rebuilt", "exact ⟨hp, hq⟩", "a"), ("kept", "constructor\n· exact hp\n· exact hq", "b"),
+                               ("wrong", "WRONG", "c")):  # fmt: skip
+        (runs / run_id).mkdir(parents=True)
+        (runs / run_id / "job.json").write_text(json.dumps({**job, "row": {**row, "proof_home": str(tmp_path / home)}}))
+        (runs / run_id / "fills.json").write_text(json.dumps(  # as Handoff.record writes it
+            [{"hole": 1, "model": "goedel-v2-8b", "quant": "Q8_0", "sample": "s1", "round": 0, "form": "inline",
+              "fill": fill, "helpers": "", "source": f"goedel-v2-8b answer s1, run {run_id}", "whole": True}]))  # fmt: skip
+    rebuilt = json.loads(wf.local_prover_result("rebuilt"))["applied"]["1"]
+    assert rebuilt["accepted"] and rebuilt["mode"] == "reproved" and rebuilt["prefix_missing"] == 1
+    saved = (tmp_path / "a" / "t.lean").read_text()
+    assert "mode: reproved" in saved and "statement: unchanged" in saved
+    assert "provenance: Wayfinder residual (1 verified closures, residual) + goedel-v2-8b answer s1, run rebuilt" in saved
+    kept = json.loads(wf.local_prover_result("kept"))["applied"]["1"]
+    assert kept["accepted"] and kept["mode"] == "finished" and "mode: finished" in (tmp_path / "b" / "t.lean").read_text()
+    wrong = json.loads(wf.local_prover_result("wrong"))["applied"]["1"]
+    assert not wrong["accepted"] and wrong["saved_to"] is None and not (tmp_path / "c").exists()
 
 
 def test_a_statement_the_steps_made_harder_is_tried_whole(monkeypatch):
