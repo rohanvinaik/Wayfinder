@@ -1693,8 +1693,17 @@ def send_to_local_prover(
     correction_rounds: int = 2,
     max_new_tokens: int = 32768,
     reserve_gb: float = 6.0,
+    pipeline: bool = True,
 ) -> str:
     """Hand the residual's open holes to open-weights Lean provers on THIS machine, in the background.
+
+    With `pipeline` (the default) this runs the whole local ladder on the theorem, stopping at the
+    first closure (src/local_pipeline.py): the 8B at 8K with revisions and the repair loop — the
+    model's rejected proofs and drafts made skeletons, their failing steps to Wayfinder's closers
+    and search, the rest back to the model to complete — then the 8B at 30K where answers ran out
+    of tokens, then the whole statement, then the 32B revising the 8B's best proofs; every check
+    through the persistent Lean REPL, every acceptance through a fresh compile. `pipeline=False`
+    runs one worker with the arguments below, as before.
 
     Goedel-Prover-V2 8B (Q8_0) and 32B (Q4_K_M), GGUFs under models/gguf/, each served by its own
     llama-server. Each hole is lifted to a standalone lemma and routed by how hard Wayfinder's
@@ -1743,14 +1752,25 @@ def send_to_local_prover(
         "pp_type": handoff.get("pp_type"), "allowed_axioms": list(row.get("allowed_axioms") or []), "defs": defs,
         "as_built_sha256": _sha256(_as_built(handoff)["file"]), "model": model, "samples": samples,
         "correction_rounds": correction_rounds, "fix_attempts": 4, "fix_samples": 2,
-        "max_new_tokens": max_new_tokens, "reserve_gb": reserve_gb, "max_slots": 4,
+        "max_new_tokens": max_new_tokens, "reserve_gb": reserve_gb, "max_slots": 8 if pipeline else 4,
         "lake_bin": str(LAKE_BIN), "verify_project": str(VERIFY_PROJECT), "gguf_dir": str(GGUF_DIR),
-        "llama_server": str(LLAMA_SERVER),
+        "llama_server": str(LLAMA_SERVER), "repl": True,
     }  # fmt: skip
     (run_dir / "job.json").write_text(json.dumps(job, indent=2))
+    command = [sys.executable, "-m", "src.local_prover", str(run_dir / "job.json")]
+    if pipeline:
+        # the standard treatment's job: the theorem itself, one hole where its proof goes
+        whole_decl = header.rstrip() + f"\n  -- {rh.HOLE_MARK} 1: close this goal\n  sorry\n"
+        whole_file = _file_with_declaration(row, whole_decl)
+        whole_job = {**job, "status": "bare", "file": whole_file, "declaration": whole_decl,
+                     "statement": re.sub(r":=\s*by\s*$", "", header).rstrip(),
+                     "holes": [{"index": 1, "lean_goal": str(row.get("goal_state") or "")}],
+                     "as_built_sha256": job["as_built_sha256"]}  # fmt: skip
+        (run_dir / "pipeline.json").write_text(json.dumps({"job": job, "whole_job": whole_job}, indent=2))
+        command = [sys.executable, "-m", "src.local_pipeline", str(run_dir)]
     log = open(run_dir / "worker.log", "w")  # noqa: SIM115 — handed to the detached worker
     proc = subprocess.Popen(
-        [sys.executable, "-m", "src.local_prover", str(run_dir / "job.json")],
+        command,
         cwd=str(WF),
         env={**os.environ, "PYTHONPATH": str(WF), "PYTHONUNBUFFERED": "1"},
         stdout=log,
@@ -1814,6 +1834,13 @@ def local_prover_result(run_id: str, apply: bool = True) -> str:
             key = str(f["hole"])
             if key in applied:
                 continue
+            if f.get("whole"):  # the standard treatment proved the theorem itself: gate it and save it
+                text, _ = hf.apply_fill(job["file"], job["declaration"], int(f["hole"]), f["fill"], f["helpers"])
+                ok, detail = _verify_at_v428(text, _lean_name(job["row"]), tuple(job.get("allowed_axioms") or ()))
+                saved = str(_save_solved_proof(job["row"], text)) if ok and _accept_home(job["row"]) else None
+                applied[key] = {"accepted": ok, "whole_statement": True, "saved_to": saved,
+                                "reasons": [] if ok else [str(detail)[:300]]}  # fmt: skip
+                continue
             opened = _open_handoff(job["theorem_id"], job["row"])
             if not isinstance(opened, str) and _sha256(_as_built(opened[1])["file"]) != job["as_built_sha256"]:
                 applied[key] = {"accepted": False, "reasons": ["the hand-off was rebuilt since this run started"]}
@@ -1842,6 +1869,8 @@ def local_prover_result(run_id: str, apply: bool = True) -> str:
             "verified": [{k: f[k] for k in ("hole", "model", "quant", "sample", "round", "form")} for f in fills],
             "applied": applied,
             "notes": (status.get("notes") or [])[-3:],
+            "pipeline": status.get("pipeline"),
+            "stage": status.get("stage"),
         },
         indent=2,
     )
