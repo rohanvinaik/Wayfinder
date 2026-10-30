@@ -331,7 +331,7 @@ class RepairRoundTest(ReviseTest):
         check = {"outcome": "verified", "form": "inline", "fill": "omega", "helpers": ""}
         w.skeleton_repair = mock.Mock(return_value={"outcome": "verified", "holes": 1, "closed": ["omega"],
                                                     "check": check, "skeleton": "s"})  # fmt: skip
-        self.assertTrue(w.repair_round(hole, lp.MODELS["goedel-v2-8b"], [self._failure()], 0))
+        self.assertTrue(w.repair_round(hole, lp.MODELS["goedel-v2-8b"], [self._failure()], 0)[0])
         self.assertEqual(w.fills[0]["sample"], "h1-repair-h1-8b-r0-s1")
 
     def test_a_refuted_step_goes_into_that_proofs_revision(self):
@@ -339,8 +339,22 @@ class RepairRoundTest(ReviseTest):
         w.skeleton_repair = mock.Mock(return_value={"outcome": "open", "holes": 1, "skeleton": "s",
                                                     "claims": {1: "have h : x = 1"}, "refuted": {1: "x := 16"}})  # fmt: skip
         failure = self._failure()
-        self.assertFalse(w.repair_round(hole, lp.MODELS["goedel-v2-8b"], [failure], 0))
+        solved, completions = w.repair_round(hole, lp.MODELS["goedel-v2-8b"], [failure], 0)
+        self.assertFalse(solved)
+        self.assertEqual(completions, [])  # a false plan is revised, not completed
         self.assertIn("`have h : x = 1` is false: x := 16", failure["report"])
+
+    def test_a_skeleton_with_steps_still_open_goes_back_to_the_model_to_complete(self):
+        w, hole = self._worker(self.STATEMENT, "BAD", repair=True)
+        partial = "theorem nt_wf_hole_1 : (2 : ℤ) = 2 := by\n  -- still open\n  sorry"
+        w.skeleton_repair = mock.Mock(return_value={"outcome": "open", "holes": 1, "skeleton": "s",
+                                                    "claims": {}, "partial": partial})  # fmt: skip
+        solved, completions = w.repair_round(hole, lp.MODELS["goedel-v2-8b"], [self._failure()], 0)
+        self.assertFalse(solved)
+        self.assertEqual(len(completions), 1)  # fix_samples tries
+        rnd, messages, parent = completions[0]
+        self.assertEqual((rnd, parent), (1, "h1-repair-h1-8b-r0-s1"))
+        self.assertIn(partial, messages[0]["content"])
 
     def test_the_goal_carries_what_wayfinder_tried_and_withdrew(self):
         w, hole = self._worker(self.STATEMENT, "BAD")

@@ -681,6 +681,7 @@ class Worker:
         closed = [f["closed_by"] for f in fates]
         out.update(closed=[c for c in closed if c],
                    refuted={k + 1: f["refuted"] for k, f in enumerate(fates) if f["refuted"]})  # fmt: skip
+        out["partial"] = hf.fill_holes(decl, closed, left="still open: the step that was here failed")
         if all(closed):
             proof = hf.fill_holes(text, closed).split(f"{hole.statement} :=", 1)[1]
             answer = (f"open {' '.join(cand.opens)}\n\n" if cand.opens else "") + "\n\n".join(
@@ -690,11 +691,16 @@ class Worker:
             out.update(outcome="verified" if check["outcome"] == "verified" else "open", check=check)
         return out
 
-    def repair_round(self, hole: Hole, spec: ModelSpec, failures: list[dict], rnd: int) -> bool:
+    def repair_round(self, hole: Hole, spec: ModelSpec, failures: list[dict], rnd: int
+                     ) -> tuple[bool, list[tuple[int, list[dict], str | None]]]:  # fmt: skip
         """Between revision rounds (a job with `repair`): the best rejected proofs' skeletons, their
-        holes to Wayfinder's closers. A proof completed this way is accepted like any answer; a
-        false claim found in one goes into that proof's revision prompt."""
+        holes to Wayfinder's closers. A proof completed this way is accepted like any answer. A
+        skeleton with steps still open goes back to the model to complete — its plan, Wayfinder's
+        closes in place, `sorry` where steps failed (Goedel's own "complete the code" form); a
+        false claim found in one goes into that proof's revision prompt instead. Returns (solved,
+        the completion attempts for the next round)."""
         seen: set[str] = set()
+        completions: list[tuple[int, list[dict], str | None]] = []
         for f in sorted(failures, key=lambda f: f["n_errors"])[: int(self.job.get("fix_attempts") or 4)]:
             code = hf.extract_code(f["raw"])
             if not code or self.stop.is_set():
@@ -716,15 +722,18 @@ class Worker:
                                        "round": rnd, "form": check["form"], "fill": check["fill"],
                                        "helpers": check["helpers"], "source": source})  # fmt: skip
                     self._write("fills.json", self.fills)
-                return True
+                return True, []
             self.log_sample(hole, spec, sid, rnd, f["id"], gen, {"outcome": f"repair_{res['outcome']}",
                                                                   "reasons": [res.get("why") or ""]})  # fmt: skip
+            if res.get("partial") and not res.get("refuted"):
+                ask = [{"role": "user", "content": ROUND0.format(statement=self.prefix + res["partial"])}]
+                completions += [(rnd + 1, ask, sid)] * int(self.job.get("fix_samples") or 2)
             false = [f"`{res['claims'].get(k, f'step {k}')}` is false: {' '.join(str(c).split())[:300]}"
                      for k, c in (res.get("refuted") or {}).items()]  # fmt: skip
             if false:  # a refuted step is a false claim of the model's: say so in its revision
                 note = "Checking this proof's steps one by one found these claims false:"
                 f["report"] += "\n\n" + note + "\n" + "\n".join(false)
-        return False
+        return False, completions
 
     def in_place(self, hole: Hole, cand: hf.Candidate, helpers: list[str], lemma: str) -> dict:
         """The proof that passed standalone, put into the hand-off: inline behind `rename_i`, else
@@ -897,22 +906,27 @@ class Worker:
         attempts: list[tuple[int, list[dict], str | None]] = [(0, base, None)] * int(self.job["samples"])
         seeds = self.seeded(hole, base)
         failures: list[dict] = []
+        completions: list[tuple[int, list[dict], str | None]] = []
         for rnd in range(int(self.job["correction_rounds"]) + 1):
             if rnd > 0:
                 fixable = sorted(failures, key=lambda f: f["n_errors"])[: int(self.job["fix_attempts"])]
                 attempts = [
                     (rnd, _corrected(f, rnd), f["id"]) for f in fixable for _ in range(int(self.job["fix_samples"]))
-                ]
-                seeds = []
+                ] + completions
+                seeds, completions = [], []
             if not attempts and not seeds:
                 return False
             failures = []
             if self.run_round(hole, pool, attempts, failures, seeds):
                 return True
-            if self.job.get("repair") and failures and self.repair_round(hole, pool.local.spec, failures, rnd):
-                return True
+            if self.job.get("repair") and failures:
+                solved, completions = self.repair_round(hole, pool.local.spec, failures, rnd)
+                if solved:
+                    return True
             if self.stop.is_set():
                 return False
+        if completions and not self.stop.is_set():  # the last round's skeletons still get completed
+            return self.run_round(hole, pool, completions, [], ())
         return False
 
     def seeded(self, hole: Hole, base: list[dict]) -> list[tuple[str, list[dict], dict]]:

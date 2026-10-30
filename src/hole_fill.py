@@ -627,11 +627,16 @@ def renumber_holes(text: str) -> tuple[str, int]:
     return "\n".join(lines), k
 
 
-def fill_holes(text: str, fills: list[str]) -> str:
-    """Each marked hole (in order) replaced by its tactic, at the hole's indentation."""
+def fill_holes(text: str, fills: list[str | None], left: str = "") -> str:
+    """Each marked hole (in order) replaced by its tactic, at the hole's indentation; a hole whose
+    fill is None stays a `sorry`, under the comment `left` (or its marker, when `left` is empty)."""
     lines = text.split("\n")
     for k, site in sorted(hole_sites(text).items(), reverse=True):
-        lines[site.marker : site.sorry + 1] = [site.indent + ("· " if site.bullet else "") + fills[k - 1]]
+        lead = site.indent + ("· " if site.bullet else "")
+        if fills[k - 1] is not None:
+            lines[site.marker : site.sorry + 1] = [lead + str(fills[k - 1])]
+        elif left:
+            lines[site.marker : site.sorry + 1] = [f"{site.indent}-- {left}", lead + "sorry"]
     return "\n".join(lines)
 
 
