@@ -13,6 +13,8 @@ data/
 *.jsonl
 !tests/fixtures/*.jsonl
 .venv/
+# Python 3.12, Detective's floor (the suite itself runs on .venv, 3.11)
+.venv312/
 .env
 .DS_Store
 .lintgate/
