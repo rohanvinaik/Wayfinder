@@ -1,0 +1,9 @@
+{
+  "outcome": "CLOSED",
+  "fill_uses": [
+    "Finset.card_le_card"
+  ],
+  "excluded": [
+    "Finset.card_lt_card"
+  ]
+}

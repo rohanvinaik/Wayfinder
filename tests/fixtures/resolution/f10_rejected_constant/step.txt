@@ -1,0 +1,3 @@
+rw [survingDOF]
+rw [survingDOF]
+exact Finset.card_lt_card h_subset

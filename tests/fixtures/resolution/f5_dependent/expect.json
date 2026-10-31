@@ -1,0 +1,10 @@
+{
+  "allowed_outcomes": [
+    "CLOSED",
+    "ROLE_UNDERCONSTRAINED",
+    "BUDGET_EXHAUSTED"
+  ],
+  "forbidden_outcomes": [
+    "wrong_acceptance"
+  ]
+}

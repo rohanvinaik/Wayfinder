@@ -1,0 +1,4 @@
+rw [survingDOF]
+rw [survingDOF]
+-- Use the fact that the cardinality of a subset is less than or equal to the cardinality of the original set.
+exact Finset.card_lt_of_ssubset h_subset

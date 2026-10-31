@@ -1,0 +1,2 @@
+simp only [missing_rule] at h ⊢
+exact hq h

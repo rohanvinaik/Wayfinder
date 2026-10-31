@@ -1,0 +1,7 @@
+intro i hi
+simp only [Finset.mem_filter, Finset.mem_univ, true_and_iff] at hi ⊢
+-- We need to show that if `lam' i < t`, then `lam i < t`.
+have h₁ : lam' i < t := by simpa using hi
+have h₂ : lam i ≤ lam' i := h i
+have h₃ : lam i < t := by linarith
+exact h₃

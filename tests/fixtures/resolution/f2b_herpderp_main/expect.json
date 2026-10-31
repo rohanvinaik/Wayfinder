@@ -1,0 +1,7 @@
+{
+  "outcome": "CLOSED",
+  "fill_uses": [
+    "survivingDOF",
+    "Finset.card_le_card"
+  ]
+}

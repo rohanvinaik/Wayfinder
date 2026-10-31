@@ -1,0 +1,4 @@
+rw [xq_zz_9]
+rw [xq_zz_9]
+-- Use the fact that the cardinality of a subset is less than or equal to the cardinality of the original set.
+exact HerpDerp_theorem_47 h_subset
