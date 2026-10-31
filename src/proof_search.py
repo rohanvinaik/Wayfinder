@@ -138,6 +138,8 @@ class SearchConfig:
     # tactic families are removed from the per-goal lane order BEFORE any
     # Lean call, each removal recorded on the abstention ledger.
     censor_store_path: str = ""
+    # Policy when censor store is stale: "warn" (default) | "refuse" (loads no fences)
+    censor_store_stale_policy: str = "warn"
 
 
 @dataclass
@@ -183,6 +185,8 @@ class SearchResult:
     # Premise-pool dispositions (site / library / none) per symbolic invocation —
     # which candidate-space policy the retrieval actually ran under.
     premise_pool_counts: dict = field(default_factory=dict)
+    # Staleness of the censor store if loaded: "fresh", "stale", "unknown", or "none"
+    censor_store_staleness: str = "none"
 
 
 @dataclass
@@ -2438,11 +2442,16 @@ def search(
         holographic_premises=list(holographic_premises or []),
     )
 
+    censor_store_staleness = "none"
     # The Monty Hall gate loads only when a store is configured (gate-off default).
     if cfg.censor_store_path:
-        from src.censor_store import load_fences
+        from src.censor_store import load_censor_store
 
-        env.censor_fences = load_fences(cfg.censor_store_path) or None
+        fences, censor_store_staleness = load_censor_store(
+            cfg.censor_store_path,
+            stale_policy=cfg.censor_store_stale_policy,
+        )
+        env.censor_fences = fences or None
 
     # Populate premise type cache from DB (for v2 selector compat features)
     if exec_apply_selector is not None:
@@ -2687,6 +2696,7 @@ def search(
         censor_drops=list(state._censor_drops),
         ducky_telemetry=list(state._ducky_telemetry),
         premise_pool_counts=dict(state._premise_pool_counts),
+        censor_store_staleness=censor_store_staleness,
     )
 
 

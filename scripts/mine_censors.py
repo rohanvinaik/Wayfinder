@@ -27,9 +27,22 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 from collections import defaultdict
 from dataclasses import asdict
 from pathlib import Path
+
+
+def current_commit() -> str:
+    try:
+        return subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+    except Exception:
+        return ""
 
 from src.censor_store import (
     ADMISSIBLE,
@@ -134,6 +147,7 @@ def main() -> int:
 
     store = {
         "version": 1,
+        "mined_at_commit": current_commit(),
         "mined_from": str(args.corpus),
         "mining_parameters": {
             "min_attempts": args.min_attempts,

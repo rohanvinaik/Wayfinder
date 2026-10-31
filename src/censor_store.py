@@ -38,7 +38,10 @@ full signature would silently never match (hypothesis-side reads differ).
 
 from __future__ import annotations
 
+import logging
+import subprocess
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from src.structural_reads import GoalReads
 
@@ -174,22 +177,87 @@ def fenced_families(
     return set(fences_by_key.get(censor_key(goal_bucket, slice_sig), ()))
 
 
+def staleness(
+    mined_at_commit: str | None,
+    changed_paths: list[str] | set[str] | tuple[str, ...] | None,
+) -> str:
+    """Staleness verdict of a censor store against the current source tree.
+
+    Returns:
+      "unknown" -- mined_at_commit is missing or empty, or changed_paths is None
+      "fresh"   -- mined_at_commit is present and changed_paths is empty
+      "stale"   -- mined_at_commit is present and changed_paths contains entries
+    """
+    if not mined_at_commit or changed_paths is None:
+        return "unknown"
+    return "stale" if len(changed_paths) > 0 else "fresh"
+
+
+def check_censor_store_staleness(
+    payload: dict,
+    repo_root: Path | str | None = None,
+) -> str:
+    commit = payload.get("mined_at_commit")
+    if not commit:
+        return staleness(None, None)
+    cmd = ["git", "diff", "--name-only", str(commit), "HEAD", "--", "src/"]
+    try:
+        proc = subprocess.run(
+            cmd,
+            cwd=str(repo_root) if repo_root else None,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        changed = [line.strip() for line in proc.stdout.splitlines() if line.strip()]
+        return staleness(commit, changed)
+    except Exception:
+        return staleness(commit, None)
+
+
+def load_censor_store(
+    path: str,
+    stale_policy: str = "warn",
+    repo_root: Path | str | None = None,
+) -> tuple[dict[str, set[str]], str]:
+    """Load an adopted censor store into the gate's map and check staleness.
+
+    stale_policy: "warn" (default) | "refuse"
+    Returns (fences, staleness_verdict).
+    """
+    import json
+
+    if not path or not Path(path).exists():
+        return {}, "none"
+    try:
+        payload = json.loads(Path(path).read_text())
+    except Exception:
+        return {}, "unknown"
+
+    verdict = check_censor_store_staleness(payload, repo_root=repo_root)
+    if verdict != "fresh":
+        logging.getLogger(__name__).warning(
+            "Censor store %s is %s (mined at %s)",
+            path,
+            verdict,
+            payload.get("mined_at_commit", "<missing>"),
+        )
+    if verdict == "stale" and stale_policy == "refuse":
+        return {}, verdict
+
+    fences: dict[str, set[str]] = {}
+    for row in payload.get("adopted", []):
+        fences.setdefault(row["key"], set()).add(row["family"])
+    return fences, verdict
+
+
 def load_fences(path: str) -> dict[str, set[str]]:
     """Load an adopted censor store into the gate's key → fenced-families map.
 
     Reads only the `adopted` list — everything else in the artifact is
     provenance. A missing/empty path yields no fences (the gate-off default).
     """
-    import json
-    from pathlib import Path
-
-    if not path or not Path(path).exists():
-        return {}
-    payload = json.loads(Path(path).read_text())
-    fences: dict[str, set[str]] = {}
-    for row in payload.get("adopted", []):
-        fences.setdefault(row["key"], set()).add(row["family"])
-    return fences
+    return load_censor_store(path, stale_policy="warn")[0]
 
 
 def marginal_kappa(candidate_events: frozenset, covered: set) -> int:
